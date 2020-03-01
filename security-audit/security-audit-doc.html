@@ -1,0 +1,1009 @@
+<HTML>
+<HEAD><TITLE>Security Configuration Management Toolkit</TITLE></HEAD>
+<BODY>
+<center>
+<b>This documentation is for</b><br />
+Version 0.04 of the processing script<br />
+Version 0.04 of the data collection script<br />
+Last upadted 19 February 2020
+</center>
+<a name="sect0"></a>
+<H1>Index</H1>
+<p>
+<ol>
+		<li><a href="#sect1">Security Configuration Toolkit Overview</a></li>
+                <ul>
+                    <li>Toolkit Overview</li>
+                    <li>Requirements, Packages needed</li>
+                </ul>
+		<li><a href="#sect2">Performing a server data capture</a>
+		<ul>
+				<li>Capturing data for a server</li>
+				<li>Limiting the data captured</li>
+		</ul>
+		</li>
+		<li><a href="#sect3">Processing the data</a>
+		<ul>
+				<li>Running the reporting script</li>
+				<ul>
+<li>Collecting the data to be processed</li>
+<li>Processing the data</li>
+<li>Automating Report Archiving</li>
+				</ul>
+				<li>Overiding/Customising the default reporting</li>
+		</ul>
+		</li>
+		<li><a href="#sect4">Viewing the security report output</a></li>
+		<li><a href="#sect5">Appendix A - Reporting Override Custom File Syntax</a></li>
+		<ul>
+				<li>USING CUSTOM FILES
+				<ul>
+			  	  <li>1. Why Custom Files</li>
+				  <li>2. TCP-IP Ports</li>
+				  <li>3. UDP Ports</li>
+				  <li>4. Home Directory Ownership Overrides</li>
+				  <li>5. Home Directory Permission Overrides</li>
+				  <li>5.1 General System Directory Overrides</li>
+				  <li>5.2 Explicit Directory Overrides</li>
+				  <li>6. System File Checks</li>
+				  <li>6.1 Forcing a system file into OK state</li>
+				  <li>6.2 Disabling sloppy /var checking</li>
+				  <li>7. Turning off warnings for manual check items</li>
+				  <li>8. Turning off alerts for known/ok SUID files</li>
+		        </ul>
+				</li>
+		</ul>
+		<li><a href="#sect6">Appendix B - Customisation File settings available</a>
+		</li>
+		<li><a href="#sect7">Appendix C - Quick Start Guide</a> (if you don't read manuals)</li>
+		<li><a href="#sect8">Appendix D - Known Issues with this toolkit</li>
+</ol>
+</p>
+
+<hr>
+<a name="sect1">
+<center><a href="#sect0">[Index]</a> <a href="#sect2">[Next Section]</a></center>
+<H1>1. Security Configuration Toolkit Overview</H1>
+<h3>1.1 Toolkit Overview</h3>
+<p>
+This toolkit does basic security checks of a <b><big>Linux</big></b> server.
+It must be run as root to ensure it has access to all the
+files it is checking.<br>
+As written it will only work on Linux servers. I have no plans to
+make the code generic. I use it for checking Fedora and CentOS7 servers.
+</p>
+<p>
+It is designed for processing results from multiple servers,
+written as I have multiple servers and they were all starting 
+to digress from ideal situations. Using this I can keep them
+all in a reasonably similar secure state (which in many cases 
+requires chmod'ing packages installed from repositories as some
+of them have terribly insecure file permissions).
+</p>
+<p>
+The reports produced are in HTML format. A master index
+summarises violations across all servers, and provides 
+links down to the details for each server.
+</p>
+<p>
+It checks for
+<ul>
+<li>user sanitation checks</li>
+<li>badly secured system files</li>
+<li>badly secured home directories</li>
+<li>unexpected open tcp ports</li>
+<li>unexpected open udp ports</li>
+<li>ftp allowed users</li>
+<li>cron script file securities (including anacron jobs)</li>
+</ul>
+The checklist above is vastly simplified, for example the
+ftp allowed users not only warns which users are allowed
+to use ftp but will report on any denied ftp users that
+are no longer on the system so you can clean up your
+ftpusers file, the user checks xref the passwd file against
+the shadow file and report on inconsistencies that need
+pwconv to fix etc.
+</p>
+<p>
+The easiest way to see what it does is to run it.
+</p>
+<p>
+It allows customisation of configurable rules on a
+global, or per server basis.
+</p>
+
+<p>
+<pre>
+Basic file structure of the toolkit is
+  ../bin
+  ../custom
+  ../doc
+[ ../results ]
+</pre>
+<ul>
+<li>The bin directory contains the scripts.</li>
+<li>The custom directory is where you customise processing rules for a server.</li>
+<li>The doc directory has this documentation.</li>
+<li>The results directory is only created after you have performed a processing run.</li>
+</ul>
+</p>
+<p>
+<em>Additional note</em>: as shipped the
+collection script tars up /etc and takes rpm package
+snapshots. Thats because under this toolkit
+is becoming part of a global configuration toolkit in which
+security is but a small part. Feel free to comment out
+the tar of /etc and recording of rpm packages as they
+are not processed by the security reporter components.<br />
+The collection script also captures hardware details <em>if the
+required packages to do so are installed on each server</em> which are
+available to view for each server from a link on each servers 
+report overview page.
+</p>
+
+<p>
+<b>A critical note for the security concious</b> is that the data collection script 
+captures your /etc/passwd and /etc/shadow contents; so make sure the processing server
+you copy the data to in order for it to be processed is in a secure zone.
+</p>
+
+<h3>1.2 Requirements, packages needed</h3>
+<ul>
+<li>the BASH shell /bin/bash must be available on all servers, the scripts make use of the
+bash substring functions not available in other shells</li>
+<li>the <b>netstat</b> command must be installed on all servers for collecting the tcp/udp ports
+in use</li>
+<li><b>dmidecode</b> and <b>lshw</b> commands must be installed on all servers for collecting
+the hardware details. If they are not installed the only information on the hardware details
+page will be that they are not installed</li>
+</ul>
+
+
+<hr>
+<a name="sect2"></a>
+<center><a href="#sect1">[Previous Section]</a> <a href="#sect0">[Index]</a> <a href="#sect3">[Next Section]</a></center>
+<H1>2. Performing a server data capture</H1>
+<p>
+Obviously there needs to be data to process to produce
+a report. So how to we obtain it ?.
+</p>
+<h2>Capturing data for a server</h2>
+<p>
+Obtaining the data to be processed is simple to achieve,
+simply...
+<ol>
+<li>copy the bin/collect_server_details.sh script to each server</li>
+<li>as the root user (to gain access to files being recorded), run it</li>
+<li>copy the *.txt and *.tar file produced in your current directory to your
+reporting servers incoming data directory.</li>
+</ol>
+You should try to automate the running of the data capture so
+it runs at regular intervals. Then on the reporting server you
+can setup a job to pull the data from each remote server on
+regular intervals and produce a refreshed report.
+</p>
+
+<h2>Limiting the data captured</h2>
+<p>
+Why would you want to ?. Well it collects a lot of data which
+results in a long processing time. I do a full scan infrequently
+monthly with a smaller scan regularly.
+</p>
+<p>
+By default the script will record all file permissions under
+system (and selected user) directories. This can result in well
+over 50,000 file permissions to be checked (I believe the top I hit was around 170,000 files),
+and result in an extremely long processing time per server.
+</p>
+<p>
+This should be allowed at least the first time you run it. I was
+supprised at how many bad (orphaned) files it found on my server
+after I cleaned up the passwd file.
+</p>
+<p>
+After the first run, you may for future runs just want to chain
+down N levels of directories in the permission check searches.
+To do this provide the parameter 'scanlevel=<n>' to select the
+number of directory levels that will be descended during the file
+permission search.
+<pre>
+Normal syntax          : <span style="background-color: #FFCCFF">bin/collect_server_details.sh&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp</span>
+Limiting capture syntax: <span style="background-color: #FFCCFF">bin/collect_server_details.sh scanlevel=<em><b>n</b></em></span>
+Example                : <span style="background-color: #D7FFFF">bin/collect_server_details.sh scanlevel=5</span>
+</pre>
+</p>
+
+<hr>
+<a name="sect3"></a>
+<center><a href="#sect2">[Previous Section]</a> <a href="#sect0">[Index]</a> <a href="#sect4">[Next Section]</a></center>
+<H1>3. Processing the data</H1>
+<H2>Running the reporting script</H2>
+<p>
+The four required steps to produce a security report are
+<ol>
+		<li>Collecting the data to be processed, discussed above</li>
+		<li>Processing the data</li>
+		<li>Automating report archiving</li>
+		<li>Viewing the reports produced</li>
+</ol>
+</p>
+<h3>Collecting the data to be processed</h3>
+<p>
+This was covered in the earlier section. It is mentioned again
+here to ensure you understand that <b>all servers should have
+had the capture script run on them, and the data transferred
+to the reporting server <em>before</em> processing of any
+data is performed</b>.
+</p>
+<p>
+You should have run the data capture script discussed earlier
+on each server you intend to produce a report for. The results
+of the data collection <b>from all servers</b> need to be collected
+together in one directory on your reporting server.
+</p>
+<p>
+This is because the script is designed to produce a consolidated report
+of all the servers from a single processing run, providing a global
+summary page for allservers and drill down to each server for details
+of the alerts or warnings produced; so all data collected must be processed on 
+a single reporting server.
+</p>
+
+<h3>Processing the data</h3>
+<p>
+To process the data and produce the security reports you just
+run the script bin/process_server_details and provide it with
+the directory name of your server data files. The syntax of the
+process_server_details.sh script is
+<pre>
+<span style="background-color: #FFCCFF">process_server_details.sh <em>server-data-dir</em> [<em>archive-dir</em> [<em>target-rpt-dir</em>]]</span>
+</pre>
+<ul>
+<li>If the <em>archive-dir</em> is provided then when the report is produced
+a copy of it will be tar'ed and gzip'ed into a datestamped file
+in the archive directory for historical reference.</li>
+<li>If the <em>target-rpt-dir</em> is present then when processing has
+completed the reports will be moved from the default report
+location to your chosen location. Personaly I have no use
+for this as it's easier just to have a symbolic link under my
+default documentroot to the reports rather than having to
+copy them to the html folders.</li>
+</ul>
+</p>
+<p>
+Example: .......<br>
+  assuming your data is in the rawdatafiles folder under the
+  application directory, and you are in the application
+  directory...<br>
+<span style="background-color: #D7FFFF"><b>bin/process_server_details.sh rawdatafiles</b><br></span>
+  When completed the results/index.html file will have an
+  overall scoreboard for each server and links to each servers
+  detailed reports.
+</p>
+<p>
+<b>I M P O R T A N T :</b><br>
+  Don't try to process files in a directory where the directory
+  contains the underscore '_' character. The script will not
+  work. This is caused by a lot of character translation
+  fiddling; I don't intend to try to fix it in the short term,
+  do don't store files to be processed in directories containing
+  an underscore character.
+</p>
+
+
+<h3>Automating report archiving</h3>
+<p>
+This was discussed in the previous section. If you provide as
+a second parameter to process_server_details.sh the name of
+a directory to hold archived reports in then an archive file
+of the current report processing is automatically created in
+that directory for you at the end of the processing run.
+</p>
+
+<H2>Overiding/Customising the default reporting</H2>
+<p>
+The default tight security checks may not suit your environment, to
+allow for this there is the ability to override the default checks
+performed by the processing script. This is done by using
+customisation files, so you do not need to go to the effort
+of modifying the scripts themselves.
+</p>
+<p>
+The overrides may be set at a <em>global site level</em> or at
+an <em>individual server level</em> depending upon your requirements.
+There are two types of override files
+<ul>
+	<li>ALL.custom        - will override defaults for all processed servers</li>
+	<li><em>hostname</em>.custom - will override defaults for a specific hostname</li>
+</ul>
+</p>
+<p>
+There are only limited things that can be overridden, as your system
+is either secure or not. The overrides allowed are for things that
+may not necessarily make it insecure such as you wishing an application
+to listen on a tcp-ip port as OK which would be a specific server
+override, or a shared home directory to be considered a 'shared' directory,
+such as halt and bin both having a home directory of bin so ownership
+of the directory should not be halt or bin but root, and it shouldn't
+be 700 or nobody could get to it.
+</p>
+<p>
+<b>I M P O R T A N T :</b><br>
+If you create a server specific customisation file be aware that
+it replaces any site wide file (replaces, not merged with).
+As such if you create a server
+specific custom file ensure you copy any values you put in the
+global site custom file into the server specific ones if required.
+</p>
+<p>
+<b>As custom files are a topic into themselves the use of, and
+values available in, the custom files are covered in the
+Appendix A section</b>.
+</p>
+
+<hr>
+<a name="sect4"></a>
+<center><a href="#sect3">[Previous Section]</a> <a href="#sect0">[Index]</a> <a href="#sect5">[Next Section]</a></center>
+<H1>4. Viewing the security report output</H1>
+<p>
+The reports are produced in html format. By default these are 
+in the <b>results</b> directory under the application directory.
+If you provided a parameter to the processing script to request
+the results be moved to another directory then they will be where
+you requested them to be.
+</p>
+<p>
+Use a web browser to open the index.html file in that directory.
+The initial index file contains a scorecard summary of total alerts and
+warnings for every server processed so you can quickly identify
+problems, and links to each individual servers more detailed scorecards
+and reports to see exactly what the alerts or warnings for each server
+were caused by.
+</p>
+
+<hr>
+<a name="sect5"></a>
+<center><a href="#sect4">[Previous Section]</a> <a href="#sect0">[Index]</a> <a href="#sect6">[Next Section]</a></center>
+<H1>5. Appendix A - Reporting Override Custom File Syntax</H1>
+
+<H2>USING CUSTOM FILES</H2>
+
+<H3>1. Why Custom Files</H3>
+<p>
+There will be occasions where the defaults used by the processing script
+are not adequate or realistic for one of more servers being procesed.
+To allow for that, rather than you having to edit the script, you are
+permitted to create customised overide files.
+</p>
+<p>
+There are two types of override files
+<ul>
+<li>ALL.custom        - will override defaults for all processed servers</li>
+<li><em>hostname</em>.custom - will override defaults for a specific hostname</li>
+</ul>
+There are only limited things that can be overridden, as you system
+is either secure or not. The overrides allowed are for things that
+may not necessarily make it insecure such as you wishing an application
+to listen on a tcp-ip port as OK which would be a specific server
+override, or a shared home directory to be considered a 'shared' directory,
+such as halt and bin both having a home directory of bin so ownership
+of the directory should not be halt or bin but root, and it shouldn't
+be 700 or nobody could get to it.
+</p>
+<p>
+What can be overridden using customisation files is covered in this appendix.
+</p>
+<p>
+<b>I M P O R T A N T :</b><br>
+A server specific custom file is not merged with the default
+ALL.custom file, it replaces it. As such if you create a server
+specific custom file ensure you copy any values you put in the
+global custom file into the server specific ones if required.
+</p>
+<p>
+<b>I M P O R T A N T :</b><br>
+The custom files must be in the directory 'custom' in the root
+of this toolkit. As shipped this is where the supplied ALL.custom
+file lives so you have an example tree already setup.
+The expected tree structure is...
+<pre>
+   /something/something/bin
+   /something/something/custom
+   /something/something/doc
+   /something/something/results
+</pre>
+...all script references to custom files are relative to the bin
+directory (../custom/*) so please keep this directory structure.
+</p>
+
+<H3>2. TCP-IP Ports</H3>
+<p>
+TCP-IP ports are a gateway to your system. You should know
+what is listening on them.
+</p>
+<p>
+In the reports, even if a TCP-IP port is allowed you will
+always get a warning if the port is listening on all
+interfaces, you can only get an OK when it is bound to
+a specific interface. As such specifically allowing a
+new port here will only change it from alert to warning in
+the reports. There is customisation you will have to do to
+the application to get the report to list it as OK.
+</p>
+<p>
+The syntax of a TCP-IP override line is...<br>
+<span style="background-color: #FFCCFF"><b>TCP_PORT_ALLOWED=:<em>portnum</em>:<em>description</em></b><br><br></span>
+
+For example...<br>
+<span style="background-color: #D7FFFF"><b>TCP_PORT_ALLOWED=:22:ssh</b></span>
+</p>
+<p>
+The scripts handle both tcpv4 and tcpv6 ports reported by netstat.
+</p>
+
+
+<H3>3. UDP Ports</H3>
+<p>
+Connections using UDP (also TCP-IP) ports are also a gateway to your system.
+You should know what is using UDP services on your server also.<br>
+The reports produced for active UDP ports are similar to those for TCP ports.
+Refer to the comments above in the TCP-IP section for more info.
+</p>
+<p>
+There are seperate custom statements for UDP ports as we don't want to
+confuse an allowed tcp port of 123 with a disallowed udp port of 123.
+</p>
+<p>
+The syntax of a UDP override line is...<br>
+<span style="background-color: #FFCCFF"><b>UDP_PORT_ALLOWED=:<em>portnum</em>:<em>description</em></b><br><br></span>
+
+For example...<br>
+<span style="background-color: #D7FFFF"><b>UDP_PORT_ALLOWED=:2049:tcp Network Filesystem - NFS</b></span>
+</p>
+<p>
+The scripts handle both tcpv4 and tcpv6 ports reported by netstat.
+</p>
+
+<H3>4. Home Directory Ownership Overrides</H3>
+<p>
+This override is promarily for home directory checks. As
+you are aware many of the system users share a home 
+directory, and by default the report alerts on any home
+directory not owned by the correct user.<br>
+<b>This override is only for system directories</b>, it will
+enable you to to flag as OK a directory that is owned by
+root rather than the expected owner.
+</p>
+<p>
+The syntax of a directory ownership override is...<br>
+<span style="background-color: #FFCCFF"><b>ALLOW_OWNER_ROOT=<em>dirname</em></b><br><br></span>
+
+For example...<br>
+<span style="background-color: #D7FFFF"><b>ALLOW_OWNER_ROOT=bin</b><br></span>
+(You cannot provide any leading / of leading directory path,
+the dirname is the basename of the directory being checked.
+<b>be carefull</b> in it's use as it will treat /bin and /usr/tmp/bin
+for example with the same rule and allow the root owner (which is
+probably OK for system directories)).
+</p>
+<p>
+<em>Note</em>: home directories must be owned by the user defined
+in the /etc/passwd file as having the home directory, or owned
+by root in the case of shared directories (as defined by using
+this override).
+Anything else is a security
+concern so cannot be overridden.
+</p>
+
+<H3>5. Home Directory Permission Overrides</H3>
+<p>
+This is intended primarily for home directory checks.
+Any home directory not secured 700 or tighter (d***------)
+is a security risk as home directories should be secure.
+</p>
+
+<H4>5.1 General System Directory Overrides</H4>
+<p>
+System home directories however have a requirement that
+other users can get into them, to run programs and access
+configuration files.
+</p>
+<p>
+To allow for this during the checks it is possible to flag
+a user home directory directory as a system directory, in which case any of the
+permissions
+drwxr-xr-x, drwxr-x--x, drwx--x--x, dr-xr-xr-x or dr-xr-x---
+will be acceptable for it <b>if it is owned by a system user</b>.
+</p>
+<p>
+To request a directory be treated as a system directory the
+format of the custom file entry is...<br>
+<span style="background-color: #FFCCFF"><b>ALLOW_DIRPERM_SYSTEM=<em>dirname</em></b><br><br></span>
+
+For example...<br>
+<span style="background-color: #D7FFFF"><b>ALLOW_DIRPERM_SYSTEM=bin</b></span>
+</p>
+
+<p>
+Occasionally you may install software packages under a different userid to allow them
+to run as a non-root userid, in which case all files should be owned by that non-root
+user. To avoid those being reported as being owned by a non-system user you can in the
+custom file for the server define additional system file owners.
+For example to allow jetty to own system files...<br>
+<span style="background-color: #D7FFFF"><b>ADD_SYSTEM_FILE_OWNER=jetty</b></span>
+</p>
+
+
+<H4>5.2 Explicit Directory Overrides</H4>
+<p>
+There are some directories (very few) that just cannot fit
+into the general system category. I have only found one
+(mail-which has the sticky bit set for mail group).
+As a general rule thats OK for a directory, so this override
+option is specifically for directory overrides.
+</p>
+<p>
+This override should be used with caution as it is used as a catch-all
+of last resort for directories not meeting all other rules,
+and is done by directory name (not full path) so will match
+all directories of the name.
+</p>
+<p>
+To force a directory override to use an explicit permission
+value (which will only be checked if all other checks fail)
+use the custom file entry...<br>
+<span style="background-color: #FFCCFF"><b>ALLOW_DIRPERM_EXPLICIT=<em>dirname fullperms</em></b><br><br></span>
+
+For example...<br>
+<span style="background-color: #D7FFFF"><b>ALLOW_DIRPERM_EXPLICIT=mail drwxrws--x</b></span>
+</p>
+
+<H3>6. System File Checks</H3>
+
+<H4>6.1 Forcing a system file into OK state</H4>
+<p>
+There shouldn't be any files you need to do this for, but
+unfortunately there will always be exceptions, for example
+/usr/games/Maelstrom/Maelstrom-Scores on my development
+server needs world write access as I don't want users to be
+root to run a game (yes I allow games). Another seems to
+be /var/spool/at/.SEQ although this only appears on one
+of my servers (I don't use at, but obviously have at some
+point).
+</p>
+<p>
+To stop the report constantly throwing up alerts for
+badly secured system files you know is badly secured,
+but wish to keep the way it is; you can add an entry to
+the custom file to force the file to be treated as OK.
+</p>
+<p>
+To do so use the FORCE_PERM_OK entry with the filename,
+<b>including the full path</b>, as the value. The game score file
+mentioned above is used in this example...<br>
+
+<span style="background-color: #D7FFFF"><b>FORCE_PERM_OK=/usr/games/Maelstrom/Maelstrom-Scores</b></span>
+</p>
+
+<p>
+<b>And for bad owners</b> I have also added a FORCE_OWNER_OK tag, with my upgrade from
+FC3 to FC6 a single system file was owned by vcsa rather than a system user, for one
+file I was not willing to add vcsa to the system file owner list so create the
+additional tag (which alas really slows the checking down some more as every badly owned
+file now does a check for the override (actually, doesn't slow much on my system
+as I only have that one file, time to clean up yours :-) ).<br>
+<span style="background-color: #D7FFFF"><b>FORCE_OWNER_OK=/usr/libexec/mc/cons.saver</b></span>
+</p>
+
+
+<H4>6.2 Disabling sloppy /var checking</H4>
+<p>
+As the /var filesystem can, and often is, used by every
+user (/var/tmp anyway) the checks by default just report
+a summary of badly secured files under the /var filesystem.
+</p>
+<p>
+It is possible to change this with the configuration file
+values below (note: OK is the default).
+<pre><b><span style="background-color: #FFCCFF">
+  ALLOW_SLOPPY_VAR=OK&nbsp&nbsp&nbsp&nbsp
+  ALLOW_SLOPPY_VAR=WARN&nbsp&nbsp
+  ALLOW_SLOPPY_VAR=NO&nbsp&nbsp&nbsp&nbsp
+</span></b></pre>
+</p>
+<p>
+The actions taken are (which may be overridden for some files if other options affecting /var are used)<br />
+<b>OK</b> - report a summary line of the total count of badly owned and badly secured files found<br />
+<b>WARN</b> - report the details of each insecure file found, report them as warnings<br />
+<b>NO</b> - report the details of each insecure file found, report them as alerts
+</p>
+<p>
+Personally I run it with WARN in my full scan snapshots
+and with OK in the regular runs (and just check the
+summarised number total matches).
+</p>
+<H4>6.3 Permitting files under /var to be group writeable</H4>
+<p>
+The default umask on most systems is for new files created to
+be writeable by owner and group. This is normally not an issue other
+than this security checking toolkit alerting on such files under /var,
+files created by users such as mysql, apache, clamav, bacula can cause
+this toolkit to generate hundreds of alerts when it checks files under /var.
+</p>
+<p>
+This option will consider it valid for files to be group writeable 
+as long as
+</p>
+<ul>
+<li>they are under the /var directory path</li>
+<li>the group matches the owner of the file (for example user mysql and group mysql)</li>
+</ul>
+<pre><b><span style="background-color: #FFCCFF">
+ALLOW_VAR_FILE_GROUPWRITE=YES
+</span></b></pre>
+<p>
+If any value other than YES is provided then NO is assumed.
+</p>
+
+<H3>7. Turning off warnings for manual check items</H3>
+<p>
+There are some checks that always by default raise a
+warning alert, as these require manual checking. The
+warning alert is raised to highlight that a manual
+check must be performed to ensure that eveything
+is OK.
+</p>
+<p>
+It is possible to override two of these, the two
+most unlikely to be a security risk. These are the
+<ul>
+		<li>warning if a custom file was used and should be reviewed</li>
+		<li>warning to manually check log file retentions</li>
+</ul>
+</p>
+<p>
+These can be turned of by including in the custom
+file used for a server the entries below<br>
+<pre><b><span style="background-color: #FFCCFF">
+  NOWARN_ON_CUSTOMFILE=YES&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp
+  NOWARN_ON_MANUALLOGCHECK=YES&nbsp&nbsp
+</span></b></pre>
+</p>
+<p>
+It is probably inadvisable to use the overrides to turn these off as
+manual reviews should be performed, but as I
+personally are happy with my settings I use these
+to keep the results boxes green rather than yellow.
+</p>
+
+<H3>8. Turning off alerts for known/ok SUID files</H3>
+<p>
+Files with the <b>suid</b> bits set are possible security risks,
+however most servers require some files with these bits set to
+function (ksu, suexec etc need them set). To avoid these
+raising alerts each time you run the check you have the option of
+specifying files that are permitted to have suid bits set for each
+server.</p>
+</p>
+<p>
+These can be turned of by including in the custom
+file used for a server the entry below<br>
+<pre><b><span style="background-color: #FFCCFF">
+  SUID_ALLOW=/path/.../filename
+</span></b></pre>
+</p>
+<p>
+Note that in this custom file entry the <b>full path and filename must be provided</b>
+rather than just the filename part, for obvious reasons;
+don't want users having their own versions of programs that need suid bits set.
+</p>
+<p>
+It is also important to note that any SUID_ALLOW entries in a custom file that refer to files
+that no longer exist on the system being checked will generate warnings requesting you to
+remove obsolete entries from the custom file.
+</p>
+
+<hr>
+<a name="sect6"></a>
+<center><a href="#sect5">[Previous Section]</a> <a href="#sect0">[Index]</a> <a href="#sect7">[Next Section]</a></center>
+<H1>6. Appendix B - Customisation File settings available</H1>
+
+<p>
+Sample customisation files are supplied in the tarball that contains the application.
+These are in the directory <em>custom</em>.
+</p>
+
+<p>
+Filenames must be named <b><em>servername</em>.custom</b> if you create custom files on a per-server basis.
+There should alway be a ALL.custom file to provide defaults for all servers that do not have a specific
+custom file although that is also optional.
+</p>
+<p>
+The search for customisations is
+</p>
+<ol>
+<li>if a servername.custom exists for a servername use that</li>
+<li>if no servername.custom exists for a server use the default ALL.custom if it exists</li>
+<li>if no customisation file exists the extremely tight processing defaults will be used</li>
+</ol>
+<p>
+It is <b>important to note</b> custom files are not merged, if you have a servername.custom 
+file everything in ALL,custom will be ignored. This is a deliberate design decision, your
+ALL.custom may accomodate most of your servers but if you have one you want more tightly
+secured the last thing you would want is less strict settings fom ALL.custom being merged with
+you servername.custom settings.
+</p>
+
+<table border="1">
+<tr><td>TCP_PORT_ALLOWED=:<em>port</em>:<em>description</em></td><td>
+Used to specify a TCP (v4 or v6) port that is expected to be opened on the server.
+There must be a : before and after the port number, anything after the second : is a
+free form description to describe the use of the port.<br>
+Examples<br>
+TCP_PORT_ALLOWED=:22:ssh server<br />
+TCP_PORT_ALLOWED=:9090:Cockpit
+<br />
+Note that this will stop a port being raised as a critical issue in the report, but
+if the port is listening on all interfaces it will still be raised as a warning.
+</td></tr>
+<tr><td>UDP_PORT_ALLOWED=:<em>port</em>:<em>description</em></td><td>
+Used to specify a UDP (v4 or v6) port that is expected to be opened on the server.
+There must be a : before and after the port number, anything after the second : is a
+free form description to describe the use of the port.<br>
+Examples<br />
+UDP_PORT_ALLOWED=:111:RPC portmap daemon (portmap)
+<br />
+Note that this will stop a port being raised as a critical issue in the report, but
+if the port is listening on all interfaces it will still be raised as a warning.
+</td></tr>
+<tr><td>ALLOW_OWNER_ROOT=<em>directoryname</em></td><td>
+Allows a directory that is expected to be owned by a user other than root to
+be accepted as OK for reporting if the directory is owned by the root user.
+This is needed as many system users have home directories of /bin, /sbin or /root
+(for example on Fedora31 users operator/shutdown/halt have a home directory of /root
+but the directory needs to be owned bu root not by users operator/shutdown/halt).
+<b>It is important to note that the override will apply to any directory matching
+the name so use with caution</b> (ie: if =bin is used then /bin, /usr/bin,
+/home/fred/bin, /rootkit/hacker/bin
+will be accepted as OK to be owned by root if not owned by the default owner).<br />
+Examples<br />
+ALLOW_OWNER_ROOT=bin<br />
+ALLOW_OWNER_ROOT=sbin<br />
+ALLOW_OWNER_ROOT=root
+</td></tr>
+<tr><td>ALLOW_DIRPERM_SYSTEM=<em>directoryname</em></td><td>
+This can be used to override alerts for <b>user home directories</b> that need to have shared
+(read) access, obviously direcories such as /bin and /sbin that are configured as home
+directories for some users but need to permit other users to traverse down them so
+this configuration option can be used for directories such as those; user directories serving
+'public_html' pages is another example that would need this override. It will allow
+directories secured as drwxr-xr-x, drwxr-x--x, drwx--x--x, dr-xr-xr-x or dr-xr-x---
+to be accepted as OK.<br />
+Examples<br />
+ALLOW_DIRPERM_SYSTEM=bin<br />
+ALLOW_DIRPERM_SYSTEM=sbin<br />
+ALLOW_DIRPERM_SYSTEM=adm<br />
+<b>It is important to note that the override will apply to any directory matching
+the name so use with caution</b> (ie: if =bin is used then /bin, /usr/bin,
+/home/fred/bin, /rootkit/hacker/bin
+will be accepted as OK if they are secured with any of the three masks mentioned above.<br />
+</td></tr>
+<tr><td>ALLOW_DIRPERM_EXPLICIT=<em>directoryname permissions</em></td><td>
+This is used to explicitly define permissions that can be set on a directory if the
+existing permissions would be considered a critical condition. There are some system directories
+and home directories that will be secured differently to recomended settings and these can be set
+here. <b>The last two example entries are for Fedora systems where systrem user account home
+directories are to symbolic links instead of a real directory</b><br />
+Examples<br />
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwxr-x<br />
+ALLOW_DIRPERM_EXPLICIT=named drwxr-x---<br />
+ALLOW_DIRPERM_EXPLICIT=gdm drwxrwx--T<br />
+ALLOW_DIRPERM_EXPLICIT=sshd drwx--x--x<br />
+ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T<br />
+ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx<br />
+ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx<br />
+<b>It is important to note that the override will apply to any directory matching
+the name so use with caution</b> (ie: if =bin is used then /bin, /usr/bin,
+/home/fred/bin, /rootkit/hacker/bin
+will be accepted as OK if they match the directory permissions specified.<br />
+</td></tr>
+<tr><td>FORCE_PERM_OK=<em>fullpathandfilename</em></td><td>
+Ocassionally there will be a file that alerts that does not fit any generic rules,
+this custom file setting can be used to force any checks against the file <b>permissions</b>
+of a file to be considered OK reguardless of what the file permissions actually are.
+Examples<br />
+FORCE_PERM_OK=/usr/libexec/mc/cons.saver<br />
+Unlike other overrides this is specific to one file and the full path and filename
+must be specified, it is expected there would be very few of these entries in a
+configuration file (I currentrly have zero).
+</td></tr>
+
+<tr><td>FORCE_ANYFILE_OK=<em>filename fileperms</em></td><td>
+Allow a file of this name to be forced OK <em>under any directory</em> if
+it fails initial default checks.
+A risk as this check will be performed on any file matching the
+basename of the full file path, but Fedora now generates lots of dynamic PCI bus entries
+under the /sys/devices/pciNNNN:NN path as --w--w----. and we do not
+want them generating false alerts.
+Examples<br />
+FORCE_ANYFILE_OK=remove --w--w----<br />
+FORCE_ANYFILE_OK=rescan --w--w----<br />
+The risk is minimised by the override requiring the file permissions that
+are expected to be explicitly provided. <em>Also</em> this parameter is only
+used if the filename being checked has already failed all previous checks,
+this is the last check in the chain.
+</td></tr>
+<tr><td>FORCE_OWNER_OK=<em>fullpathandfilename</em></td><td>
+Ocassionally there will be a file that alerts that does not fit any generic rules,
+this custom file setting can be used to force any checks against the file <b>owner</b>
+of a file to be considered OK reguardless of who the file owner actually is.<br />
+Examples<br />
+FORCE_OWNER_OK=/usr/libexec/mc/cons.saver<br />
+Unlike other overrides this is specific to one file and the full path and filename
+must be specified, it is expected there would be very few of these entries in a
+configuration file (I currentrly have zero).
+</td></tr>
+<tr><td>SUID_ALLOW=<em>fullpathandfilename</em></td><td>
+There will always be setuid files on a *nix system, and you should keep track of them.
+This setting is used to define every setuid file you expect to exist on the server 
+being checked. Any setuid file on the server not defined by these entries will
+be reported as a critical issue.<br />
+Examples<br />
+SUID_ALLOW=/usr/sbin/sendmail.sendmail<br />
+SUID_ALLOW=/usr/sbin/userhelper<br />
+SUID_ALLOW=/usr/bin/lockfile<br />
+SUID_ALLOW=/usr/bin/sudo<br />
+SUID_ALLOW=/usr/bin/crontab<br />
+Unlike other overrides this is specific to one file and the full path and filename
+must be specified. <em>It should also be noted that the report will alert on any
+entries defined this way where the file does not exist on the server to ensure
+you do not leave stale entries in this list</em>.
+</td></tr>
+<tr><td>ADD_SYSTEM_FILE_OWNER=<em>username</em></td><td>
+You will occasionally install 3rd party packages that you want to run under a user
+other than root, in which case as good practise you would chown all files in that
+package to the new owner. To avoid the report producing critical alerts for those
+products you may install in system directories such as /usr/local or /opt it is
+possible to use the configuration file to define additional users that are permitted
+to own system files.<br />
+Examples<br />
+ADD_SYSTEM_FILE_OWNER=jetty<br />
+ADD_SYSTEM_FILE_OWNER=snort<br />
+ADD_SYSTEM_FILE_OWNER=logcheck<br />
+On the file permissions check page of the report all 'system file owners' are listed
+for the server being checked so you can keep an eye on additional entries.
+</td></tr>
+<tr><td>ALLOW_SLOPPY_VAR=WARN</td><td>
+Setting this alters the report to
+only warn for /var file security failures, this cuts out a lot
+of critical alerts as a lot of stuff in /var is owned by many different 
+userids.
+</td></tr>
+<tr><td>ALLOW_VAR_FILE_GROUPWRITE=YES</td><td>
+A lot of files under /var tend to be group writeable with the default umasks
+set with operating system installs,
+and in many cases there may be a need for it. Setting this value will make the
+checks consider files in directories under /var which are group writeable
+as secure
+<em>as long as the group matches the user</em> (ie: user mysql, group mysql)
+and the 'other' permissions are not writeable.
+</td></tr>
+<tr><td>NOWARN_ON_MANUALLOGCHECK=YES</td><td>
+There are a series of checks that have been identified as being needed to be 
+performed manually. Warnings would normally be raised in the report for these
+but using this configuration file option will suppress those alerts in the report.
+</td></tr>
+<tr><td>NOWARN_ON_CUSTOMFILE=YES</td><td>
+By default is using a custom file to override the defaults a warning is issued.
+This custom file setting suppresses that waring.<br />
+As custom files are now the norm and a link from the main page of each
+servers results has a link to the custom file anyway this is depeciated
+and will probably be removed in the next release.
+</td></tr>
+</table>
+
+
+<hr>
+<a name="sect7"></a>
+<center><a href="#sect6">[Previous Section]</a> <a href="#sect0">[Index]</a></center>
+<H1>7. Appendix C - Quick Start Guide</H1>
+<p>
+This is the quick start guide for those who don't read
+manuals. It explains how to setup and run it immediately.
+</p>
+<p>
+You will have to at some point refer to the documentation
+if you ever want to get down to a fairly error free
+run, or to get it to run in 5 minutes instead of 50 minutes.
+</p>
+<table border="1" cellpadding="10">
+<tr><td>
+<b><big>1. Choose the central server</big></b><br>
+Choose a server to be the one to provide the html results, it
+should be running a web server such as apache. 
+NOTE: A web server is not actually required as the output is
+in flat file format (no cgi-bin stuff), but the output is as html reports so
+the output must be places where a web browser can access it.<br />
+<b>The server chosen must be secure</b>, the data collection scripts collect sensitive
+information such as the contents of passwd and shadow files which you must not consolidate
+on an externally facing server. Personally I do the processing on a grunty internal server
+then just copy the results directory to a web server.
+</td></tr>
+<tr><td>
+<b><big>2. Install all the scripts</big></b><br>
+Untar the package on a central server
+</td></tr>
+<tr><td>
+<b><big>3. Copy data collector script to all linux servers</big></b><br>
+copy bin/collect_server_details.sh to every server<br />
+(if you have many servers you probably use something like puppet/chef so you
+should use as that will make it much easier to push out new versions to all servers)
+</td></tr>
+<tr><td>
+<b><big>4. Run a data scan on each server to be reported on</big></b><br>
+<ul>
+<li>4.1 Run Initial Scan (default/max scanlevel)</li>
+<ul>
+<li>run "collect_server_details.sh" on each server copied to</li>
+<li>scp/ftp the output .txt and .tar files created to a directory on the central server</li>
+</ul>
+<li>4.2 Frequent/Regular scans (override scanlevel)
+To be done only after you have fixed up all system file perm errors.</li>
+<ul>
+<li>run "collect_server_details.sh scanlevel=3" on each server copied to</li>
+<li>scp/ftp the output .txt and .tar files created to a directory on the central server</li>
+</ul>
+</ul>
+
+</td></tr>
+<tr><td>
+<b><big>5. Processing the output on the central server</big></b><br>
+Where <em>dirname</em> is the directory you scp/ftp the files to on the central server
+run "bin/process_server_details.sh <em>dirname</em>"
+</td></tr>
+<tr><td>
+<b><big>6. Review results</big></b><br>
+Results are accessable from results/index.html under the application directory.
+</td></tr></table>
+
+
+<hr>
+<a name="sect8"></a>
+<center><a href="#sect7">[Previous Section]</a> <a href="#sect0">[Index]</a></center>
+
+<h1>8. Appendix D - Known Issues with this toolkit</h1>
+<p>
+A customisation file per server is really required if you have multiple OS's.
+For example some releases of Fedora moved bin and sbin under /, leaving symbolic links for /usr/bin and /usr/sbin
+to point to the new directories under / <b>but</b> still creates system users in /etc/passwd with
+home directories as /usr/bin and /usr/sbin. The impact of this is that home directory checks for
+those users have to be overridden to permit lrwxrwxrwx as a 'secure'/safe setting, which it
+obviously is not. <em>I may implement checks to cope with the use of symbolic links in this case at some point</em>,
+but the issue is that if user home directories are set to symbolic links instead of directories the toolkit does not
+handle that currently.
+</p>
+<p>
+A customisation file per server is really required if you have multiple OS's.
+CentOS7 still uses /usr/bin and /usr/sbin for files, so SUID file checks must be different
+for each OS, Fedora will have a suid file at /bin/wall and CentOS7 will have it at /usr/bin/wall
+so the ALL.custom file cannot be used for both OSs as files are in different places. This 
+divergence gets even worse with BSD based systems.
+</p>
+<p>
+There are also lots of critical alerts plus lots of warning generated on systems with <em>Docker</em>
+running containers as in the docker overlay2 directory it keeps copies of setuid files; plus with my
+docker containers I keep the userid numbers well away from 'real' users on the host so there are
+'bad ownership' alerts logged for user numbers as they do not exist on the host.<br />
+I have decided not
+to provide a customisation entry flag to suppress those as I believe it is important to know what
+setuid files exist on the system being checked. As these are well down the directory structure using
+a 'scanlevel=5' or above is needed to capture them, but they do need to be reported on.
+</p>
+<p>
+<b><em>None of these are issues with the toolkit itself but the effect of different *nix implementations</em></b>,
+I chose not to code for all possible OS's but only the ones I use.
+</p>
+<hr>
+<center><a href="#sect0">[Index]</a></center>
+</BODY>
+</HTML>

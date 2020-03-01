@@ -1,0 +1,147 @@
+# DEFAULT customisation file for all servers that do not have their
+# own personalised configuration file.
+#
+# You may override this on an individual server basis if
+# you create a file in this directory named 
+# <hostname>.custom (ie: falcon.custom). If a custom
+# file exists for a specific server it will be used
+# instead of this one.
+#
+# TCP Ports that are permitted to be listening on all servers
+# Syntax: TCP_PROT_ALLOWED=:<port-num>:<description>
+# Notes: The ":" around the port number is to make exact
+#        matching agaist the port number easier for the
+#        processing script.
+TCP_PORT_ALLOWED=:22:ssh
+TCP_PORT_ALLOWED=:25:sendmail
+TCP_PORT_ALLOWED=:80:http server
+TCP_PORT_ALLOWED=:111:portmapper
+TCP_PORT_ALLOWED=:443:http server ssl port
+TCP_PORT_ALLOWED=:5666:NRPE
+TCP_PORT_ALLOWED=:9090:Cockpit
+TCP_PORT_ALLOWED=:9102:Bacula FD
+#
+# UDP Ports that are permitted to be listening on all servers
+# Syntax: UDP_PORT_ALLOWED=:<port-num>:<description>
+# Notes: The ":" around the port number is to make exact
+#        matching agaist the port number easier for the
+#        processing script.
+# NOTE2: This is a sample. It shouldn be on a secure server.
+UDP_PORT_ALLOWED=:111:portmapper
+UDP_PORT_ALLOWED=:123:NTP
+#
+# Additional users that can be considered system file owners
+ADD_SYSTEM_FILE_OWNER=tss
+#
+# Directory ownership overrides as required
+ALLOW_OWNER_ROOT=bin
+ALLOW_OWNER_ROOT=sbin
+ALLOW_OWNER_ROOT=daemon
+ALLOW_OWNER_ROOT=lpd
+ALLOW_OWNER_ROOT=sync
+ALLOW_OWNER_ROOT=shutdown
+ALLOW_OWNER_ROOT=halt
+ALLOW_OWNER_ROOT=rpm
+ALLOW_OWNER_ROOT=nfs
+ALLOW_OWNER_ROOT=postfix
+ALLOW_OWNER_ROOT=mail
+ALLOW_OWNER_ROOT=mqueue
+ALLOW_OWNER_ROOT=smmsp
+ALLOW_OWNER_ROOT=sshd
+ALLOW_OWNER_ROOT=dev
+ALLOW_OWNER_ROOT=fs
+ALLOW_OWNER_ROOT=gdm
+ALLOW_OWNER_ROOT=adm
+ALLOW_OWNER_ROOT=httpd
+ALLOW_OWNER_ROOT=dnsmasq
+ALLOW_OWNER_ROOT=pcp
+ALLOW_OWNER_ROOT=root
+ALLOW_OWNER_ROOT=usage
+ALLOW_OWNER_ROOT=unbound
+ALLOW_OWNER_ROOT=ntp
+#
+# Directory permission overrides for shared system directories
+# These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
+ALLOW_DIRPERM_SYSTEM=bin
+ALLOW_DIRPERM_SYSTEM=sbin
+ALLOW_DIRPERM_SYSTEM=adm
+ALLOW_DIRPERM_SYSTEM=lpd
+ALLOW_DIRPERM_SYSTEM=mark
+ALLOW_DIRPERM_SYSTEM=backuppc
+ALLOW_DIRPERM_SYSTEM=sshd
+ALLOW_DIRPERM_SYSTEM=mysql
+ALLOW_DIRPERM_SYSTEM=rpcuser
+ALLOW_DIRPERM_SYSTEM=nfsnobody
+ALLOW_DIRPERM_SYSTEM=usage
+ALLOW_DIRPERM_SYSTEM=ntp
+ALLOW_DIRPERM_SYSTEM=dnsmasq
+ALLOW_DIRPERM_SYSTEM=unbound
+ALLOW_DIRPERM_SYSTEM=httpd
+ALLOW_DIRPERM_SYSTEM=postfix
+ALLOW_DIRPERM_SYSTEM=nagios
+ALLOW_DIRPERM_SYSTEM=puppet
+
+ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwxr-x
+ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T
+ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
+
+# SUID files on a Fedora 31 system KVM system
+SUID_ALLOW=/usr/sbin/sendmail.sendmail
+SUID_ALLOW=/usr/sbin/userhelper
+SUID_ALLOW=/usr/bin/lockfile
+SUID_ALLOW=/usr/bin/sudo
+SUID_ALLOW=/usr/bin/crontab
+SUID_ALLOW=/usr/bin/gpasswd
+SUID_ALLOW=/usr/bin/at
+SUID_ALLOW=/usr/bin/locate
+SUID_ALLOW=/usr/bin/newgrp
+SUID_ALLOW=/usr/bin/screen
+SUID_ALLOW=/usr/bin/chage
+SUID_ALLOW=/usr/bin/write
+SUID_ALLOW=/usr/bin/passwd
+SUID_ALLOW=/usr/libexec/openssh/ssh-keysign
+SUID_ALLOW=/usr/libexec/utempter/utempter
+SUID_ALLOW=/usr/libexec/cockpit-session
+SUID_ALLOW=/usr/bin/mount
+SUID_ALLOW=/usr/bin/su
+SUID_ALLOW=/usr/bin/umount
+SUID_ALLOW=/usr/bin/pkexec
+SUID_ALLOW=/usr/sbin/pam_timestamp_check
+SUID_ALLOW=/usr/sbin/mount.nfs
+SUID_ALLOW=/usr/sbin/unix_chkpwd
+SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1
+SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper
+SUID_ALLOW=/usr/sbin/usernetctl
+SUID_ALLOW=/usr/sbin/mtr-packet
+SUID_ALLOW=/usr/sbin/grub2-set-bootflag
+# I have nrpe and nagios-plugins-all installed on all my servers
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_dhcp
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_icmp
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_ide_smart
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
+#
+# Additional if on a non KVM guest system
+#SUID_ALLOW=/usr/sbin/lockdev
+#SUID_ALLOW=/usr/bin/chsh
+#SUID_ALLOW=/usr/bin/chfn
+#SUID_ALLOW=/usr/libexec/qemu-bridge-helper
+#SUID_ALLOW=/usr/libexec/abrt-action-install-debuginfo-to-abrt-cache
+#SUID_ALLOW=/usr/libexec/Xorg.wrap
+#SUID_ALLOW=/usr/bin/fusermount
+#SUID_ALLOW=/usr/bin/fusermount-glusterfs
+#
+# Force explicit files as OK when checked, full path is needed
+# /etc/dumpdates is normally also writeable by group disk
+FORCE_PERM_OK=/etc/dumpdates
+FORCE_PERM_OK=/var/log/wtmp
+#
+# Allow a file of this name to be forced OK under any directory if
+# it fails initial default checks.
+# A risk, but Fedora now generates lots of dynamic PCI bus entries
+# under the /sys/devices/pciNNNN:NN path as --w--w----. we do not
+# want them generating false alerts.
+# Risk is minimised be specifying the only permitted value.
+FORCE_ANYFILE_OK=remove --w--w----
+FORCE_ANYFILE_OK=rescan --w--w----
