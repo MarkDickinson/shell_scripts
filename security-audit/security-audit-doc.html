@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.04 of the processing script<br />
-Version 0.04 of the data collection script<br />
-Last upadted 19 February 2020
+Version 0.05 of the processing script<br />
+Version 0.05 of the data collection script<br />
+Last upadted 21 February 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -13,8 +13,9 @@ Last upadted 19 February 2020
 <ol>
 		<li><a href="#sect1">Security Configuration Toolkit Overview</a></li>
                 <ul>
-                    <li>Toolkit Overview</li>
                     <li>Requirements, Packages needed</li>
+                    <li>Requirements, environment needed</li>
+                    <li>Toolkit Overview</li>
                 </ul>
 		<li><a href="#sect2">Performing a server data capture</a>
 		<ul>
@@ -47,16 +48,17 @@ Last upadted 19 February 2020
 				  <li>5.2 Explicit Directory Overrides</li>
 				  <li>6. System File Checks</li>
 				  <li>6.1 Forcing a system file into OK state</li>
-				  <li>6.2 Disabling sloppy /var checking</li>
+				  <li>6.2 Managing "sloppy" /var checking</li>
+                                  <li>6.3 Permitting files under /var to be group writeable</li>
 				  <li>7. Turning off warnings for manual check items</li>
 				  <li>8. Turning off alerts for known/ok SUID files</li>
 		        </ul>
 				</li>
 		</ul>
-		<li><a href="#sect6">Appendix B - Customisation File settings available</a>
-		</li>
+		<li><a href="#sect6">Appendix B - Customisation File settings available</a></li>
 		<li><a href="#sect7">Appendix C - Quick Start Guide</a> (if you don't read manuals)</li>
-		<li><a href="#sect8">Appendix D - Known Issues with this toolkit</li>
+                <li><a href="#sect8">Appendix D - Major changes between versions you need to know</a></li>
+		<li><a href="#sect9">Appendix E - Known Issues with this toolkit</a></li>
 </ol>
 </p>
 
@@ -64,13 +66,46 @@ Last upadted 19 February 2020
 <a name="sect1">
 <center><a href="#sect0">[Index]</a> <a href="#sect2">[Next Section]</a></center>
 <H1>1. Security Configuration Toolkit Overview</H1>
-<h3>1.1 Toolkit Overview</h3>
+
+<h3>1.1 Requirements, packages needed</h3>
+<ul>
+<li>the BASH shell <b>/bin/bash</b> must be available on all servers, the scripts make use of the
+bash substring functions not available in other shells</li>
+<li>the <b>netstat</b> command must be installed on all servers for collecting the tcp/udp ports
+in use</li>
+<li><b>dmidecode</b> and <b>lshw</b> commands must be installed on all servers for collecting
+the hardware details. If they are not installed the only information on the hardware details
+page will be that they are not installed</li>
+<li>the <b>fuser</b> command on all servers, used to identify the processes listening
+on tcp/udp/socket-file interfaces for network checks. If fuser is not installed that
+information will not be collected resulting in blank fields in the network check report
+and the inability to suppress critical alerts for processes such as avahi-daemon and rpcbind
+that use random ports</li>
+</ul>
+
+<h3>1.2 Requirements, environment needed</h3>
+<ul>
+<li>a large bunch of Linux servers. These scripts are tested primarily Fedora30/31 and CentOS7
+ (although I also run them on a 'kali' server which I believe is debian based</li>
+<li>server names must be unique until the first '.' (dot) in a server name</li>
+<li>server names cannot contain the '_' underscore character (used for parsing)</li>
+<li>the scripts cannot be installed in a directory where any part of the directoty path contains the '_' underscore character (used for parsing)</li>
+<li>patience, processing a 'full' scanlevel result for a server can easily require checking well over 200,000 files and take over an hour per server</li>
+</ul>
+
+<h3>1.3 Toolkit Overview</h3>
 <p>
 This toolkit does basic security checks of a <b><big>Linux</big></b> server.
-It must be run as root to ensure it has access to all the
-files it is checking.<br>
+It is comprised of two parts, a data collection script to run on each server,
+and a processing script to process the collected files on a central reporting
+server.
+The data collection script must be run as root on the servers to ensure it has
+access to all the files it is checking. The processing script should not be run as root.
+</p>
+<p>
 As written it will only work on Linux servers. I have no plans to
-make the code generic. I use it for checking Fedora and CentOS7 servers.
+make the code generic. I use it for checking Fedora and CentOS7 servers,
+although I have also run it for a 'kali' server which I believe is debian based.
 </p>
 <p>
 It is designed for processing results from multiple servers,
@@ -78,7 +113,13 @@ written as I have multiple servers and they were all starting
 to digress from ideal situations. Using this I can keep them
 all in a reasonably similar secure state (which in many cases 
 requires chmod'ing packages installed from repositories as some
-of them have terribly insecure file permissions).
+of them have terribly insecure file permissions).<br />
+I do not believe products such as puppet/chef/cfengine are suitable
+for keeping file systems secure as while they can manage products/classes
+they know about they cannot manage all the wild things users can
+get up to outside those parameters. This toolkit is designed 
+to capture everything, especially the applications and badly secured
+files users may put in system directotries outside managed infrastructure.
 </p>
 <p>
 The reports produced are in HTML format. A master index
@@ -118,13 +159,16 @@ Basic file structure of the toolkit is
   ../bin
   ../custom
   ../doc
-[ ../results ]
+  ../results  
 </pre>
 <ul>
 <li>The bin directory contains the scripts.</li>
 <li>The custom directory is where you customise processing rules for a server.</li>
 <li>The doc directory has this documentation.</li>
-<li>The results directory is only created after you have performed a processing run.</li>
+<li>The results directory is only created after you have performed a processing run,
+it is important to note that on a "full" processing run the results directory
+is empties and recreated from scratch, on a single server run only files in the
+affected servers results directory are removed and recreated.</li>
 </ul>
 </p>
 <p>
@@ -147,17 +191,15 @@ captures your /etc/passwd and /etc/shadow contents; so make sure the processing 
 you copy the data to in order for it to be processed is in a secure zone.
 </p>
 
-<h3>1.2 Requirements, packages needed</h3>
-<ul>
-<li>the BASH shell /bin/bash must be available on all servers, the scripts make use of the
-bash substring functions not available in other shells</li>
-<li>the <b>netstat</b> command must be installed on all servers for collecting the tcp/udp ports
-in use</li>
-<li><b>dmidecode</b> and <b>lshw</b> commands must be installed on all servers for collecting
-the hardware details. If they are not installed the only information on the hardware details
-page will be that they are not installed</li>
-</ul>
-
+<p>
+In normal operation the processing script will rebuild the entire results
+directories and contents from scratch by processing every server there are
+collected data files for.<br />
+It is possible to run processing against a single
+server and merge the new results into the full report structure but there
+are considerations to be aware of when doing so which are discussed in a later
+section, additional servers may be processed if needed.
+</p>
 
 <hr>
 <a name="sect2"></a>
@@ -203,13 +245,15 @@ after I cleaned up the passwd file.
 <p>
 After the first run, you may for future runs just want to chain
 down N levels of directories in the permission check searches.
-To do this provide the parameter 'scanlevel=<n>' to select the
+To do this provide the parameter '--scanlevel=<n>' to select the
 number of directory levels that will be descended during the file
 permission search.
 <pre>
-Normal syntax          : <span style="background-color: #FFCCFF">bin/collect_server_details.sh&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp</span>
-Limiting capture syntax: <span style="background-color: #FFCCFF">bin/collect_server_details.sh scanlevel=<em><b>n</b></em></span>
-Example                : <span style="background-color: #D7FFFF">bin/collect_server_details.sh scanlevel=5</span>
+Normal syntax          : <span style="background-color: #FFCCFF">bin/collect_server_details.sh</span>
+Limiting capture syntax: <span style="background-color: #FFCCFF">bin/collect_server_details.sh --scanlevel=<em><b>n</b></em></span>
+Example                : <span style="background-color: #D7FFFF">bin/collect_server_details.sh --scanlevel=5</span>
+
+All options: bin/collect_server_details.sh [--scanlevel=<number>] [--backup-etc=yes|no] [--record-packages=yes|no] [--hwlist=yes|no] [--disable-fuser]
 </pre>
 </p>
 
@@ -255,19 +299,17 @@ To process the data and produce the security reports you just
 run the script bin/process_server_details and provide it with
 the directory name of your server data files. The syntax of the
 process_server_details.sh script is
+
 <pre>
-<span style="background-color: #FFCCFF">process_server_details.sh <em>server-data-dir</em> [<em>archive-dir</em> [<em>target-rpt-dir</em>]]</span>
+<span style="background-color: #FFCCFF">process_server_details.sh --datadir=directory [--archivedir=directory] [--oneserver=servername]</span>
 </pre>
 <ul>
-<li>If the <em>archive-dir</em> is provided then when the report is produced
+<li>The <em>--datadir=dirname</em> specified the location of the files to be processed, these
+are the files produced by the collection script</li>
+<li>If the <em>--archivedir=directory</em> is provided then when the report is produced
 a copy of it will be tar'ed and gzip'ed into a datestamped file
 in the archive directory for historical reference.</li>
-<li>If the <em>target-rpt-dir</em> is present then when processing has
-completed the reports will be moved from the default report
-location to your chosen location. Personaly I have no use
-for this as it's easier just to have a symbolic link under my
-default documentroot to the reports rather than having to
-copy them to the html folders.</li>
+<li>The <em>--oneserver=servername</em> option has special considerations discussed further below</li>
 </ul>
 </p>
 <p>
@@ -275,7 +317,7 @@ Example: .......<br>
   assuming your data is in the rawdatafiles folder under the
   application directory, and you are in the application
   directory...<br>
-<span style="background-color: #D7FFFF"><b>bin/process_server_details.sh rawdatafiles</b><br></span>
+<span style="background-color: #D7FFFF"><b>bin/process_server_details.sh --datadir=rawdatafiles</b><br></span>
   When completed the results/index.html file will have an
   overall scoreboard for each server and links to each servers
   detailed reports.
@@ -290,15 +332,54 @@ Example: .......<br>
   an underscore character.
 </p>
 
-
 <h3>Automating report archiving</h3>
 <p>
-This was discussed in the previous section. If you provide as
-a second parameter to process_server_details.sh the name of
-a directory to hold archived reports in then an archive file
+This was discussed in the previous section. If you provide a
+parameter option <em>--archivedir=dirname</em> to process_server_details.sh 
+then an archive file
 of the current report processing is automatically created in
 that directory for you at the end of the processing run.
 </p>
+
+<h3>Processing only a single server</h3>
+<p>
+If you have many servers, and only wish to perform the scan again on that
+one servers data after you have made changes that is now possible, but there
+are special considerations to take into account.
+</p>
+<p>
+The parameter option <em>--oneserver=servername</em> can be used to
+specify a specific server to be re-processed but it has the following
+conditions due to the main index needing to be rebuilt.
+</p>
+<ul>
+<li>any existing server results that are missing files needed to re-populate
+the index will also be selected for processing automatically if its collected
+datafiles are available to do so (user is prompted to continue or abort <b>so
+this will impact batch jobs</b> however batch jobs are unlikely to
+perform single server reruns</li>
+<li>any existing server results that were created using a different version
+of the processing script 
+will also be selected for processing automatically if its collected
+datafiles are available to do so (user is prompted to continue or abort <b>so
+this will impact batch jobs</b> however batch jobs are unlikely to
+perform single server reruns. This is required as the main index page
+format may change and require data not provided by older versions</li>
+<li>if another server does need to be reprocessed and its collected data files are
+not available the rerun will be aborted to avoid the main index becoming incorrect</li>
+</ul>
+<p>
+As a result of these conditions a request to re-process a single server after
+upgrading the processing script will result in all other servers neededing to be
+reprocessed as well; however if you have upgraded the processing script you should
+have done this anyway.
+</p>
+<p>
+However if you are re-processing a single server under the same version of
+the processing script as all other servers were processed under then only
+the single server specified will be reprocessed.
+</p>
+
 
 <H2>Overiding/Customising the default reporting</H2>
 <p>
@@ -346,11 +427,8 @@ Appendix A section</b>.
 <center><a href="#sect3">[Previous Section]</a> <a href="#sect0">[Index]</a> <a href="#sect5">[Next Section]</a></center>
 <H1>4. Viewing the security report output</H1>
 <p>
-The reports are produced in html format. By default these are 
+The reports are produced in html format. These are 
 in the <b>results</b> directory under the application directory.
-If you provided a parameter to the processing script to request
-the results be moved to another directory then they will be where
-you requested them to be.
 </p>
 <p>
 Use a web browser to open the index.html file in that directory.
@@ -419,49 +497,59 @@ directory (../custom/*) so please keep this directory structure.
 <H3>2. TCP-IP Ports</H3>
 <p>
 TCP-IP ports are a gateway to your system. You should know
-what is listening on them.
+what is listening on them. <em>If a port is not defined in the custom file
+it will be considered an unexpected open port and will be considered critical</em>.
 </p>
 <p>
-In the reports, even if a TCP-IP port is allowed you will
-always get a warning if the port is listening on all
-interfaces, you can only get an OK when it is bound to
-a specific interface. As such specifically allowing a
-new port here will only change it from alert to warning in
-the reports. There is customisation you will have to do to
-the application to get the report to list it as OK.
+In the reports, even if a TCP-IP port is allowed <em>you will
+still get a warning be default if the port is listening on all
+interfaces</em>, you can only get an OK when it is more securely bound to
+a specific interface or address.
 </p>
 <p>
-The syntax of a TCP-IP override line is...<br>
-<span style="background-color: #FFCCFF"><b>TCP_PORT_ALLOWED=:<em>portnum</em>:<em>description</em></b><br><br></span>
+The syntax of a TCP-IP override (where <type> is either 4 or 6 for tcp4/tcp6) line is...<br>
+<span style="background-color: #FFCCFF"><b>TCP_PORTV<type>_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b><br><br></span>
 
 For example...<br>
-<span style="background-color: #D7FFFF"><b>TCP_PORT_ALLOWED=:22:ssh</b></span>
+<span style="background-color: #D7FFFF"><b>TCP_PORTV4_ALLOWED=:22:ssh</b></span>
+<span style="background-color: #D7FFFF"><b>TCP_PORTV6_ALLOWED=:9090:cockpit</b></span>
 </p>
 <p>
-The scripts handle both tcpv4 and tcpv6 ports reported by netstat.
+If the optional :WILD is appended after the description it will be considered OK
+for the specified port to be listening on all interfaces (on 0.0.0.0 or :::),
+but this should be used only if your site has a specific reason for an application
+to listen on all interfaces, you should configure your application to only listen
+on the interfaces it needs.
 </p>
 
 
 <H3>3. UDP Ports</H3>
 <p>
-Connections using UDP (also TCP-IP) ports are also a gateway to your system.
-You should know what is using UDP services on your server also.<br>
-The reports produced for active UDP ports are similar to those for TCP ports.
-Refer to the comments above in the TCP-IP section for more info.
+Connections using UDP ports are also a gateway to your system.
+You should know what is using UDP services on your server also.
+<em>As with the TCP overrides if a port is not defined in the custom file
+it will be considered an unexpected open port and will be considered critical</em>.
+</p>
+<p>
+In the reports, even if a UDP port is allowed <em>you will
+still get a warning if the port is listening on all
+interfaces</em>, you can only get an OK when it is more securely bound to
+a specific interface or address.
 </p>
 <p>
 There are seperate custom statements for UDP ports as we don't want to
 confuse an allowed tcp port of 123 with a disallowed udp port of 123.
 </p>
 <p>
-The syntax of a UDP override line is...<br>
-<span style="background-color: #FFCCFF"><b>UDP_PORT_ALLOWED=:<em>portnum</em>:<em>description</em></b><br><br></span>
+The syntax of a UDP override (where <type> is either 4 or 6 for tcp4/tcp6) line is...<br>
+<span style="background-color: #FFCCFF"><b>UDP_PORTV<type>_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b><br><br></span>
 
 For example...<br>
-<span style="background-color: #D7FFFF"><b>UDP_PORT_ALLOWED=:2049:tcp Network Filesystem - NFS</b></span>
+<span style="background-color: #D7FFFF"><b>UDP_PORTV4_ALLOWED=:2049:tcp Network Filesystem - NFS</b></span>
 </p>
 <p>
-The scripts handle both tcpv4 and tcpv6 ports reported by netstat.
+The optional :WILD option performs the same function as discussed in the
+tcp section above.
 </p>
 
 <H3>4. Home Directory Ownership Overrides</H3>
@@ -596,15 +684,15 @@ as I only have that one file, time to clean up yours :-) ).<br>
 </p>
 
 
-<H4>6.2 Disabling sloppy /var checking</H4>
+<H4>6.2 Managing "sloppy" /var checking</H4>
 <p>
 As the /var filesystem can, and often is, used by every
-user (/var/tmp anyway) the checks by default just report
-a summary of badly secured files under the /var filesystem.
+user (/var/tmp anyway) you will often find many files under
+/var secured incorrectly.
 </p>
 <p>
-It is possible to change this with the configuration file
-values below (note: OK is the default).
+It is possible to handle these in the report with the configuration file
+values below (note: WARN is the default).
 <pre><b><span style="background-color: #FFCCFF">
   ALLOW_SLOPPY_VAR=OK&nbsp&nbsp&nbsp&nbsp
   ALLOW_SLOPPY_VAR=WARN&nbsp&nbsp
@@ -613,15 +701,18 @@ values below (note: OK is the default).
 </p>
 <p>
 The actions taken are (which may be overridden for some files if other options affecting /var are used)<br />
-<b>OK</b> - report a summary line of the total count of badly owned and badly secured files found<br />
+<b>OK</b> - report only a summary line of the total count of badly owned and badly secured files found<br />
 <b>WARN</b> - report the details of each insecure file found, report them as warnings<br />
 <b>NO</b> - report the details of each insecure file found, report them as alerts
 </p>
 <p>
-Personally I run it with WARN in my full scan snapshots
-and with OK in the regular runs (and just check the
-summarised number total matches).
+By default the setting is WARN so you are aware of all the issues but
+don't have a horrendously high critical alert total.
 </p>
+<p>
+It should also be noted the following parameter can be used to suppress many of the alerts also.
+</p>
+
 <H4>6.3 Permitting files under /var to be group writeable</H4>
 <p>
 The default umask on most systems is for new files created to
@@ -745,6 +836,8 @@ TCP_PORT_ALLOWED=:9090:Cockpit
 <br />
 Note that this will stop a port being raised as a critical issue in the report, but
 if the port is listening on all interfaces it will still be raised as a warning.
+<br />
+<b>This option is obsolete and will be removed in version 0.07</b>
 </td></tr>
 <tr><td>UDP_PORT_ALLOWED=:<em>port</em>:<em>description</em></td><td>
 Used to specify a UDP (v4 or v6) port that is expected to be opened on the server.
@@ -755,6 +848,84 @@ UDP_PORT_ALLOWED=:111:RPC portmap daemon (portmap)
 <br />
 Note that this will stop a port being raised as a critical issue in the report, but
 if the port is listening on all interfaces it will still be raised as a warning.
+<br />
+<b>This option is obsolete and will be removed in version 0.07</b>
+</td></tr>
+<tr><td>TCP_PORTV4_ALLOWED=:<em>port:description[:WILD]</em></td><td>
+Used to specify a TCPV4 port that is expected to be opened on the server.
+There must be a : before and after the port number, anything after the second : is a
+free form description to describe the use of the port although the description
+cannot contain the : character.<br>
+Examples<br>
+TCP_PORTV4_ALLOWED=:22:ssh server<br />
+<br />
+Note that this will stop a port being raised as a critical issue in the report, but
+if the port is listening on all interfaces it will still be raised as a warning
+unless the optional :WILD parameter is appended to indicate it can listen on
+all interfaces.
+<br />
+The optional :WILD option must only be used if you have a site specific reason
+for an application to listen on all interfaces, it is prefered that the application
+be configured in a more secure manner. If used while it will not be treated as
+an alert the report will highlight it in a different color to indicate that it
+is considered insecure.
+</td></tr>
+<tr><td>TCP_PORTV6_ALLOWED=:<em>port:description[:WILD]</em></td><td>
+Used to specify a TCPV6 port that is expected to be opened on the server.
+There must be a : before and after the port number, anything after the second : is a
+free form description to describe the use of the port although the description
+cannot contain the : character.<br>
+Examples<br>
+TCP_PORTV6_ALLOWED=:9090:Cockpit
+<br />
+Note that this will stop a port being raised as a critical issue in the report, but
+if the port is listening on all interfaces it will still be raised as a warning
+unless the optional :WILD parameter is appended to indicate it can listen on
+all interfaces.
+<br />
+The optional :WILD option must only be used if you have a site specific reason
+for an application to listen on all interfaces, it is prefered that the application
+be configured in a more secure manner. If used while it will not be treated as
+an alert the report will highlight it in a different color to indicate that it
+is considered insecure.
+</td></tr>
+<tr><td>UDP_PORTV4_ALLOWED=:<em>port:description[:WILD]</em></td><td>
+Used to specify a UDPV4 port that is expected to be opened on the server.
+There must be a : before and after the port number, anything after the second : is a
+free form description to describe the use of the port although the description
+cannot contain the : character.<br>
+Examples<br>
+UDP_PORTV4_ALLOWED=:53:dnsmasq
+<br />
+Note that this will stop a port being raised as a critical issue in the report, but
+if the port is listening on all interfaces it will still be raised as a warning
+unless the optional :WILD parameter is appended to indicate it can listen on
+all interfaces.
+<br />
+The optional :WILD option must only be used if you have a site specific reason
+for an application to listen on all interfaces, it is prefered that the application
+be configured in a more secure manner. If used while it will not be treated as
+an alert the report will highlight it in a different color to indicate that it
+is considered insecure.
+</td></tr>
+<tr><td>UDP_PORTV6_ALLOWED=:<em>port:description[:WILD]</em></td><td>
+Used to specify a UDPV6 port that is expected to be opened on the server.
+There must be a : before and after the port number, anything after the second : is a
+free form description to describe the use of the port although the description
+cannot contain the : character.<br>
+Examples<br>
+UDP_PORTV6_ALLOWED=:53:dnsmasq
+<br />
+Note that this will stop a port being raised as a critical issue in the report, but
+if the port is listening on all interfaces it will still be raised as a warning
+unless the optional :WILD parameter is appended to indicate it can listen on
+all interfaces.
+<br />
+The optional :WILD option must only be used if you have a site specific reason
+for an application to listen on all interfaces, it is prefered that the application
+be configured in a more secure manner. If used while it will not be treated as
+an alert the report will highlight it in a different color to indicate that it
+is considered insecure.
 </td></tr>
 <tr><td>ALLOW_OWNER_ROOT=<em>directoryname</em></td><td>
 Allows a directory that is expected to be owned by a user other than root to
@@ -773,11 +944,11 @@ ALLOW_OWNER_ROOT=root
 </td></tr>
 <tr><td>ALLOW_DIRPERM_SYSTEM=<em>directoryname</em></td><td>
 This can be used to override alerts for <b>user home directories</b> that need to have shared
-(read) access, obviously direcories such as /bin and /sbin that are configured as home
-directories for some users but need to permit other users to traverse down them so
-this configuration option can be used for directories such as those; user directories serving
+(read) access, obviously direcories such as /bin and /sbin that are configured as some user home
+directories but need to permit other users to traverse down them so
+this configuration option can be used for <b>user home directories </b> directories such as those; user directories serving
 'public_html' pages is another example that would need this override. It will allow
-directories secured as drwxr-xr-x, drwxr-x--x, drwx--x--x, dr-xr-xr-x or dr-xr-x---
+directories secured as drwxr-xr-x, drwxr-x--x, drwx--x--x, dr-xr-xr-x, dr-xr-x--- or drwxr-x---
 to be accepted as OK.<br />
 Examples<br />
 ALLOW_DIRPERM_SYSTEM=bin<br />
@@ -902,7 +1073,6 @@ and will probably be removed in the next release.
 </td></tr>
 </table>
 
-
 <hr>
 <a name="sect7"></a>
 <center><a href="#sect6">[Previous Section]</a> <a href="#sect0">[Index]</a></center>
@@ -950,7 +1120,7 @@ should use as that will make it much easier to push out new versions to all serv
 <li>4.2 Frequent/Regular scans (override scanlevel)
 To be done only after you have fixed up all system file perm errors.</li>
 <ul>
-<li>run "collect_server_details.sh scanlevel=3" on each server copied to</li>
+<li>run "collect_server_details.sh --scanlevel=3" on each server copied to</li>
 <li>scp/ftp the output .txt and .tar files created to a directory on the central server</li>
 </ul>
 </ul>
@@ -970,8 +1140,46 @@ Results are accessable from results/index.html under the application directory.
 <hr>
 <a name="sect8"></a>
 <center><a href="#sect7">[Previous Section]</a> <a href="#sect0">[Index]</a></center>
+<h1>8. Appendix D - Major changes between versions you need to know</h1>
+<ul>
+<li><b>Major changes between version 0.04 and 0.05</b>
+    <ul>
+    <li>sloppy var checking default has changed from OK to WARN so you can expect 
+        a lot more filenames to show up in the filesystem checks report</li>
+    <li>the syntax of passing parameters to the processing and collection scripts
+        has changed. If you have automated any of the processing you will need to
+        update your scripts</li>
+    <li>the directory name of the files shipped has changed from config_repository
+        to config-repository as I was ignoring the requirement not to include _ in
+        any directory name containing application files; <b><em>the processing script
+        will not run if you use the old name with the underscore</em></b> and to
+        avoid hundreds of errors the script checks the path it is in before doing any
+        real work</li>
+    <li>it is now possible to re-process a single servers results rather than having
+        to re-process all servers to see changes for one. It is important to note
+        that in some cases this requires user interaction to prompts from the 
+        processing script so you cannot automate that (refer to the processing
+        the data section for details)</li>
+    </ul>
+</li>
+</ul>
 
-<h1>8. Appendix D - Known Issues with this toolkit</h1>
+<ul>
+<li><b>Major changes between version 0.03 and 0.04</b>
+    <ul>
+    <li>a new parameter to force OK files such as the dynamically generated
+        pci remove/rescan files created by Fedora/CentOS/RHEL systems now</li>
+    <li>a new parameter to permit files under /var that are group writeable
+        to be accepted as OK as long as the group matched the user</li>
+    </ul>
+</li>
+</ul>
+
+
+<hr>
+<a name="sect9"></a>
+<center><a href="#sect8">[Previous Section]</a> <a href="#sect0">[Index]</a></center>
+<h1>9. Appendix E - Known Issues with this toolkit</h1>
 <p>
 A customisation file per server is really required if you have multiple OS's.
 For example some releases of Fedora moved bin and sbin under /, leaving symbolic links for /usr/bin and /usr/sbin
@@ -1003,6 +1211,37 @@ a 'scanlevel=5' or above is needed to capture them, but they do need to be repor
 <b><em>None of these are issues with the toolkit itself but the effect of different *nix implementations</em></b>,
 I chose not to code for all possible OS's but only the ones I use.
 </p>
+<p>
+<b>Below are the know real issues with this toolkit</b>
+</p>
+<ul>
+<li>the crontab check section does its best to identify the files run from the crontabs
+but does not handle multiple commands (ie: 55 10 * * 0 cd /home/user/dir;./runcommand)
+so is only usefull if crontab entries run explicit files 
+(ie: 55 10 * * 0 cd /home/user/dir/runcommand) that can be checked. But it is still
+able to check many entries so better than nothing, plus all entries that could not
+be correctly checked are reported on. Implement site standards that require
+a full script path and no command concatenation and this will cease to be an issue</li>
+<li>network checks have an issue, in that some network ports are opened multiple times, for example 
+<pre>
+root@vmhost1 ~]# netstat -an | grep 123
+udp        0      0 192.168.1.181:123       0.0.0.0:*                          
+udp        0      0 127.0.0.1:123           0.0.0.0:*                          
+udp        0      0 0.0.0.0:123             0.0.0.0:*                          
+udp6       0      0 fe80::fc54:ff:fe59::123 :::*                               
+udp6       0      0 fe80::fc54:ff:fe50::123 :::*                               
+udp6       0      0 fe80::fc54:ff:fe38::123 :::*                               
+udp6       0      0 fe80::ac36:dcff:feb:123 :::*                               
+udp6       0      0 fe80::be5f:f4ff:fef:123 :::*                               
+udp6       0      0 ::1:123                 :::*                               
+udp6       0      0 :::123                  :::*
+</pre>
+and fuser can show a port open by multiple processes. As there is no way of identifying
+exactly what process is bound to exactly what interface my processing just records
+the first pid listening on a port and uses that as the 'identified process' using the port.
+In most cases this will be correct, but the Process table generated in the report
+cannot be guarantted to be 100% accurate because of this issue</li>
+</ul>
 <hr>
 <center><a href="#sect0">[Index]</a></center>
 </BODY>

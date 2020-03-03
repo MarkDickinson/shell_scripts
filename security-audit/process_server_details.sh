@@ -6,10 +6,10 @@
 #
 # Part of the server security checking suite.
 #
-# useage: process_server_details.sh [ rawfilesdir [archivedir [movetargetdir]]]
-#      rawfilesdir is where the collected snapshots are
+# useage: process_server_details.sh --datadir=<directory> [--archivedir] [--oneserver=<servername>]
+#      datadir is where the collected snapshots are
 #      archivedir can be used to take an archive of the results
-#      movetargetdir will move ../results/* to that dir on completion
+#      onseserver will only prcess the names server instead of all servers
 #
 # function:
 #    will read all server extract files named secaudit_<hostname>.txt
@@ -31,10 +31,14 @@
 #      B.3 - check NFS file shares
 #      B.4 - check SAMBA
 #   C. Network Connectivity
-#      C.1 - compare listening ports against allowed ports
-#      C.2 - check services/portconf file for insecure applications ?
+#      C.1.1 - compare listening ports against allowed ports (tcp/tcp6/udp/udp6/raw)
+#      C.1.2 - details of open network sockets
+#      C.1.3 - check for obsolete custom entries (ports in custom file no longer in use on server)
 #   D. Cron security
-#      D.1 - all cronjob script files secured tightly, to correct owner
+#      D.1 - cron.allow and cron.deny checks
+#      D.2 - check all cronjob script files secured tightly, to correct owner
+#      D.3 - list all cron job files/commands not able to be automatically checked by D.2
+#      D.4 - list all cron job entries for all users on the server for manual review
 #   E. System file security
 #      E.1 - all system files must be secured tightly
 #      E.2 - check files with suid bits set (2007/08/23)
@@ -94,6 +98,29 @@
 #                   (3) Added special checks for files under /var/spool/mail
 #                       which should be secured userid:mail where userid
 #                       matches the filename and the user exists.
+# MID: 2020/03/02 - Version 0.06
+#                   (1) bugfix, the mail checks were inserted in the wrong
+#                       place so were being added to the groupwrite suppress
+#                       totals.
+#                   (2) main index changed to include last processed date
+#                       now we allow single server processing; to show up
+#                       those servers not processed in a while.
+#                   (3) handle new fuser collected network info in the   
+#                       collection data, populate tcp/udp/socket in-use
+#                       tables with the process name using them if
+#                       available (extra table field added for that)
+#                       We also report on 'raw' ports that are open now.
+#                   (4) we now report on crontab entries that were unable
+#                       to be allocated permissions mappings on the 
+#                       collection server (due to crontab line command
+#                       stacking etc). Plus we check if users that
+#                       have crontabs are permitted to use cron or if
+#                       they are blocked by cron.allow or cron.deny,
+#                       the files cron.allow and cron.deny we also now
+#                       report on in the cron security checks.
+#                   (5) report on obsolete customisation parameters still
+#                       in custom files after upgrade to 0.06 that will
+#                       be removed in version 0.07
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -116,7 +143,7 @@ do
                    shift
                    ;;
       *)          echo "Unknown paramater value ${key}"
-                  echo "Syntax:$0 --datadir=<directory> [--archivedir] [--oneserver=<servername>] [--reportdir=<dirname>]"
+                  echo "Syntax:$0 --datadir=<directory> [--archivedir] [--oneserver=<servername>]"
                   echo "Please read the documentation."
                   exit 1
                    ;;
@@ -124,7 +151,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.05"
+PROCESSING_VERSION="0.06"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -167,6 +194,7 @@ colour_OK="#CCFFE6"
 colour_warn="#FDFFCC"
 colour_alert="#FF8040"
 colour_banner="#C0C0C0"
+colour_override_insecure="lightpink"
 
 # ------------------------------------------------------------
 # Lets sanity check the user input
@@ -653,14 +681,24 @@ server_index_start() {
 
 server_index_end() {
    hostid="$1"
+   process_start_date="$2"
    alerts=`cat ${RESULTS_DIR}/${hostid}/alert_totals`
    warns=`cat ${RESULTS_DIR}/${hostid}/warning_totals`
    echo "<tr><td>TOTALS</td><td>${alerts}</td><td>${warns}</td></tr>" >> ${RESULTS_DIR}/${hostid}/index.html
    echo "</table></center>" >> ${RESULTS_DIR}/${hostid}/index.html
    # 2010/09/22 Add the hardware profile list here for now
    hwprof_line "${hostid}"
-   # And resume origional code
-   echo "<br><br><center><a href=\"../index.html\">[ Back to main index ]</a></center><br><br>" >> ${RESULTS_DIR}/${hostid}/index.html
+
+   # Links back to the main index page
+   echo "<br><center><a href=\"../index.html\">[ Back to main index ]</a></center><br><br>" >> ${RESULTS_DIR}/${hostid}/index.html
+
+   # 2020/02/27 added processing time fields 
+   echo "<table width=\"100%\"><tr><td align=\"center\">" >> ${RESULTS_DIR}/${hostid}/index.html
+   process_end_date=`date`
+   echo "Processing time: started at ${process_start_date}, ended at ${process_end_date}" >> ${RESULTS_DIR}/${hostid}/index.html
+   echo "</td></tr></table>" >> ${RESULTS_DIR}/${hostid}/index.html
+
+   # close the page
    echo "</body></html>" >> ${RESULTS_DIR}/${hostid}/index.html
 } # server_index_end
 
@@ -712,6 +750,48 @@ write_details_page_exit() {
    echo "&nbsp&nbsp<a href=\"../index.html\">[ Back to Main index page ]</a>" >> ${htmlfile}
    echo "</center><br><br></body></html>" >> ${htmlfile}
 } # write_details_page_exit
+
+# ----------------------------------------------------------
+#                 can_user_use_cron
+# Called from a couple of places so needs its own routine.
+# Checks that the user exists on the server and that the
+# combination of cron.allow/cron.deny files does not
+# prevent them from using cron.
+# ----------------------------------------------------------
+can_user_use_cron() {
+   fileuser="$1"
+   hostfile="$2"
+   resultdata="YES"    # default is yes
+   # user must exist in /etc/passwd for the server
+   userexists=`grep "^PASSWD_FILE=${fileuser}:" ${SRCDIR}/secaudit_${hostfile}.txt`
+   if [ "${userexists}." != "." ];
+   then
+      # if cron.allow exists the user must be in it
+      cronfiletest=`grep "^CRON_ALLOW_EXISTS=YES" ${SRCDIR}/secaudit_${hostfile}.txt`
+      if [ "${cronfiletest}." != "." ];
+      then
+         isallow=`grep "CRON_ALLOW_DATA=${fileuser}" ${SRCDIR}/secaudit_${hostfile}.txt | awk -F\= {'print $2'} | grep -w "${fileuser}"`
+         if [ "${isallow}." == "." ];
+         then
+             resultdata="NO"
+         fi
+      else
+         # if not /etc/cron.deny always exists and any user in it cannot use cron
+         cronfiletest=`grep "CRON_DENY_EXISTS=YES" ${SRCDIR}/secaudit_${hostfile}.txt`
+         if [ "${cronfiletest}." != "." ];
+         then
+            isdeny=`grep "^CRON_DENY_DATA=${fileuser}" ${SRCDIR}/secaudit_${hostfile}.txt | awk -F\= {'print $2'} | grep -w "${fileuser}"`
+            if [ "${isdeny}." != "." ];
+            then
+              resultdata="NO"
+            fi
+         fi        # if deny cronfile test
+      fi           # if allow cronfile test
+   else            # else user does not exist
+      resultdata="NO"
+   fi              # if user exists
+   echo "${resultdata}"
+} # end of can_user_use_cron
 
 # ----------------------------------------------------------
 #                      Appendix A.
@@ -973,10 +1053,10 @@ build_appendix_a() {
       done
       if [ -f ${WORKDIR}/ftp_allowed ];
       then
-         echo "<p>The users listed here can use ftp, and need to be reviewed. Please" >> ${htmlfile}
+         echo "<p>The users listed here can use ftp as they are not in the /etc/ftpusers file to prevent their access." >> ${htmlfile}
          echo "review these userids to ensure that they still require access" >> ${htmlfile}
          echo "to ftp Investigate replacing ftp with scp for internal use.</p>" >> ${htmlfile}
-         echo "<table border=\"1\" bgcolor=\"${colour_warn}\" width=\"100%\"><tr><td>" >> ${htmlfile}
+         echo "<table border=\"1\" bgcolor=\"${colour_warn}\"><tr><td>" >> ${htmlfile}
          echo "<b><pre>" >> ${htmlfile}
          cat ${WORKDIR}/ftp_allowed >> ${htmlfile}
          echo "</pre></b>" >> ${htmlfile}
@@ -1273,6 +1353,9 @@ build_appendix_b() {
 #      C.1 - compare listening ports against allowed ports
 #      C.2 - check services/portconf file for insecure applications ?
 # ----------------------------------------------------------
+# We extract the values we will be checking against from the
+# main file so we have much smaller files to grep against
+# when doing our checks.
 extract_appendix_c_files() {
    hostid="$1"
    clean_prev_work_files
@@ -1282,78 +1365,58 @@ extract_appendix_c_files() {
    # ---- tcp ports open ----
    grep "^PORT_TCP_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
    do
-     realdata=`echo "${dataline}" | cut -d\= -f2`
-     echo "${realdata}" >> ${WORKDIR}/active_tcp_services
-   done
-   # A bit more work, more readable if they are sorted.
-   cat ${WORKDIR}/active_tcp_services | while read dataline
-   do
-      # tcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN
-      listenaddr=`echo "${dataline}" | awk {'print $4'}`
+      realdata=`echo "${dataline}" | cut -d\= -f2`
+      listenaddr=`echo "${realdata}" | awk {'print $4'}`
       listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
       listenaddr=`echo "${listenaddr}" | awk -F: {'print $1'}`
-      echo "${listenport} ${listenaddr}" >> ${WORKDIR}/active_tcp_services.wrk
+      echo "${listenport} ${listenaddr} 4" >> ${WORKDIR}/active_tcp_services.wrk
    done
    grep "^PORT_TCPV6_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
    do
-     realdata=`echo "${dataline}" | cut -d\= -f2`
-     echo "${realdata}" >> ${WORKDIR}/active_tcp_services6
-   done
-   cat ${WORKDIR}/active_tcp_services6 | while read dataline
-   do
+      realdata=`echo "${dataline}" | cut -d\= -f2`
       # tcp6       0      0 :::443                  :::*                    LISTEN
       # tcp6       0      0 fe80::200b:90ff:fe4:123 :::* 
       listenaddr=`echo "${dataline}" | awk '{print $4'}`
       # the last field we know is the port, print the fieldcount field
       listenport=`echo "${listenaddr}" | awk -F: '{print $NF}'`
       listenaddr=`echo "${listenaddr} X" | sed -e"s/:$listenport X/:/g"`
-      echo "${listenport} ${listenaddr}" >> ${WORKDIR}/active_tcp_services.wrk
+      echo "${listenport} ${listenaddr} 6" >> ${WORKDIR}/active_tcp_services.wrk
    done
-   cat ${WORKDIR}/active_tcp_services.wrk | sort -n > ${WORKDIR}/active_tcp_services.wrk2
+   if [ -f ${WORKDIR}/active_tcp_services.wrk ];
+   then
+      cat ${WORKDIR}/active_tcp_services.wrk | sort -n >> ${WORKDIR}/active_tcp_services.wrk2
+   fi 
 
    grep "^PORT_UDP_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
    do
-     realdata=`echo "${dataline}" | cut -d\= -f2`
-     echo "${realdata}" >> ${WORKDIR}/active_udp_services
+      realdata=`echo "${dataline}" | cut -d\= -f2`
+      # udp        0      0 0.0.0.0:111             0.0.0.0:*
+      listenaddr=`echo "${realdata}" | awk {'print $4'}`
+      listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
+      listenaddr=`echo "${listenaddr}" | awk -F: {'print $1'}`
+      echo "${listenport} ${listenaddr} 4" >> ${WORKDIR}/active_udp_services.wrk
    done
-   # A bit more work, more readable if they are sorted.
-   # Check here, these were added in a later release so may
-   # not be provided by all collector scripts out there.
-   if [ -f ${WORKDIR}/active_udp_services ];
-   then
-      cat ${WORKDIR}/active_udp_services | while read dataline
-      do
-         # udp        0      0 0.0.0.0:111             0.0.0.0:*
-         listenaddr=`echo "${dataline}" | awk {'print $4'}`
-         listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
-         listenaddr=`echo "${listenaddr}" | awk -F: {'print $1'}`
-         echo "${listenport} ${listenaddr}" >> ${WORKDIR}/active_udp_services.wrk
-      done
-   fi
    grep "^PORT_UDPV6_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
    do
-     realdata=`echo "${dataline}" | cut -d\= -f2`
-     echo "${realdata}" >> ${WORKDIR}/active_udp_services6
-   done
-   # A bit more work, more readable if they are sorted.
-   # Check here, these were added in a later release so may
-   # not be provided by all collector scripts out there.
-   cat ${WORKDIR}/active_udp_services6 | while read dataline
-   do
+      realdata=`echo "${dataline}" | cut -d\= -f2`
+      echo "${realdata}" >> ${WORKDIR}/active_udp_services6
       # udp6       0      0 :::111                  :::*                               
       # udp6       0      0 fe80::200b:90ff:fe4:123 :::*                               
       # udp6       0      0 fe80::acc9:13ff:fed:123 :::*                               
       # udp6       0      0 fe80::5054:ff:fe38::123 :::*                               
       # udp6       0      0 fe80::42:26ff:fef1::123 :::* 
       # different number of : delimeters in addresses
-      listenaddr=`echo "${dataline}" | awk '{print $4'}`
+      listenaddr=`echo "${realdata}" | awk '{print $4'}`
       #fieldcount=`echo "${workfield}" | awk -F: '{print NF}'`
       # the last field we know is the port, print the fieldcount field
       listenport=`echo "${listenaddr}" | awk -F: {'print $NF'}`
       listenaddr=`echo "${listenaddr} X" | sed -e"s/:$listenport X/:/g"`
-      echo "${listenport} ${listenaddr}" >> ${WORKDIR}/active_udp_services.wrk
+      echo "${listenport} ${listenaddr} 6" >> ${WORKDIR}/active_udp_services.wrk
    done
-   cat ${WORKDIR}/active_udp_services.wrk | sort -n > ${WORKDIR}/active_udp_services.wrk2
+   if [ -f ${WORKDIR}/active_udp_services.wrk ];
+   then
+      cat ${WORKDIR}/active_udp_services.wrk | sort -n >> ${WORKDIR}/active_udp_services.wrk2
+   fi
 
    # --- The unix ports open ---
    grep "^PORT_UNIX_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
@@ -1370,23 +1433,108 @@ extract_appendix_c_files() {
      echo "${realdata}" >> ${WORKDIR}/services
    done
 
-   # --- Build the allowed ports files if the override file exists ---
-   override_file=""
-   if [ -f ${OVERRIDES_DIR}/${hostid}.custom ];
+   # --- Build the allowed ports files if a server customisation file exists ---
+   if [ "${CUSTOMFILE}." != "." ];
    then
-      override_file="${OVERRIDES_DIR}/${hostid}.custom"
-   else
-      if [ -f ${OVERRIDES_DIR}/ALL.custom ];
+      # First the old format parameters we will obsolete in version 0.07
+      badparms=`grep "PORT_ALLOWED" ${CUSTOMFILE} | wc -l`
+      if [ ${badparms} -gt 0 ];
       then
-         override_file="${OVERRIDES_DIR}/ALL.custom"
+         echo "***WARNING*** Your custom file contains obsolete network parameters"
+         echo ".   File: ${CUSTOMFILE}"
+         echo ".   The parameters TCP_PORT_ALLOWED and UDP_PORT_ALLOWED are obsolete,"
+         echo ".   and will not be supported in version 0.07."
+         echo ".   Replace with the new TCP_PORTV4_ALLOWED, TCP_PORTV6_ALLOWED,"
+         echo ".   UDP_PORTV4_ALLOWED and UDP_PORTV6_ALLOWED as soon as possible."
+         echo "Note: you cannot have both formats in the same configuration file,"
+         echo "as soon as one new-format parameter is used all old formats are ignored."
+      fi
+      grep "^TCP_PORT_ALLOWED" ${CUSTOMFILE} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_tcp_ports
+      grep "^UDP_PORT_ALLOWED" ${CUSTOMFILE} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_udp_ports
+
+      # Then the new format parameters available from version 0.06 onward
+      # If the files are created the disable old version processing so only do anything if
+      # there is data. remove all the if for version 0.07
+      counter=`grep "^TCP_PORTV4_ALLOWED" ${CUSTOMFILE} | wc -l`
+      if [ ${counter} -gt 0 ];
+      then
+         grep "^TCP_PORTV4_ALLOWED" ${CUSTOMFILE} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_tcp_ports_v4
+      fi
+      counter=`grep "^TCP_PORTV6_ALLOWED" ${CUSTOMFILE} | wc -l`
+      if [ ${counter} -gt 0 ];
+      then
+         grep "^TCP_PORTV6_ALLOWED" ${CUSTOMFILE} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_tcp_ports_v6
+      fi
+      counter=`grep "^UDP_PORTV4_ALLOWED" ${CUSTOMFILE} | wc -l`
+      if [ ${counter} -gt 0 ];
+      then
+         grep "^UDP_PORTV4_ALLOWED" ${CUSTOMFILE} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_udp_ports_v4
+      fi
+      counter=`grep "^UDP_PORTV6_ALLOWED" ${CUSTOMFILE} | wc -l`
+      if [ ${counter} -gt 0 ];
+      then
+         grep "^UDP_PORTV6_ALLOWED" ${CUSTOMFILE} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_udp_ports_v6
       fi
    fi
-   if [ "${override_file}." != "." ];
-   then
-      grep "^TCP_PORT_ALLOWED" ${override_file} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_tcp_ports
-      grep "^UDP_PORT_ALLOWED" ${override_file} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_udp_ports
-   fi
 } # extract_appendix_c_files
+
+# For the new parameters introduced in version 0.06 checks that all custom
+# parameters using a port number actually have the port open, to detect
+# obsolete entries.
+appendix_c_check_unused_number_port() {
+   datatype="$1"
+   dataversion="$2"
+   datatype2="$3"
+   if [ -f ${WORKDIR}/allowed_${datatype}_ports_v${dataversion} ];
+   then
+      cat ${WORKDIR}/allowed_${datatype}_ports_v${dataversion} | while read dataline
+      do
+         portnum=`echo "${dataline}" | awk -F: {'print $2'}`
+         exists=`grep "${datatype2}${dataversion}-${portnum}:" ${WORKDIR}/network_sanitation.wrk`
+         if [ "${exists}." == "." ];
+         then
+            echo "<tr bgcolor=\"${colour_alert}\"><td>${datatype2}V${dataversion}</td><td>${portnum}</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
+            inc_counter ${hostid} alert_count
+         fi
+      done
+   fi
+} # end of appendix_c_check_unused_number_port
+
+# For the new parameters introduced in version 0.06 checks that all custom
+# parameters using a process name actually have a process of that name
+# listening on the correct type of port, to check for obsolete entries.
+appendix_c_check_unused_process_port() {
+   datatype="$1"
+   dataversion="$2"
+   grep "^NETWORK_${datatype}V${dataversion}_PROCESS_ALLOW=" ${CUSTOMFILE} | while read dataline
+   do
+      processallow=`echo "${dataline}" | awk -F\= {'print $2'}`
+      bb=`echo "${processallow}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
+      exists=`grep "${bb}" ${SRCDIR}/secaudit_${hostid}.txt | grep "^NETWORK_${datatype}V${dataversion}_PORT_"`
+      if [ "${exists}." == "." ];
+      then
+         echo "<tr bgcolor=\"${colour_alert}\"><td>${datatype}V${dataversion}</td><td>any process</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
+         inc_counter ${hostid} alert_count
+      else
+         # may be more than one partial match entry
+         delete_file ${WORKDIR}/appendixc_foundmatch
+         grep "${bb}" ${SRCDIR}/secaudit_${hostid}.txt | grep "^NETWORK_${datatype}V${dataversion}_PORT_" | while read exists
+         do
+            exists=`echo "${exists}" | awk -F\= {'print $2'}`        # get the process field
+            exists=`echo "${exists}"`        # removes training spaces [ exists=${exists%%*( )} does not work due to training line terminator ]
+            if [ "${exists}." == "${processallow}." ];               # need an exact match
+            then
+               touch ${WORKDIR}/appendixc_foundmatch
+            fi
+         done
+         if [ ! -f ${WORKDIR}/appendixc_foundmatch ];
+         then
+            echo "<tr bgcolor=\"${colour_alert}\"><td>${datatype}V${dataversion}</td><td>any process</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
+            inc_counter ${hostid} alert_count
+         fi
+      fi
+   done
+} # end of appendix_c_check_unused_process_port
 
 build_appendix_c() {
    hostid="$1"
@@ -1402,6 +1550,17 @@ build_appendix_c() {
    echo "if the ports are expected to be open you should review" >> ${htmlfile}
    echo "the ports in use to see if any can be closed.</p>" >> ${htmlfile}
 
+   # This block can be removed in version 0.07 when the parameters are 
+   # completely dropped.
+   testoldver1=`grep "^TCP_PORT_ALLOWED" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   testoldver2=`grep "^UDP_PORT_ALLOWED" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   if [ ${testoldver1} -gt 0 -o ${testoldver2} -gt 0 ];
+   then
+      echo "<p><b>Your customisation file is using obsolete parameters that will" >> ${htmlfile}
+      echo "be dropped in the next release; critical alert count incremented for that issue.</b></p>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   fi
+
    # C.1 Check all listening ports against the allowed services and the
    #    services files. Report allowed services as green fields, unexpected
    #    ones in red as alerts for review.
@@ -1414,36 +1573,78 @@ build_appendix_c() {
    echo "<p>These are the open ports listening for incoming connections" >> ${htmlfile}
    echo "to this server. These need to be reviewed periodically.</p>" >> ${htmlfile}
    echo "<p>As a general rule services specifically allowed to run on" >> ${htmlfile}
-   echo "the servers (as defined in custom file) will be green, unless they listen on all interfaces" >> ${htmlfile}
-   echo "which rates them a warning. For all other ports that are listening" >> ${htmlfile}
+   echo "the servers (as defined in custom file) will be green, <em>unless they listen on all interfaces" >> ${htmlfile}
+   echo "which rates them a warning unless explicity permitted by the custom file</em>. For all other ports that are listening" >> ${htmlfile}
    echo "you will get an alert as they are unexpected.</p>" >> ${htmlfile}
-   echo "<table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"3\"><center>TCP Ports open on the server</center></td></tr>" >> ${htmlfile}
-   echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td></tr>" >> ${htmlfile}
+   echo "<p>You should not try to suppress the warnings for known ports using the customisation file unless it is" >> ${htmlfile}
+   echo "impossible to customise the application. In all cases you should try to secure the application first.</p>" >> ${htmlfile}
+
+   echo "<table><tr><td bgcolor=\"${colour_banner}\" colspan=\"4\">Colour mappings used</td></tr><tr>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_OK}\">OK, no issues</td>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_warn}\">insecure value<br />warning count incremeted</td>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_alert}\">undocumented port<br />alert count incremeted</td>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_override_insecure}\">insecure value allowed by override<br />no counters incremeted</td></tr>" >> ${htmlfile}
+   echo "</table><br /><br />" >> ${htmlfile}
+   echo "<p>The insecure values highligthed are either tcp/tcp6/udp/udp6 ports the custom file has specified" >> ${htmlfile}
+   echo "as permitted to listen on all interfaces or listening ports forced OK by a listening process name match." >> ${htmlfile}
+   echo "The first is obviously insecure, the second is insecure as processes using random ports are inherently insecure" >> ${htmlfile}
+   echo "and any process using them should be confined to localhost.</p>" >> ${htmlfile}
+
+   hadfuser=`grep "^FUSER_INSTALLED" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+   if [ "${hadfuser}." != "YES." ];
+   then
+      if [ "${hadfuser}." == "DISABLED." ];
+      then
+         echo "<p><b>'fuser' processing was explicitly disabled during data collection</b> for this server." >> ${htmlfile}
+      else  # else not installed or an older version of the collection script that did not use it
+         echo "<p>The 'fuser' utility was not available on this server at the time of data collection." >> ${htmlfile}
+      fi
+      echo "This means the Process fields of this report cannot be populated.</p>" >> ${htmlfile}
+   fi
+   echo "<table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"4\"><center>TCP Ports open on the server</center></td></tr>" >> ${htmlfile}
+   echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td><td>Process</td></tr>" >> ${htmlfile}
    cat ${WORKDIR}/active_tcp_services.wrk2 | while read dataline
    do
       # 80 0.0.0.0 
       listenaddr=`echo "${dataline}" | awk {'print $2'}`
       listenport=`echo "${dataline}" | awk {'print $1'}`
-      if [ -f ${WORKDIR}/allowed_tcp_ports ];
+      ipversion=`echo "${dataline}" | awk {'print $3'}`
+      # get details of process using the port if available
+      # NETWORK_TCPV4_PORT_portnum or NETWORK_TCPV6_PORT_portnum
+      searchmatch=`grep "^NETWORK_TCPV${ipversion}_PORT_${listenport}" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+      allowed=""
+      if [ -f ${WORKDIR}/allowed_tcp_ports_v${ipversion} ];
       then
-         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_tcp_ports`
-      else
-         allowed=""
+         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_tcp_ports_v${ipversion}`
+         allowwild=`echo "${allowed}" | awk -F: {'print $4'}`
+      else    # else fallback to old collector format
+         if [ -f ${WORKDIR}/allowed_tcp_ports ];
+         then
+            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_tcp_ports`
+         else
+            allowed=""
+         fi
       fi
       if [ "${allowed}." != "." ];  # found an allowed match
       then
          desc=`echo "${allowed}" | awk -F: {'print $3'}`
          if [ "${listenaddr}." == "0.0.0.0." -o "${listenaddr}." == ":::." ];
          then
-            # make a warning colour
-            echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td></tr>" >> ${htmlfile}
-            inc_counter ${hostid} warning_count
+            if [ "${allowwild}." != "WILD." ];   # if not explicitly allowed to listen on all interfaces
+            then 
+               # make a warning colour
+               echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+               inc_counter ${hostid} warning_count
+            else
+               # make a insecure attention colour, but no alert total increment
+               echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+            fi
          else
             # make a green colour
-            echo "<tr bgcolor=\"${colour_OK}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td></tr>" >> ${htmlfile}
+            echo "<tr bgcolor=\"${colour_OK}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
          fi
       else
-         inc_counter ${hostid} alert_count
+         # get data to populate the description field
          portname=`grep -w "${listenport}.tcp" ${WORKDIR}/services` # Use -w for exact word match
          if [ "${portname}." == "." ];
          then
@@ -1451,40 +1652,79 @@ build_appendix_c() {
          else
             desc=`echo "${portname}" | awk {'print $2" "$3" "$4" "$5" "$6'}`
          fi
-         # An unexpected port, all in red
-         echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td></tr>" >> ${htmlfile}
+         # before raising an alert see if the actual process is permitted
+         # to listen on any port (avahi-deamon and rpcbinf for example use
+         # random ports that cannot be explicitly defined by port number)
+         # must be a full match against the reported process
+         if [ "${CUSTOMFILE}." != "." ];
+         then
+            searchmatch=`echo "${searchmatch}"`   # remove training spaces
+            # grep needs [ and ] changed to \[ and \] for searches so into a temp car for the search
+            bb=`echo "${aa}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
+            processmatch1=`grep "^NETWORK_TCPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+            processmatch1=`echo "${processmatch1}"`           # remove trailing spaces
+            if [ "${processmatch1}." == "${searchmatch}." ]
+            then
+               # make a insecure attention colour, but no alert total increment
+               echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+            else
+               inc_counter ${hostid} alert_count
+               # An unexpected port, all in red
+               echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+            fi
+         else
+            inc_counter ${hostid} alert_count
+            # An unexpected port, all in red
+            echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+         fi
       fi
    done
    echo "</table>" >> ${htmlfile}
 
    # UDP Ports active
-   echo "<br><br><table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"3\"><center>UDP Ports open on the server</center></td></tr>" >> ${htmlfile}
-   echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td></tr>" >> ${htmlfile}
+   echo "<br><br><table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"4\"><center>UDP Ports open on the server</center></td></tr>" >> ${htmlfile}
+   echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td><td>Process</td></tr>" >> ${htmlfile}
    cat ${WORKDIR}/active_udp_services.wrk2 | while read dataline
    do
       # 80 0.0.0.0
       listenaddr=`echo "${dataline}" | awk {'print $2'}`
       listenport=`echo "${dataline}" | awk {'print $1'}`
-      if [ -f ${WORKDIR}/allowed_udp_ports ];
+      ipversion=`echo "${dataline}" | awk {'print $3'}`
+      # get details of process using the port if available
+      # NETWORK_UDPV4_PORT_portnum or NETWORK_UDPV6_PORT_portnum
+      searchmatch=`grep "^NETWORK_UDPV${ipversion}_PORT_${listenport}" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+      if [ -f ${WORKDIR}/allowed_udp_ports_v${ipversion} ];
       then
-         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_udp_ports`
-      else
-         allowed=""
+         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_udp_ports_v${ipversion}`
+         allowwild=`echo "${allowed}" | awk -F: {'print $4'}`
+      else   # else fall back to old version of customfile paramaters
+         if [ -f ${WORKDIR}/allowed_udp_ports ];
+         then
+            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_udp_ports`
+         else
+            allowed=""
+         fi
       fi
       if [ "${allowed}." != "." ];  # found an allowed match
       then
          desc=`echo "${allowed}" | awk -F: {'print $3'}`
          if [ "${listenaddr}." == "0.0.0.0." -o "${listenaddr}." == ":::." ];
          then
-            # make a warning colour
-            echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td></tr>" >> ${htmlfile}
-            inc_counter ${hostid} warning_count
+            if [ "${allowwild}." != "WILD." ];   # if not explicitly allowed to listen on all interfaces
+            then 
+               # make a warning colour
+               echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+               inc_counter ${hostid} warning_count
+            else
+               # make a standout override is permitting insecure setting colour
+               echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+            fi
          else
             # make a green colour
-            echo "<tr bgcolor=\"${colour_OK}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td></tr>" >> ${htmlfile}
+            echo "<tr bgcolor=\"${colour_OK}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
          fi
       else
-         inc_counter ${hostid} alert_count
+         # get data to populate the descriotion field
          portname=`grep -w "${listenport}.udp" ${WORKDIR}/services` # Use -w for exact word match
          if [ "${portname}." == "." ];
          then
@@ -1492,12 +1732,49 @@ build_appendix_c() {
          else
             desc=`echo "${portname}" | awk {'print $2" "$3" "$4" "$5" "$6'}`
          fi
-         # An unexpected port, all in red
-         echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td></tr>" >> ${htmlfile}
+         if [ "${CUSTOMFILE}." != "." ];
+         then
+            aa=`echo "${searchmatch}" | sed 's/ *$//g'`                  # remove trailing spaces
+            # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the grep
+            bb=`echo "${aa}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
+            processmatch1=`grep "^NETWORK_UDPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+            processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`     # remove trailing spaces
+            if [ "${processmatch1}." == "${aa}." ]
+            then
+               # make a standout override is permitting insecure setting colour
+               echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+            else
+               inc_counter ${hostid} alert_count
+               # An unexpected port, all in red
+               echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+            fi
+         else
+            inc_counter ${hostid} alert_count
+            # An unexpected port, all in red
+            echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+         fi
       fi
    done
    echo "</table>" >> ${htmlfile}
 
+   # RAW ports listening
+   rawcount=`grep "^PORT_RAW_LISTENING=" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   if [ ${rawcount} -gt 0 ];
+   then
+      echo "<p>This server has some <em>raw</em> network sockets open." >> ${htmlfile}
+      echo "As 'fuser' is unable to query raw sockets there" >> ${htmlfile}
+      echo "is no way of knowing what is using raw ports so these are always raised as alerts.</p>" >> ${htmlfile}
+      echo "<br><br><table border=\"1\" bgcolor=\"${colour_banner}\"><tr><td><center>RAW Ports open on the server</center></td></tr>" >> ${htmlfile}
+      echo "<tr><td>Netstat information for RAW ports</td></tr>" >> ${htmlfile}
+      grep "^PORT_RAW_LISTENING=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read dataline
+      do
+         echo "<tr bgcolor=\"${colour_alert}\"><td>${dataline}</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      done
+      echo "</table>" >> ${htmlfile}
+   fi
+
+   echo "<h1>C.1.2 - Unix Socket ports open on the server</h1>" >> ${htmlfile}
    # ADD THE UNIX port checks
    echo "<p>Unix domain sockets will always be present, and" >> ${htmlfile}
    echo "it would be a hell of a job to spot possible security" >> ${htmlfile}
@@ -1507,16 +1784,25 @@ build_appendix_c() {
    echo "<p>This will have to always be a manual task, so the" >> ${htmlfile}
    echo "toolkit will never report alerts or violations for" >> ${htmlfile}
    echo "the unix domain sockets, check these yourself please.</p>" >> ${htmlfile}
-   echo "<table border=\"1\" width=\"100%\"><tr bgcolor=\"${colour_banner}\"><td colspan=\"3\"><center>UNIX Ports open on the server</center></td></tr>" >> ${htmlfile}
-   echo "<tr bgcolor=\"${colour_banner}\"><td colspan=\"3\"><center>Unix Streams Active</center></td></tr>" >> ${htmlfile}
-   echo "<tr bgcolor=\"${colour_banner}\"><td>State</td><td>I-Node</td><td>Path</td></tr>" >> ${htmlfile}
-   cat ${WORKDIR}/active_unix_services | grep "STREAM" | while read dataline
+   echo "<table border=\"1\" width=\"100%\"><tr bgcolor=\"${colour_banner}\"><td colspan=\"4\"><center>UNIX Sockets Listening on the server</center></td></tr>" >> ${htmlfile}
+   echo "<tr bgcolor=\"${colour_banner}\"><td>State</td><td>I-Node</td><td>Socket Name</td><td>Process Using the socket</td></tr>" >> ${htmlfile}
+   cat ${WORKDIR}/active_unix_services | while read dataline
    do
       dataline=`echo "${dataline}" | awk -F\] {'print $2'}`
       state=`echo "${dataline}" | awk {'print $2'}`
       inode=`echo "${dataline}" | awk {'print $3'}`
       streampath=`echo "${dataline}" | awk {'print $4'}`
-      echo "<tr><td>${state}</td><td>${inode}</td><td>${streampath}</td></tr>" >> ${htmlfile}
+      processname=`grep "^NETWORK_UNIX_SOCKET=${streampath}" ${SRCDIR}/secaudit_${hostid}.txt | head -1`
+      if [ "${processname}." != "." ];
+      then
+         processname=`echo "${processname}" | awk -F: {'print $2'}`
+      fi
+      # the fuser error is meaningless in the report, set to nothing if present.
+      if [ "${processname}." == "not queryable by fuser." ];
+      then
+         processname=""
+      fi
+      echo "<tr><td>${state}</td><td>${inode}</td><td>${streampath}</td><td>${processname}</td></tr>" >> ${htmlfile}
    done
    # There are not always datagram services captured, check before displaying
    # and only display if they are present.
@@ -1545,33 +1831,77 @@ build_appendix_c() {
    # is no longer in use, so it can be taken out of the custom
    # file before another sly task uses it.
    # ----------------------------------------------------------
-   echo "<h1>C.1.2 - TCP customisation sanitation deptartment</h1>" >> ${htmlfile}
+   echo "<h1>C.1.3 - TCP customisation sanitation deptartment</h1>" >> ${htmlfile}
    echo "<p>This section is just to ensure you have been keeping" >> ${htmlfile}
    echo "your customisation file clean. It will report on any allowed" >> ${htmlfile}
    echo "ports in the customisation file that were not in use at the" >> ${htmlfile}
    echo "time the snapshot was taken. This allows you to review your" >> ${htmlfile}
    echo "customisation file and adjust it if needed.</p>" >> ${htmlfile}
    delete_file "${WORKDIR}/port_sanitation"
-   cat ${WORKDIR}/allowed_tcp_ports | while read dataline
-   do
-      portnum=`echo "${dataline}" | awk -F: {'print $2'}`
-      exists=`grep -w "${portnum}" ${WORKDIR}/active_tcp_services.wrk2`
-      if [ "${exists}." == "." ];
+   delete_file "${WORKDIR}/network_sanitation.wrk"
+
+   # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+   # below is for obsolete old port parameters still supported until version 0.07
+   badparms=`grep "PORT_ALLOWED" ${CUSTOMFILE} | wc -l`
+   if [ ${badparms} -gt 0 ];
+   then
+      if [ -f ${WORKDIR}/allowed_tcp_ports ];
       then
-         echo "<tr bgcolor=\"${colour_alert}\"><td>TCP</td><td>${portnum}</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
-         inc_counter ${hostid} alert_count
+         cat ${WORKDIR}/allowed_tcp_ports | while read dataline
+         do
+            portnum=`echo "${dataline}" | awk -F: {'print $2'}`
+            exists=`grep -w "${portnum}" ${WORKDIR}/active_tcp_services.wrk2`
+            if [ "${exists}." == "." ];
+            then
+               echo "<tr bgcolor=\"${colour_alert}\"><td>TCP</td><td>${portnum}</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
+               inc_counter ${hostid} alert_count
+            fi
+         done
       fi
-   done
-   cat ${WORKDIR}/allowed_udp_ports | while read dataline
-   do
-      portnum=`echo "${dataline}" | awk -F: {'print $2'}`
-      exists=`grep -w "${portnum}" ${WORKDIR}/active_udp_services.wrk2`
-      if [ "${exists}." == "." ];
+      if [ -f ${WORKDIR}/allowed_udp_ports ];
       then
-         echo "<tr bgcolor=\"${colour_alert}\"><td>UDP</td><td>${portnum}</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
-         inc_counter ${hostid} alert_count
+         cat ${WORKDIR}/allowed_udp_ports | while read dataline
+         do
+            portnum=`echo "${dataline}" | awk -F: {'print $2'}`
+            exists=`grep -w "${portnum}" ${WORKDIR}/active_udp_services.wrk2`
+            if [ "${exists}." == "." ];
+            then
+               echo "<tr bgcolor=\"${colour_alert}\"><td>UDP</td><td>${portnum}</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
+               inc_counter ${hostid} alert_count
+            fi
+         done
       fi
+   fi
+   # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+   # The new files used in version 0.06 and above
+   cat ${WORKDIR}/active_tcp_services.wrk2 | while read dataline
+   do
+      portnum=`echo "${dataline}" | awk {'print $1'}`
+      ipversion=`echo "${dataline}" | awk {'print $3'}`
+      echo "TCP${ipversion}-${portnum}:" >> ${WORKDIR}/network_sanitation.wrk
    done
+   cat ${WORKDIR}/active_udp_services.wrk2 | while read dataline
+   do
+      portnum=`echo "${dataline}" | awk {'print $1'}`
+      ipversion=`echo "${dataline}" | awk {'print $3'}`
+      echo "UDP${ipversion}-${portnum}:" >> ${WORKDIR}/network_sanitation.wrk
+   done
+
+   # for ports defined in the custom file as expected to be open make sure
+   # they are still in use, if not report the custom entry as obsolete.
+   appendix_c_check_unused_number_port "tcp" "4" "TCP"
+   appendix_c_check_unused_number_port "tcp" "6" "TCP"
+   appendix_c_check_unused_number_port "udp" "4" "UDP"
+   appendix_c_check_unused_number_port "udp" "6" "UDP"
+
+   # need to make sure any process allow entries  still have matching processes running
+   appendix_c_check_unused_process_port "TCP" "4"
+   appendix_c_check_unused_process_port "TCP" "6"
+   appendix_c_check_unused_process_port "UDP" "4"
+   appendix_c_check_unused_process_port "UDP" "6"
+
+   # if sanitisation checks found errors report on them
    if [ -f ${WORKDIR}/port_sanitation ];
    then
       echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\">" >> ${htmlfile}
@@ -1582,6 +1912,13 @@ build_appendix_c() {
       echo "<table bgcolor=\"${colour_OK}\"><tr><td>No problems found." >> ${htmlfile}
       echo "All customisation entries have a matching active port number." >> ${htmlfile}
       echo "No action required to the customisation files.</td></tr></table>" >> ${htmlfile}
+   fi
+   if [ ${badparms} -gt 0 ];
+   then
+      echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
+      echo "The customisation file is using obsolete network customisation settings." >> ${htmlfile}
+      echo "These will be removed in version 0.07 so update these as soon as possible.</td></tr></table>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
    fi
 
    # Close the appendix page
@@ -1603,10 +1940,77 @@ build_appendix_d() {
 
    clean_prev_work_files
    mkdir ${WORKDIR}
+   touch ${WORKDIR}/${hostid}_all_ok
 
    echo "<html><head><title>Cron job security checks for ${hostid}</title></head><body>" >> ${htmlfile}
    echo "<h1>Appendix D - Cron Job Security Checks for ${hostid}</h1>" >> ${htmlfile}
-   echo "<h2>Appendix D.1 - Insecure Cron Job Files</h2>" >> ${htmlfile}
+
+   echo "<h2>Appendix D.1 - Limiting cron access</h2>" >> ${htmlfile}
+   isdeny=`grep "^CRON_DENY_EXISTS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+   isallow=`grep "^CRON_ALLOW_EXISTS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+
+   echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
+   echo "<tr><td colspan=\"2\"><center>Cron User Access Settings</center></td></tr>" >> ${htmlfile}
+   if [ "${isallow}." != "YES." -a "${isdeny}." != "YES." ];
+   then
+      echo "<tr bgcolor=\"${colour_alert}\"><td>Neither a cron.deny or cron.allow file exists, all users can run cron jobs</td></tr>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   elif [ "${isallow}." == "YES."  ];
+   then
+      isallowcount=`grep "^CRON_ALLOW_DATA" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+      if [ ${isallowcount} -gt 0 ];
+      then
+         echo "<tr bgcolor=\"${colour_OK}\"><td>A cron.allow file exists and has ${isallowcount} users defined." >> ${htmlfile}
+         grep "^CRON_ALLOW_DATA" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read allowed
+         do
+             echo "<br />${allowed}" >> ${htmlfile}
+         done
+         echo "</td></tr>" >> ${htmlfile}
+      else
+         echo "<tr bgcolor=\"${colour_OK}\"><td>A cron.allow file exists and has zero users, only root can use cron</td></tr>" >> ${htmlfile}
+      fi
+   elif [ "${isdeny}." == "YES." ];
+   then
+      isdenycount=`grep "^CRON_DENY_DATA" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+      if [ ${isdenycount} -gt 0 ];
+      then
+         echo "<tr bgcolor=\"${colour_warn}\"><td>No cron.allow file exists so you are relying on cron.deny which has ${isdenycount} users entered." >> ${htmlfile}
+         echo "This is a risk as if you add a new user to the system and forget to add them to cron.deny thay can use cron." >> ${htmlfile}
+         echo "You should investigate the use of cron.allow to limit the users that can use cron." >> ${htmlfile}
+         echo "The users currently defined in cron.deny are" >> ${htmlfile}
+         grep "^CRON_DENY_DATA" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read denied
+         do
+             echo "<br />${denied}" >> ${htmlfile}
+         done
+         echo "</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} warn_count
+      else
+         echo "<tr bgcolor=\"${colour_alert}\"><td>No cron.allow file exists and the cron.deny file has zero users, all users can run cron jobs</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      fi
+   else
+      echo "<tr><td>There is an script issue with an unexpected combination of cron allow/deny files</td></tr>" >> ${htmlfile}
+   fi  # end of all the eif/elif for cron allow/deny checks
+   echo "</table>" >> ${htmlfile}
+
+   # List all crontab files on the server and report if those users can use cron or not
+   echo "<br /><br /><table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
+   echo "<tr><td colspan=\"2\"><center>User crontab files on the system</center></td></tr>" >> ${htmlfile}
+   echo "<tr><td>User</td><td>Status</td></tr>" >> ${htmlfile}
+   grep "^CRON_SPOOL_CRONTAB_FILE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read cronuser
+   do
+      allowed=`can_user_use_cron "${cronuser}" "${hostid}"`
+      if [ "${allowed}." == "YES." ];
+      then
+         echo "<tr bgcolor=\"${colour_OK}\"><td>${cronuser}</td><td>permitted to use cron<td></tr>" >> ${htmlfile}
+      else
+         echo "<tr bgcolor=\"${colour_alert}\"><td>${cronuser}</td><td>not permitted to use cron<td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      fi
+   done
+   echo "</table>" >> ${htmlfile}
+
+   echo "<h2>Appendix D.2 - Insecure Cron Job Files</h2>" >> ${htmlfile}
    echo "<p>This appendix covers an often overlooked loophole. Many system admins" >> ${htmlfile}
    echo "very correctly rigidly control access to whom has access to update the" >> ${htmlfile}
    echo "cron tables; however seldom does anyone go to the bother of checking that" >> ${htmlfile}
@@ -1614,45 +2018,100 @@ build_appendix_d() {
    echo "<p>No matter how rigidly you control access to who can update the cron" >> ${htmlfile}
    echo "job table, if the actual script to be executed is writeable by others" >> ${htmlfile}
    echo "you have opened a back door.</p>" >> ${htmlfile}
-   echo "<p>This section (D.1) lists all cron job files that are writeable by any user" >> ${htmlfile}
+   echo "<p>This section (D.2) lists all cron job files that are writeable by any user" >> ${htmlfile}
    echo "other than the owner of the crontab.<br>" >> ${htmlfile}
    echo "<b><em>Note: only checks cron jobs at this time, if you use anacron better check /etc/cron.* files manually</em></b></p>" >> ${htmlfile}
-   touch ${WORKDIR}/${hostid}_all_ok
+   echo "<p>On a well managed site user cron jobs should run scripts from well defined directories and not" >> ${htmlfile}
+   echo "be permitted to execute system utilities directly as they see fit. If you have no such" >> ${htmlfile}
+   echo "standards at your site you can expect quite a few issues here as users cannot own such files as" >> ${htmlfile}
+   echo "'mv', 'cp', 'echo' etc which they may populate their crontabs with and which will alert.</p>" >> ${htmlfile}
 
-   echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
-   echo "<tr><td><center>Cron Job Files with bad security</center></td></tr>" >> ${htmlfile}
-   grep "^PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2"="$3'} | while read cronpermline
+   delete_file ${WORKDIR}/cron_badperm_check
+   grep "^PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
    do
+      cronpermline=`echo "${dataline}" | awk -F\= {'print $2"="$3'} | awk -F@ {'print $1'}`
       check_file_perms "${cronpermline}" "-rXXX-XX-X"
       if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not empty has error text
       then
          inc_counter ${hostid} alert_count
-         echo "<tr bgcolor=\"${colour_alert}\"><td>${PERM_CHECK_RESULT}: ${cronpermline}</td></tr>" >> ${htmlfile}
+         crontabdata=`echo "${dataline}" | awk -F@ {'print $2'}`
+         echo "<tr bgcolor=\"${colour_alert}\"><td>${PERM_CHECK_RESULT}: ${cronpermline}<br />Cron entry:${crontabdata}</td></tr>" >> ${WORKDIR}/cron_badperm_check
       fi
    done
-   echo "</b></pre>" >> ${htmlfile}
-
-   alerts=`cat ${RESULTS_DIR}/${hostid}/alert_count`
-   if [ "${alerts}." == "0." ];
+   if [ -f ${WORKDIR}/cron_badperm_check ];
    then
-      echo "<tr bgcolor=\"${colour_OK}\"><td><p>There were no execptions to report for this appendix. Well done." >> ${htmlfile}
-      echo "</p></td></tr></table>" >> ${htmlfile}
-   else
+      echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
+      echo "<tr><td><center>Cron Job Files with bad security</center></td></tr>" >> ${htmlfile}
+      cat ${WORKDIR}/cron_badperm_check >> ${htmlfile}
       echo "</table><p>Secure the files above to the correct owners and file permisssions as applicable.</p>" >> ${htmlfile}
+      delete_file ${WORKDIR}/cron_badperm_check
+   else
+      echo "<tr bgcolor=\"${colour_OK}\"><td><p>There were no cron job files found with bad security." >> ${htmlfile}
+      echo "</p></td></tr></table>" >> ${htmlfile}
+   fi
+
+   echo "<h2>Appendix D.3 - Cron Job Files not able to be checked</h2>" >> ${htmlfile}
+   errcount=`grep "^NO_PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   if [ ${errcount} -gt 0 ];
+   then
+      echo "<p>There were ${errcount} crontab entries where it was not possible to check" >> ${htmlfile}
+      echo "the permissions of the command files being run. You will have to check" >> ${htmlfile}
+      echo "these manually, so they will always alert.</p>" >> ${htmlfile}
+      echo "<p>To stop alerts such as these implement site standards, where a crontab" >> ${htmlfile}
+      echo "command will run one single command (normally a shell script file) only," >> ${htmlfile}
+      echo "do not stack multiple commands in crontab entries as they cannot be audited." >> ${htmlfile}
+      echo "If you have already implemented that then the scripts listed here simply no longer exist" >> ${htmlfile}
+      echo "so should be renmoved from crontab entries.</p>" >> ${htmlfile}
+      echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
+      echo "<tr><td colspan=\"2\"><center>Cron Job Files which could not be checked</center></td></tr>" >> ${htmlfile}
+      echo "<tr><td>Crontab Owner</td><td>Crontab Command</td></tr>" >> ${htmlfile}
+      grep "^NO_PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read dataline
+      do
+         crontabowner=`echo "${dataline}" | awk -F: {'print $1'}`
+         crontabdata=`echo "${dataline}" | awk -F@ {'print $2'}`
+         echo "<tr bgcolor=\"${colour_warn}\"><td>${crontabowner}</td><td>${crontabdata}</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} warning_count
+      done
+      echo "</table>" >> ${htmlfile}
+   else
+      echo "<p>No files fall into this category for this server.</p>" >> ${htmlfile}
    fi
 
    # Report on all cron jobs
-   echo "<h2>Appendix D.2 - Cron Job Report</h2>" >> ${htmlfile}
+   echo "<h2>Appendix D.4 - Cron Job Report</h2>" >> ${htmlfile}
    echo "<p>These are the cron jobs identified on server <b>${hostid}</b>. Review these" >> ${htmlfile}
-   echo "periodically to ensure they are still suitable for this server.</p>" >> ${htmlfile}
-   echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>Crontab Type</td><td>Crontab Owner</td><td>Command Executed (without parameters)</td></tr>" >> ${htmlfile}
-   grep "^PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
+   echo "periodically to ensure they are still suitable for this server. The 'Crontab Type' column exists" >> ${htmlfile}
+   echo "as these checks will in future releases check further types such as 'anacron' and 'at' tasks.</p>" >> ${htmlfile}
+   echo "<p>Should any 'Crontab Owner' fields in this table be an alert colour it means that the user" >> ${htmlfile}
+   echo "is not permitted to use cron (via cron.allow and cron.deny combinations) so you" >> ${htmlfile}
+   echo "should review why that crontab file is still on the system.</p>" >> ${htmlfile}
+   echo "" >> ${htmlfile}
+   echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>Crontab Type</td><td>Crontab Owner</td><td>Crontab line</td></tr>" >> ${htmlfile}
+   grep "^PERM_CRON_JOB_FILE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $3'} | while read crondata
    do
-       crondata=`echo "${dataline}" | awk -F\= {'print $3'}`
-       crontype=`echo "${crondata}" | awk {'print $2'}`
+       crontype=`echo "${crondata}" | awk {'print $2'} | awk -F@ {'print $1'}`
        cronowner=`echo "${crondata}" | awk {'print $1'}`
-       croncmd=`echo "${dataline}" | awk {'print $9'} | awk -F\= {'print $1'}`
-       echo "<tr><td>${crontype}</td><td>${cronowner}</td><td>${croncmd}</td></tr>" >> ${htmlfile}
+       croncmd=`echo "${crondata}" | awk -F@ {'print $2'}`
+       cronallowed=`can_user_use_cron "${cronowner}" "${hostid}"`
+       if [ "${cronallowed}." == "YES." ];
+       then
+          echo "<tr><td>${crontype}</td><td>${cronowner}</td><td>${croncmd}</td></tr>" >> ${htmlfile}
+       else
+          echo "<tr><td>${crontype}</td><td bgcolor=\"${colour_alert}\">${cronowner}</td><td>${croncmd}</td></tr>" >> ${htmlfile}
+       fi
+   done
+   grep "^NO_PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read crondata
+   do
+       crontype=`echo "${crondata}" | awk {'print $2'} | awk -F@ {'print $1'}`
+       cronowner=`echo "${crondata}" | awk {'print $1'}`
+       croncmd=`echo "${crondata}" | awk -F@ {'print $2'}`
+       cronallowed=`can_user_use_cron "${cronowner}" "${hostid}"`
+       if [ "${cronallowed}." == "YES." ];
+       then
+          echo "<tr><td>${crontype}</td><td>${cronowner}</td><td>${croncmd}</td></tr>" >> ${htmlfile}
+       else
+          echo "<tr><td>${crontype}</td><td bgcolor=\"${colour_alert}\">${cronowner}</td><td>${croncmd}</td></tr>" >> ${htmlfile}
+       fi
    done
    echo "</table>" >> ${htmlfile}
 
@@ -1746,6 +2205,7 @@ along with files in system directories owned by non-system users.</p>
 EOF
    totalcount=0
    echo "${totalcount}" > ${WORKDIR}/system_totals_count
+   delete_file ${WORKDIR}/appendix_e_groupsuppresslist.txt
    grep "^PERM_SYSTEM_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= '{print $2"="$3}' | while read dataline
    do
       totalcount=$((${totalcount} + 1))
@@ -1762,22 +2222,12 @@ EOF
             testforvar=`echo "${dataline}" | awk -F\/ '{print $2}'`
             if [ "${testforvar}." == "var." ];
             then
-               # If group write on files is OK in /var see if we
-               # reset to OK with another check.
-               if [ "${allowvargroupwrite}." == "YES." ];
-               then
-                  fileuser=`echo "${dataline}" | awk {'print $3'}`
-                  filegroup=`echo "${dataline}" | awk {'print $4'}`
-                  if [ "${fileuser}." == "${filegroup}." ];
-                  then
-                     check_file_perms "${dataline}" "XXXXXXXX-X"
-                  fi
-               fi
+               SKIPCHECKS="NO"
                # special checks for files under mail directory /var/spool/mail
                # if filename matched file owner and group is mail then OK
                testforspool=`echo "${dataline}" | awk -F\/ '{print $3}'`
-               testformail=`echo "${dataline}" | awk -F\/ '{print $4}'`
-               if [ "${testforspool}." == "spool." -a "${testformail}." == "mail." ];
+               spoolsubdir=`echo "${dataline}" | awk -F\/ '{print $4}'`
+               if [ "${testforspool}." == "spool." -a "${spoolsubdir}." == "mail." ];
                then
                   basefilename=`echo "${dataline}" | awk '{print $9}' | awk -F\= {'print $1'}`
                   basefilename=`basename ${basefilename}`
@@ -1792,26 +2242,71 @@ EOF
                         if [ "${fileperms}." == "-rw-rw----.." ];
                         then
                            PERM_CHECK_RESULT="Bad mail file permission, expected -rw-rw---"
+                           SKIPCHECKS="YES"
                         else
                            PERM_CHECK_RESULT="OK"
                         fi
                      else
                         PERM_CHECK_RESULT="Mail file owner does not exist"
+                        SKIPCHECKS="YES"
+                     fi
+                  fi
+               fi
+               # special checks for /var/spool/cron files, users own their crontab files
+               # which are names to match the user name.
+               if [ "${testforspool}." == "spool." -a "${spoolsubdir}." == "cron." ];
+               then
+                  fileuser=`echo "${dataline}" | awk {'print $3'}`
+                  basefilename=`echo "${dataline}" | awk '{print $9}' | awk -F\= {'print $1'}`
+                  basefilename=`basename ${basefilename}`
+                  if [ "${basefilename}." != "${fileuser}." ];
+                  then
+                     PERM_CHECK_RESULT="crontab for user ${basefilename} owned by ${fileuser}"
+                     SKIPCHECKS="YES"
+                  else
+                     cronallow=`can_user_use_cron "${fileuser}" "${hostid}"`
+                     if [ "${cronallow}." != "YES." ];
+                     then
+                        PERM_CHECK_RESULT="user owning crontab file is not allowed to use cron"
+                        SKIPCHECKS="YES"
+                     else
+                        PERM_CHECK_RESULT="OK"
+                        SKIPCHECKS="YES"
+                     fi
+                  fi
+               fi
+               # If group write on files is OK in /var see if we
+               # reset to OK with another check.
+               if [ "${allowvargroupwrite}." == "YES." -a "${PERM_CHECK_RESULT}." != "OK." -a "${SKIPCHECKS}." != "YES." ];
+               then
+                  fileuser=`echo "${dataline}" | awk {'print $3'}`
+                  filegroup=`echo "${dataline}" | awk {'print $4'}`
+                  if [ "${fileuser}." == "${filegroup}." ];
+                  then
+                     check_file_perms "${dataline}" "XXXXXXXX-X"
+                     if [ "${PERM_CHECK_RESULT}." == "OK." ];
+                     then
+                        inc_counter "${hostid}" groupsuppress_count
+                        echo "${dataline}" >> ${WORKDIR}/appendix_e_groupsuppresslist.txt
                      fi
                   fi
                fi
                # and fall through to logging the error if there still is one
                if [ "${PERM_CHECK_RESULT}." != "OK." ]
                then
-                  if [ "${allowsloppyvar}." == "WARN." ];
+                  if [ "${SKIPCHECKS}." != "YES." ];
                   then
-                     inc_counter ${hostid} warning_count
-                     echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_e_list2
-                  else # else must be set as OK
-                     inc_counter ${hostid} note_count
+                     if [ "${allowsloppyvar}." == "WARN." ];
+                     then
+                        inc_counter ${hostid} warning_count
+                        echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_e_list2
+                     else # else must be set as OK
+                        inc_counter ${hostid} note_count
+                     fi
+                  else # if skipchecks was set we found something we must alert on
+                     inc_counter ${hostid} alert_count
+                     echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_e_list
                   fi
-               else # else allowed group write suppressed the alert
-                  inc_counter "${hostid}" groupsuppress_count
                fi
             else # not in /var
                inc_counter ${hostid} alert_count
@@ -1840,7 +2335,15 @@ EOF
       then
          echo "<p>The customisation file allows files under /var to be group writeable," >> ${htmlfile}
          echo "as long as the group-id matched the user-id," >> ${htmlfile}
-         echo "${groupsuppress} files were suppressed from being reported on for this reason.</p>" >> ${htmlfile}
+         echo "${groupsuppress} files were suppressed from being reported on for this reason." >> ${htmlfile}
+         if [ -f ${WORKDIR}/appendix_e_groupsuppresslist.txt ];
+         then
+            /bin/mv ${WORKDIR}/appendix_e_groupsuppresslist.txt ${RESULTS_DIR}/${hostid}/appendix_e_groupsuppresslist.txt
+            echo "A list of those files is <a href="appendix_e_groupsuppresslist.txt">available here</a>.</p>" >> ${htmlfile}
+         else
+            echo "Due to an error in the processing script a listing of suppressed files is not available/</p>" >> ${htmlfile}
+         fi
+         echo "A list of those files is available here.</p>" >> ${htmlfile}
       fi
    fi
    # Display the list of files under /var that were changes to warnings rather than
@@ -2113,20 +2616,12 @@ build_appendix_f() {
    echo "keep at least 60 days of security logs.</p>" >> ${htmlfile}
    echo "<p>This appendix will always generate a warning as I have not" >> ${htmlfile}
    echo "automated processing of this information yet. Manually review" >> ${htmlfile}
-   echo "the files here to ensure they are kept for the duration required.</p>" >> ${htmlfile}
+   echo "the files here to ensure they are kept for the duration required." >> ${htmlfile}
+   echo "The report line syntax is days-required;details of the files available.</p>" >> ${htmlfile}
    # We allow the user to turn of warnings for manual checks needed here
-   if [ -f ${OVERRIDES_DIR}/${hostid}.custom ];
+   if [ "${CUSTOMFILE}." != "." ];
    then
-      override_file="${OVERRIDES_DIR}/${hostid}.custom"
-   else
-      if [ -f ${OVERRIDES_DIR}/ALL.custom ];
-      then
-         override_file="${OVERRIDES_DIR}/ALL.custom"
-      fi
-   fi
-   if [ "${override_file}." != "." ];
-   then
-      testvar=`grep "^NOWARN_ON_MANUALLOGCHECK.YES" ${override_file}`
+      testvar=`grep "^NOWARN_ON_MANUALLOGCHECK=YES" ${CUSTOMFILE}`
       if [ "${testvar}." == "." ]
       then
          inc_counter ${hostid} warning_count  # Not automated, warning to review
@@ -2247,7 +2742,7 @@ build_appendix_g() {
       echo "</td></tr></table><br><br>" >> ${htmlfile}
       # We allow the user to turn off warnings for a customisation file
       # in use, so check for this.
-      testvar=`grep "^NOWARN_ON_CUSTOMFILE.YES" ${CUSTOMFILE}`
+      testvar=`grep "^NOWARN_ON_CUSTOMFILE=YES" ${CUSTOMFILE}`
       if [ "${testvar}." == "." ]
       then
          inc_counter ${hostid} warning_count  # Not automated, warning to review
@@ -2275,15 +2770,14 @@ build_main_index_page() {
    delete_file ${RESULTS_DIR}/global_alert_totals
    delete_file ${RESULTS_DIR}/global_warn_totals
    htmlfile="${RESULTS_DIR}/index.html"
-   echo "<html><head><title>Server Security Report Index</title></head>" > ${htmlfile}
-   echo "<body>" >> ${htmlfile}
+   echo "<html><head><title>Server Security Report Index</title></head><body>" > ${htmlfile}
    echo "<center><h1>Server Security Report</h1>" >> ${htmlfile}
    echo "These are the servers that have been recorded in the processing run of<br><b>" >> ${htmlfile}
    date >> ${htmlfile}
    echo "</b><br> Any alerts or warnings should be reviewed.</p>" >> ${htmlfile}
    echo "<table border=\"1\" cellpadding=\"5\">" >> ${htmlfile}
    echo "<tr bgcolor=\"${colour_banner}\"><td>Server Name</td><td>" >> ${htmlfile}
-   echo "Alerts</td><td>Warnings</td><td>Snapshot Date</td><td>File<br />ScanLevel</td><td>Versions</td></tr>" >> ${htmlfile}
+   echo "Alerts</td><td>Warnings</td><td>Snapshot<br />Date</td><td>Processing<br />Date</td><td>File<br />ScanLevel</td><td>Versions</td></tr>" >> ${htmlfile}
    # NOTE: dataline here is the directory name found, we create a index entry for each server directory
    find ${RESULTS_DIR}/* -type d | while read dataline    # /* avoids getting root directory
    do
@@ -2291,10 +2785,16 @@ build_main_index_page() {
       alerts=`cat ${RESULTS_DIR}/${dataline}/alert_totals`
       warns=`cat ${RESULTS_DIR}/${dataline}/warning_totals`
       captdate=`grep "TITLE_CAPTUREDATE" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+      if [ -f ${RESULTS_DIR}/${dataline}/last_processing_date ];
+      then
+         lastprocdate=`cat ${RESULTS_DIR}/${dataline}/last_processing_date`
+      else
+         lastprocdate="rerun for 0.06"
+      fi
       scanlevel=`grep "TITLE_FileScanLevel" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
       extractversion=`grep "TITLE_ExtractVersion" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
-      echo "<tr><td><a href=\"${dataline}/index.html\">${dataline}</a></td><td>${alerts}</td><td>${warns}</td><td>${captdate}</td><td>${scanlevel}</td><td>Collector V${extractversion}</td></tr>" >> ${htmlfile}
-      # update global titals for report summary
+      echo "<tr><td><a href=\"${dataline}/index.html\">${dataline}</a></td><td>${alerts}</td><td>${warns}</td><td>${captdate}</td><td>${lastprocdate}</td><td>${scanlevel}</td><td>Collector V${extractversion}</td></tr>" >> ${htmlfile}
+      # update global totals for report summary
       update_globals "${warns}" "global_warn_totals"
       update_globals "${alerts}" "global_alert_totals"
       # do not delete the alert_totals or warning_totals files, these can be used again
@@ -2304,8 +2804,30 @@ build_main_index_page() {
    alerts=`cat ${RESULTS_DIR}/global_alert_totals`
    warns=`cat ${RESULTS_DIR}/global_warn_totals`
    echo "<tr bgcolor=\"${colour_banner}\"><td>TOTALS:</td><td>${alerts}</td><td>${warns}</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"lightblue\"><small>&copy Mark Dickinson, 2004-2020</small></td><td colspan=\"2\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}
+   echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2020</small></td><td colspan=\"2\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}
    echo "</table></center><br><br>" >> ${htmlfile}
+
+   # Added to check for obsolete parms, this check block can be removed again in version 0.07
+   headerdone="NO"
+   find ${OVERRIDES_DIR} -type f -name "*custom" | while read fname
+   do
+      err1=`grep "PORT_ALLOWED" ${fname} | wc -l`
+      if [ ${err1} -gt 0 ];
+      then
+         if [ "${headerdone}." == "NO." ];
+         then
+            headerdone="YES"
+            echo "<ul>" >> ${htmlfile}
+         fi
+         echo "<li>${fname} is using ${err1} obsolete custom parameters that will be dropped in the next release</li>" >> ${htmlfile}
+      fi
+   done
+   if [ "${headerdone}." != "NO." ];
+   then
+      echo "</ul>" >> ${htmlfile}
+   fi
+
+   echo "</body></html>" >> ${htmlfile}
    delete_file ${RESULTS_DIR}/global_alert_totals
    delete_file ${RESULTS_DIR}/global_warn_totals
    log_message "...DONE, Built main index"
@@ -2321,8 +2843,13 @@ build_main_index_page() {
 # ----------------------------------------------------------
 perform_single_server_processing() {
    hostname="$1"
+   single_start_time=`date`
    FILES_PROCESSED=$((${FILES_PROCESSED} + 1))
    log_message "*********** Processing server ${hostname}, host ${FILES_PROCESSED} of ${FILES_TO_PROCESS} **********"
+   captdate=`head -10 ${SRCDIR}/secaudit_${hostname}.txt | grep "TITLE_CAPTUREDATE" | awk -F\= {'print $2'}`
+   scanlevel=`head -10 ${SRCDIR}/secaudit_${hostname}.txt | grep "TITLE_FileScanLevel" | awk -F\= {'print $2'}`
+   captver=`head -10 ${SRCDIR}/secaudit_${hostname}.txt | grep "TITLE_ExtractVersion" | awk -F\= {'print $2'}`
+   log_message "Collected data information - Capture version:${captver}, Capture date:${captdate}, File scan level:${scanlevel}"
 
    # may be a new server being added so may need to create directory
    # else if a reprocess delete all prior results
@@ -2356,12 +2883,13 @@ perform_single_server_processing() {
    # 2010/09/22 Added the hardware profile page
    hwprof_build "${hostname}"
 
-   server_index_end ${hostname}
+   server_index_end ${hostname} "${single_start_time}"
 
    # Added to allow single server rebuilds to also rebuild any results
    # for other servers performed with a prior version of the processing
    # script.
    echo "${PROCESSING_VERSION}" > ${RESULTS_DIR}/${hostname}/report_version
+   date +"%Y/%m/%d %H:%M" > ${RESULTS_DIR}/${hostname}/last_processing_date
 
    # clean temp files we do not need to retain
    delete_file "${RESULTS_DIR}/${hostname}/alert_count"
@@ -2555,7 +3083,15 @@ then
    cd ${RESULTS_DIR}
    tar -zcf ${ARCHIVEDIR}/reports_${rundatestamp}.tar.gz *
    cd ${savedir}
-   log_message "...DONE, archive created as ${ARCHIVEDIR}/reports_${rundatestamp}.tar.gz"
+   if [ "${SINGLESERVER}." == "." ];
+   then
+      delete_file ${ARCHIVEDIR}/sources_${rundatestamp}.tar.gz
+      cd ${SRCDIR}
+      tar -zcf ${ARCHIVEDIR}/sources_${rundatestamp}.tar.gz secaudit*txt
+      log_message "...full processing run, sources archived as ${ARCHIVEDIR}/sources_${rundatestamp}.tar.gz"
+   fi
+   cd ${savedir}
+   log_message "...DONE, report archive created as ${ARCHIVEDIR}/reports_${rundatestamp}.tar.gz"
 fi
 
 # we need to clean up the work directory

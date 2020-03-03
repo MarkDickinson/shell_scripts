@@ -1,39 +1,79 @@
 # DEFAULT customisation file for all servers that do not have their
 # own personalised configuration file.
 #
+# Comments are any line beginning with a #, if a # is part of
+# any line not beginning with a # it is treated as part of the
+# data and not as a comment.
+#
 # You may override this on an individual server basis if
 # you create a file in this directory named 
 # <hostname>.custom (ie: falcon.custom). If a custom
 # file exists for a specific server it will be used
 # instead of this one.
 #
+# ===============================================================
+# Network check overrides
+# ===============================================================
 # TCP Ports that are permitted to be listening on all servers
-# Syntax: TCP_PROT_ALLOWED=:<port-num>:<description>
+# Syntax: TCP_PORTV<type>_ALLOWED=:<port-num>:<description>[:WILD]
 # Notes: The ":" around the port number is to make exact
 #        matching agaist the port number easier for the
 #        processing script.
-TCP_PORT_ALLOWED=:22:ssh
-TCP_PORT_ALLOWED=:25:sendmail
-TCP_PORT_ALLOWED=:80:http server
-TCP_PORT_ALLOWED=:111:portmapper
-TCP_PORT_ALLOWED=:443:http server ssl port
-TCP_PORT_ALLOWED=:5666:NRPE
-TCP_PORT_ALLOWED=:9090:Cockpit
-TCP_PORT_ALLOWED=:9102:Bacula FD
+#        The optional :WILD means this port is expected to be bound 
+#        to wildcard interfaces 0.0.0.0 and ::: and overrides the
+#        default of reporting ports listening on all interfaces as
+#        insecure. ONLY set that for ports you know cannot be 
+#        configured to a specific interface or has a site reason 
+#        to listen on all interfaces.
+TCP_PORTV4_ALLOWED=:22:ssh:WILD
+TCP_PORTV4_ALLOWED=:25:sendmail
+TCP_PORTV4_ALLOWED=:111:portmapper
+TCP_PORTV4_ALLOWED=:5666:NRPE
+TCP_PORTV4_ALLOWED=:9102:Bacula FD
+TCP_PORTV6_ALLOWED=:111:portmapper
+TCP_PORTV6_ALLOWED=:5666:NRPE
+TCP_PORTV6_ALLOWED=:9090:Cockpit
 #
 # UDP Ports that are permitted to be listening on all servers
-# Syntax: UDP_PORT_ALLOWED=:<port-num>:<description>
-# Notes: The ":" around the port number is to make exact
-#        matching agaist the port number easier for the
-#        processing script.
-# NOTE2: This is a sample. It shouldn be on a secure server.
-UDP_PORT_ALLOWED=:111:portmapper
-UDP_PORT_ALLOWED=:123:NTP
+# Syntax: UDP_PORTV<type>_ALLOWED=:<port-num>:<description>[:WILD]
+UDP_PORTV4_ALLOWED=:111:portmapper
+UDP_PORTV4_ALLOWED=:123:NTP
+UDP_PORTV6_ALLOWED=:111:portmapper
+UDP_PORTV6_ALLOWED=:123:NTP
 #
-# Additional users that can be considered system file owners
+# processes allowed to bind to random ports, as they use
+# random ports they cannot be explicitly defined in the
+# entries above. The value must be an exact 'full' match
+# for the process details returned by 'fuser'... and obviously
+# can only be used if th server had fuser installed at the 
+# time the data was collected.
+# Note: CentOS7 runs the below as '/sbin/rpcbind -w' (no -f and from sbin)
+NETWORK_UDPV4_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
+NETWORK_UDPV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
+# The below are server specific so cannot be used in ALL.custom
+# as they rely on the server name, the below example would
+# be for server phoenix
+#NETWORK_UDPV4_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]
+#NETWORK_UDPV6_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]
+#
+# ===============================================================
+# Filesystem check check overrides
+# Section E.1 System file security
+# ===============================================================
+#
+# ---------------------------------------------------------------
+# Additional users that can be considered system file owners for
+# Fedora systems. These are additional users that are permitted
+# to be owners of what are considered 'system' files.
+# ---------------------------------------------------------------
 ADD_SYSTEM_FILE_OWNER=tss
+ADD_SYSTEM_FILE_OWNER=unbound
+ADD_SYSTEM_FILE_OWNER=setroubleshoot
 #
-# Directory ownership overrides as required
+# ---------------------------------------------------------------
+# Overrides affecting home directory checks
+# ---------------------------------------------------------------
+# Home Directory ownership overrides as required
 ALLOW_OWNER_ROOT=bin
 ALLOW_OWNER_ROOT=sbin
 ALLOW_OWNER_ROOT=daemon
@@ -60,13 +100,13 @@ ALLOW_OWNER_ROOT=usage
 ALLOW_OWNER_ROOT=unbound
 ALLOW_OWNER_ROOT=ntp
 #
-# Directory permission overrides for shared system directories
+# Directory permission overrides for home directories that can
+# be considered to be shared system directories
 # These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
 ALLOW_DIRPERM_SYSTEM=bin
 ALLOW_DIRPERM_SYSTEM=sbin
 ALLOW_DIRPERM_SYSTEM=adm
 ALLOW_DIRPERM_SYSTEM=lpd
-ALLOW_DIRPERM_SYSTEM=mark
 ALLOW_DIRPERM_SYSTEM=backuppc
 ALLOW_DIRPERM_SYSTEM=sshd
 ALLOW_DIRPERM_SYSTEM=mysql
@@ -80,13 +120,52 @@ ALLOW_DIRPERM_SYSTEM=httpd
 ALLOW_DIRPERM_SYSTEM=postfix
 ALLOW_DIRPERM_SYSTEM=nagios
 ALLOW_DIRPERM_SYSTEM=puppet
-
-ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
-ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
+ALLOW_DIRPERM_SYSTEM=colord
+ALLOW_DIRPERM_SYSTEM=root
+#
+# If home directories fail all checks a test for an allowed
+# override for expected OK perms can be provided here
 ALLOW_DIRPERM_EXPLICIT=mail drwxrwxr-x
 ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T
 ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
-
+# The below two are probably Fedora specific, some system userids
+# are defined with the home directories below, which are actually
+# symbolic links so will always fail checks.
+# (home directories that are links may be handled in version 0.07)
+ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
+#
+# ---------------------------------------------------------------
+# Overrides for individual files that are expected to be
+# secured more loosely that default checks allow.
+# ---------------------------------------------------------------
+# Force explicit files as OK when checked, full path is needed
+# for example /etc/dumpdates is normally also writeable by group disk
+# so would always be group writeable by other than the file owner
+# so raise an alert if not overridden
+FORCE_PERM_OK=/etc/dumpdates
+FORCE_PERM_OK=/var/log/wtmp
+FORCE_PERM_OK=/var/log/btmp
+FORCE_PERM_OK=/var/log/lastlog
+FORCE_PERM_OK=/var/spool/clientmqueue/sm-client.st
+# below two required by fedora systemd-update-done.service
+# (see "man systemd-update-done.service -s8")
+FORCE_PERM_OK=/var/.updated
+FORCE_PERM_OK=/etc/.updated
+#
+# Allow a file of this name to be forced OK under any directory if
+# it fails initial default checks.
+# A risk, but Fedora now generates lots of dynamic PCI bus entries
+# under the /sys/devices/pciNNNN:NN path as --w--w----. we do not
+# want them generating false alerts.
+# Risk is minimised be specifying the only permitted value.
+FORCE_ANYFILE_OK=remove --w--w----
+FORCE_ANYFILE_OK=rescan --w--w----
+#
+# ===============================================================
+# Filesystem check check overrides
+# Section E.2 Permitted SUID files
+# ===============================================================
 # SUID files on a Fedora 31 system KVM system
 SUID_ALLOW=/usr/sbin/sendmail.sendmail
 SUID_ALLOW=/usr/sbin/userhelper
@@ -132,16 +211,12 @@ SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
 #SUID_ALLOW=/usr/bin/fusermount
 #SUID_ALLOW=/usr/bin/fusermount-glusterfs
 #
-# Force explicit files as OK when checked, full path is needed
-# /etc/dumpdates is normally also writeable by group disk
-FORCE_PERM_OK=/etc/dumpdates
-FORCE_PERM_OK=/var/log/wtmp
-#
-# Allow a file of this name to be forced OK under any directory if
-# it fails initial default checks.
-# A risk, but Fedora now generates lots of dynamic PCI bus entries
-# under the /sys/devices/pciNNNN:NN path as --w--w----. we do not
-# want them generating false alerts.
-# Risk is minimised be specifying the only permitted value.
-FORCE_ANYFILE_OK=remove --w--w----
-FORCE_ANYFILE_OK=rescan --w--w----
+# ===============================================================
+# Special alert suppression parameters
+# ===============================================================
+# Do not raise a warning to remind manual log retention checks
+# are needed.
+NOWARN_ON_MANUALLOGCHECK=YES
+# Do not raise a warning when a customisation file is used for a
+# server.
+NOWARN_ON_CUSTOMFILE=YES

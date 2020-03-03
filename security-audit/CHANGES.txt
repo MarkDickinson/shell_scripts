@@ -1,0 +1,60 @@
+Noteable changes implemented between version 0.05 and version 0.06 are
+
+bug fixes
+(1)  processing script:checks added for mail files in 0.05 were inserted in the wrong place,
+     those suppressions were being added to the totals of the groupsuppress count ( fixed )
+(2)  collection script:was not handling quotes around crontab commands in lines with
+     'shell -c' commands when checking job script permissions, now handles those ( fixed )
+
+global - affecting main index page
+(3)  collection script: change capture date format from server default to "YYYY/MM/DD HH:MM"
+     to make the display size much smaller on the main index page and a fixed size ( complete )
+(4)  processing script: include a processed date column on the main index page, needed now
+     individual servers can be processed to indicate if many have not been processed in a while ( complete )
+
+cron job check enhancements
+(5)  collection script:remove attempts to record commands run by anacron files, as they never
+     worked and it is too complex for now ( complete )
+(6)  collection script:check for and record entries in cron.deny and cron.allow ( complete )
+(7)  collection script:record entries cron job entries we were unable to perform file security
+     checks against (due to crontab entry command stacking etc) (complete)
+(8)  processing script:raise alerts/warnings as appropriate depending on use of cron.deny and
+     cron.deny by the server ( complete )
+(9)  processing script:raise warnings for cron job entries we were unable to perform file security
+     checks against (due to crontab entry command stacking etc) (complete)
+
+filesystem checks report
+(10) processing script:when files are suppressed from the report totals (specifically if group
+     write is allowed under /var) add an additional link on the filesystem check page to a page
+     where users can see exactly what files were suppressed ( complete )
+(11) processing script:add execeptions for files in /var/spool/cron which can be owned by any
+     user existing on the system if they are permitted to use cron and the filename is the
+     username, they should not be alerted on ( complete )
+
+open network port checks report
+(12) collection script:for open port details on servers with fuser installed also use
+     fuser -n tcp/udp and ps to actually obtain the process listening on the port. The main
+     reason for this is to be aware of what processes are litening on a port in cases where
+     they cannot be configured to a specific port (for example rpcbind uses random ports so
+     cannot be configured as an OK listener currently ( complete )
+(13) collection script: use fuser to report on what process is using a unix socket( complete )
+(14) collection script: also report on what 'raw' network sockets are in use (in addition to
+     the existing tcp/udp/unix) although alas fuser cannot query what is using them ( complete )
+(15) processing script: use the details from the updated collection script to identify what is
+     listening on an unexpected port rather than rely on /etc/services descriptions, still
+     allow a user description to be included where provided for known ports. Must still be able
+     to handle output from prior collector versions and servers without fuser installed so
+     existing processing will be enhanced if additional data is present but old method still
+     available as fallback which means we still need to capture the services file entries ( complete )
+(16) processing script:add a new custom file parameter to force a "permitted" process listening
+     on an unexpected tcp/udp port into an OK state if using the a new version collector
+     produced datafile. This will handle situations such as rpcbind using random ports ( complete )
+(17) processing script:add a new custom file parameter to allow configured network ports
+     listening on all interfaces to be considered OK rather than a warning, not a global but
+     on a per port basis as listening on all interfaces is insecure but some applications
+     require it so this will allow known applications to be forced OK ( complete )
+(18) alter custom file parameters that allow tcp/udp ports to be version specific, in 0.05 and
+     below an allow udp 53 would allow both udpv4 53 and udpv6 53 to be valid. This change
+     will tighten that up. This change now will also generate a warning alert if the old obsolete
+     parameters are used plus also write a list of all server custom files using the old
+     parameters on the global results index page ( complete )

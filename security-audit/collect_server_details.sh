@@ -52,6 +52,18 @@
 # 2020/02/20 - changed parm input handling, etc tarfile backup, rpm list
 #              and hardware listing now optional. Still defaulting to yes
 #              for backward compatibility.       
+# 2020/02/xx - include 'raw' network ports listening as well as the
+#              existing tcp/tcp6/udp/udp6 port recording (they exist
+#              on my CentOS7 systems).
+#              use fuser (if installed on the server) to collect info
+#              on what process is using an open listening port or
+#              unix socket file.
+#              record all crontab lines we were unable to perform
+#              command file permission checks against
+#              suppress find and ls errors meaningless to users, so
+#              running it is a little less cludgy looking
+#              Now collect cron.allow and cron.deny info if those files
+#              exist on the server.
 #
 # ======================================================================
 MAX_SYSSCAN=""            # default is no limit parameter
@@ -59,6 +71,7 @@ SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="yes"          # default is to tar up etc
 BACKUP_RPMLIST="yes"      # default is to create a rpm package list
 DO_HWLIST="yes"           # default is to create the hardware listing
+DISABLE_FUSER="NO"        # default is to use fuser if installed on the server
 
 while [[ $# -gt 0 ]];
 do
@@ -70,6 +83,11 @@ do
                       if [ "${testvar}." != "." ];
                       then
                          echo "*error* the --scanlevel value provided is not numeric"
+                         exit 1
+                      fi
+                      if [ ${value} -lt 3 ];    # any less than 3 and it's not worth even reporting on
+                      then
+                         echo "*error* the --scanlevel value cannot be less than 3"
                          exit 1
                       fi
                       SCANLEVEL_USED="${value}"
@@ -100,36 +118,57 @@ do
                       DO_HWLIST="${value}"
                       shift
                       ;;
+      "--disable-fuser") DISABLE_FUSER="YES"
+                      ;;
       *)              echo "Unknown paramater value ${key}"
-                      echo "Syntax:$0 [--scanlevel=<number>] [--backup-etc=yes|no] [--record-packages=yes|no] [--hwlist=yes|no]"
+                      echo "Syntax:$0 [--scanlevel=<number>] [--backup-etc=yes|no] [--record-packages=yes|no] [--hwlist=yes|no] [--disable-fuser]"
                       echo "Please read the documentation."
                       exit 1
                       ;;
    esac
 done
 
+myrunner=`whoami`
+if [ "${myrunner}." != "root." ];
+then
+   echo "This script can only be run by the root user."
+   exit 1
+fi
+
 timenow=`date`
 echo "Start time: ${timenow}"
-LOGDIR=`pwd`
 
 # The filenames we need for output, erase if a rerun
+LOGDIR=`pwd`
 myhost=`hostname | awk -F. '{print $1'}`   # if hostname.xx.xx.com only want hostname
 LOGFILE="${LOGDIR}/secaudit_${myhost}.txt"
 ETCTARFILE="${LOGDIR}/etcfiles_${myhost}.tar"   # if we are backing up etc
 HWFILE="${LOGDIR}/hwinfo_${myhost}.txt"
 RPMFILE="${LOGDIR}/packagelist_${myhost}.txt"
+
+# clean any files from any previous runs
 if [ -f ${LOGFILE} ];
 then
-   rm -f ${LOGFILE}
+   /bin/rm -f ${LOGFILE}
 fi
 if [ -f ${ETCTARFILE} ];
 then
-   rm -f ${ETCTARFILE}
+   /bin/rm -f ${ETCTARFILE}
+fi
+if [ -f ${HWFILE} ];
+then
+   /bin/rm -f ${HWFILE}
+fi
+if [ -f ${RPMFILE} ];
+then
+   /bin/rm -f ${RPMFILE}
 fi
 
 # ======================================================================
 #                           Helper tools
 # ======================================================================
+# ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
 record_file() {
    key="$1"
    file="$2"
@@ -142,10 +181,12 @@ record_file() {
    fi
 } # record_file
 
+# ----------------------------------------------------------------------
 # output ls -la of dir + NA as expected owner
 # Notes, added extra = to output as some filenames having spaces
 # in the name threw out the data processing. The processing now
 # expects and handles the second =.
+# ----------------------------------------------------------------------
 find_perms_under_dir() {
    key="$1"
    startdir="$2"
@@ -160,13 +201,17 @@ find_perms_under_dir() {
    done
 } # fine_perms_under_dir
 
+# ----------------------------------------------------------------------
+# ----------------------------------------------------------------------
 find_perms_under_system_dir() {
    key="$1"
    startdir="$2"
    find_perms_under_dir "${key}" "${startdir}" "SYSTEM"
 } # find_perms_under_system_dir
 
+# ----------------------------------------------------------------------
 # output ls -la of dir + expected-owner
+# ----------------------------------------------------------------------
 find_dir_perm() {
    key="$1"
    dirname="$2"
@@ -197,17 +242,23 @@ find_dir_perm() {
    fi
 } # find_dir_perm
 
+# ----------------------------------------------------------------------
+#                  find_file_perm_nolog
 # Find the permissions of a file. If the filename passed is a
 # directory recurse down files under the directory.
 # output ls -la of file + expected-owner
-find_file_perm() {
+# DO NOT ECHO ANY OUTPUT TO THE USER, the only output to be echoed
+# is a result value to the caller.
+# ----------------------------------------------------------------------
+find_file_perm_nolog() {
    key="$1"
    fname="$2"
    expected_owner="$3"
    optdata="$4"
+   resultdata=""
    if [ -d ${fname} ];
    then
-      find ${fname} | while read fname2
+      find ${fname} 2>/dev/null | while read fname2
       do
          # Important, the find also returns the directory name we have just
          # asked for a find on, and endless loop if we recurs on that so check
@@ -215,62 +266,279 @@ find_file_perm() {
          # to make this portable to non-linux also at some point).
          if [ "${fname2}." != "${fname}." ];   # do not recurse the directory name we are finding on yet again (loop time)
          then
-            find_file_perm "${key}" "${fname2}" "${expected_owner}" "${optdata}"
+            resultdata=`find_file_perm_nolog "${key}" "${fname2}" "${expected_owner}" "${optdata}"`
          fi
       done
    else
-      tempvar=`ls -la ${fname}`
+      tempvar=`ls -la ${fname} 2>/dev/null`
       # Added for cron jobs, the filename passed from those
       # data collections may not be a full path name but
-      # could be using the search path, so try to locate it.
+      # could be using the search path, so try to locate it
+      # if the 'ls' return code was not 0
       testresult=$?
-      if [ "${testresult}." = "1." ]
+      if [ ${testresult} -gt 0  ]
       then
-         echo "No ${fname}, locating with which"
          fname2=`which ${fname}`
          if [ "${fname2}." != "." ];
          then
-            echo "OK, found ${fname2}"
             tempvar=`ls -la ${fname2}`
-         else
-            echo "Locate failed, expect an error in processing for ${fname}"
          fi
       fi
       # Replace any = in the filename with -, we use = as a delimiter
       tempvar=`echo "${tempvar}" | tr "\=" "-"`
-      if [ "${tempvar}." = "." ];
+      if [ "${tempvar}." != "." ];
       then
-         echo "*WARN* Error locating ${fname} for cron check, skipped"
-      else
-         echo "${key}=${tempvar}=${expected_owner} ${optdata}" >> ${LOGFILE}
+         resultdata="${key}=${tempvar}=${expected_owner} ${optdata}"
       fi
+   fi
+   echo "${resultdata}"
+} # find_file_perm_nolog
+
+# ----------------------------------------------------------------------
+# Find the permissions of a file. If the filename passed is a
+# directory recurse down files under the directory.
+# output ls -la of file + expected-owner
+# ----------------------------------------------------------------------
+find_file_perm() {
+   key="$1"
+   fname="$2"
+   expected_owner="$3"
+   optdata="$4"
+
+   resultdata=`find_file_perm_nolog "${key}" "${fname}" "${expected_owner}" "${optdata}"`
+   if [ "${resultdata}." != "." ];
+   then
+      echo "${resultdata}" >> ${LOGFILE}
+   else
+      echo "*WARN* Error locating ${fname} for file permission check, skipped"
    fi
 } # find_file_perm
 
+# ----------------------------------------------------------------------
 # Ensure at least $2 days of data is recorded in the filename
 # provided. It is acceptable for the data to be retained in
 # archived files managed by a log roller process, but in that
 # case we can only go by the last modified date of the log
 # archive itself in determining age.
+# ----------------------------------------------------------------------
 require_file() {
    fname="$1"
    days_needed="$2"
    archive_suffix="$3"
-   ls -la ${fname} | while read dataline
+   ls -la ${fname} 2>/dev/null | while read dataline
    do
        echo "REQD_FILE=${days_needed};${dataline}" >> ${LOGFILE}
    done
-   ls -la ${fname}*${archive_suffix} | while read dataline
+   ls -la ${fname}*${archive_suffix} 2>/dev/null | while read dataline
    do
        echo "REQD_FILE=${days_needed};${dataline}" >> ${LOGFILE}
    done
 } # require_file
 
+# ----------------------------------------------------------------------
+#                  get_process_by_exact_pid
+# ----------------------------------------------------------------------
+get_process_by_exact_pid() {
+   pid="$1"
+   if [ "${pid}." != "." ];
+   then
+      ps -ef | grep "${pid}" | grep -v "grep" | while read yy
+      do
+         # pid is field 2, only return the exact match
+         exact=`echo "${yy}" | awk {'print $2'}`
+         if [ "${exact}." == "${pid}." ];
+         then
+            programname=`echo "${yy}" | awk {'print $8" "$9" "$10" "$11'}`
+            echo "${programname}"
+         fi
+      done
+   else
+      echo "No pid provided to search on"
+   fi
+} # end of get_process_by_exact_pid
+
+# ----------------------------------------------------------------------
+#                   get_fuser_network_process_exact
+# called by identify_network_listening_processes to return the progam
+# that has a tcp/tcp6/udp/udp6 port open and listening for connections.
+# If multiple pids have the port open we only return the first.
+#
+# Note: reguardless of output format on RHEL
+# based systems the pid list is written to stdout and all other
+# information to stderr, so the pid list field starts at position 1
+# always. This may not be the case on non RHEL systems.
+#    [root@vmhost3 bin]# fuser -n tcp -v6 9090
+#                         USER        PID ACCESS COMMAND
+#    9090/tcp:            root          1 F.... systemd
+#    [root@vmhost3 bin]# fuser -n tcp -v4 22
+#                         USER        PID ACCESS COMMAND
+#    22/tcp:              root      112022 F.... sshd
+#    [root@vmhost3 bin]# fuser -n tcp  9090
+#    9090/tcp:                1
+# Also while we could 2>&1 and extract the command we can get a lot
+# more detail from the ps output so we use that instead.
+# ----------------------------------------------------------------------
+get_fuser_network_process_exact() {
+   # can be many pids on a port, only get info on the first
+   # example fuser output below
+   # [root@vmhost3 bin]# fuser -n tcp 44321
+   # 44321/tcp:            1959
+   # IMPORTANT: on RHEL based systems (Fedora/CentOS etc) the 44321/tcp: field
+   #            is written to stderr and the pid list to stdout so we
+   #            get the pid from postion 1 of stdout
+   firstpid=`fuser $1 2>/dev/null | awk {'print $1'}`
+   if [ "${firstpid}." != "." ];
+   then
+      programname=`get_process_by_exact_pid "${firstpid}"`
+      echo "${programname}"
+   else
+      echo "fuser can find no process associated with this port"
+   fi
+} # end of get_fuser_network_process_exact
+
+# ----------------------------------------------------------------------
+#              get_fuser_socket_process_exact
+# ----------------------------------------------------------------------
+get_fuser_socket_process_exact() {
+   sockname="$1"
+   isreal=${sockname:0:1}
+   if [ "${isreal}." == "/." ];
+   then
+      pidlist=`fuser ${sockname} 2>/dev/null`
+      # most sockets have pid '1' as their owner, then additional pids
+      pid2=""
+      pid1=`echo "${pidlist}" | awk {'print $1'}`
+      if [ "${pid1}." == "1." ];
+      then
+         pid2=`echo "${pidlist}" | awk {'print $2'}`
+      fi
+      if [ "${pid2}." != "." ];
+      then
+         programname=`get_process_by_exact_pid ${pid2}`
+      else
+         programname=`get_process_by_exact_pid ${pid1}`
+      fi
+      if [ "${programname}." != "." ];
+      then
+         echo "${programname}"
+      else
+         echo "fuser was unable to locate process"
+      fi
+   else
+      echo "not queryable by fuser"
+   fi
+} # end of get_fuser_socket_process_exact
+
+# ----------------------------------------------------------------------
+#             identify_network_listening_processes
+# ----------------------------------------------------------------------
+identify_network_listening_processes() {
+   # We can only collect this information if the "fuser" command is 
+   # installed on the server.
+   havefuser=`which fuser`
+   if [ "${DISABLE_FUSER}." == "YES." ];
+   then
+      echo "FUSER_INSTALLED=DISABLED" >> ${LOGFILE}
+   elif [ "${havefuser}." != "." ];
+   then
+      echo "FUSER_INSTALLED=YES" >> ${LOGFILE}
+      netstat -an | while read xx
+      do
+         listenport=""
+         listenprocess=""
+         # handling for tcp listening ports
+         testvar=`echo "${xx}" | grep "^tcp"`
+         if [ "${testvar}." != "." ];
+         then
+            testvar=`echo "${xx}" | grep "^tcp6"`
+            if [ "${testvar}." != "." ];
+            then
+               islistening=`echo "${xx}" | grep "LISTEN"`
+               if [ "${islistening}." != "." ];
+               then
+                  listenaddr=`echo "${xx}" | awk '{print $4'}`
+                  # the last field we know is the port, print the fieldcount field
+                  listenport=`echo "${listenaddr}" | awk -F: '{print $NF}'`
+                  listenprocess=`get_fuser_network_process_exact "-n tcp -6 ${listenport}"`
+                  if [ "${listenprocess}." != "." ]
+                  then
+                     echo "NETWORK_TCPV6_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+                  fi
+               fi
+            else
+               islistening=`echo "${xx}" | grep "LISTEN"`
+               if [ "${islistening}." != "." ];
+               then
+                  listenaddr=`echo "${xx}" | awk {'print $4'}`
+                  listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
+                  listenprocess=`get_fuser_network_process_exact "-n tcp -4 ${listenport}"`
+                  if [ "${listenprocess}." != "." ]
+                  then
+                     echo "NETWORK_TCPV4_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+                  fi
+               fi
+            fi   # if/else tcp5
+         fi   # if tcp
+         # handling for udp listening ports
+         testvar=`echo "${xx}" | grep "^udp"`
+         if [ "${testvar}." != "." ];
+         then
+            testvar=`echo "${xx}" | grep "^udp6"`
+            if [ "${testvar}." != "." ];
+            then
+               # different number of : delimeters in addresses
+               listenaddr=`echo "${xx}" | awk '{print $4'}`
+               # the last field we know is the port, print the fieldcount field
+               listenport=`echo "${listenaddr}" | awk -F: {'print $NF'}`
+               listenprocess=`get_fuser_network_process_exact "-n udp -6 ${listenport}"`
+               if [ "${listenprocess}." != "." ]
+               then
+                  echo "NETWORK_UDPV6_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+               fi
+            else
+               listenaddr=`echo "${xx}" | awk {'print $4'}`
+               listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
+               listenprocess=`get_fuser_network_process_exact "-n udp -4 ${listenport}"`
+               if [ "${listenprocess}." != "." ]
+               then
+                  echo "NETWORK_UDPV4_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+               fi
+            fi
+         fi
+         # fuser does not return info on ports listening on 'raw' sockets
+         testvar=`echo "${xx}" | grep "^raw"`
+         if [ "${testvar}." != "." ];
+         then
+            listenaddr=`echo "${xx}" | awk {'print $4'}`
+            listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
+            echo "NETWORK_RAW_PORT_${listenport}=fuser cannot return info on raw sockets" >> ${LOGFILE}
+         fi
+         # identify processes listening on sockets if possible
+         testvar=`echo "${xx}" | grep "^unix"`
+         if [ "${testvar}." != "." ];
+         then
+            islistening=`echo "${xx}" | grep "LISTEN"`
+            if [ "${islistening}." != "." ];
+            then
+               socketname=`echo "${xx}" | awk {'print $9'}`
+               listenprocess=`get_fuser_socket_process_exact "${socketname}"`
+               echo "NETWORK_UNIX_SOCKET=${socketname}:${listenprocess}" >> ${LOGFILE}
+            fi
+         fi
+      done
+   else
+      echo "FUSER_INSTALLED=NO" >> ${LOGFILE}
+      echo "**warning** as 'fuser' is not installed on this server information is not"
+      echo ".           being collected for processes listening on network ports."
+   fi  # if we have a fuser commmand
+} # end of identify_network_listening_processes
+
+# MAINLINE STARTS
 # ======================================================================
 # Record the server details
 # ======================================================================
 myhost=`hostname`
-mydate=`date`
+mydate=`date +"%Y/%m/%d %H:%M"`
 osversion=`uname -r`
 ostype=`uname -s`
 echo "TITLE_HOSTNAME=${myhost}" >> ${LOGFILE}
@@ -278,7 +546,7 @@ echo "TITLE_CAPTUREDATE=${mydate}" >> ${LOGFILE}
 echo "TITLE_OSVERSION=${osversion}" >> ${LOGFILE}
 echo "TITLE_OSTYPE=${ostype}" >> ${LOGFILE}
 echo "TITLE_FileScanLevel=${SCANLEVEL_USED}" >> ${LOGFILE}
-echo "TITLE_ExtractVersion=0.05" >> ${LOGFILE}
+echo "TITLE_ExtractVersion=0.06" >> ${LOGFILE}
 
 # ======================================================================
 # Collect User Details and key system defaults.
@@ -297,7 +565,7 @@ record_file LOGIN_DEFS /etc/login.defs        # passwd maxage, minlen etc
 #                       the assumption that all files in the / slice
 #                       were root files went belly up (ie: all the stuff
 #                       in /home had violations). So can no longer scan
-#                       from /, so specify all thr system file directories.
+#                       from /, so specify all the system file directories.
 # ======================================================================
 #find_perms_under_system_dir PERM_SYSTEM_FILE /
 find_perms_under_system_dir PERM_SYSTEM_FILE /bin
@@ -325,11 +593,11 @@ done
 # From F20 (19?) -perm +6000 is npr permitted to find both,
 # we have to seperately search on -4000 and -2000 now
 # ======================================================================
-find / -type f -perm -4000 -exec ls -la {} \;  | while read dataline
+find / -type f -perm -4000 -exec ls -la {} \; 2>/dev/null | while read dataline
 do
    echo "SUID_FILE=${dataline}" >> ${LOGFILE}
 done
-find / -type f -perm -2000 -exec ls -la {} \;  | while read dataline
+find / -type f -perm -2000 -exec ls -la {} \; 2>/dev/null | while read dataline
 do
    echo "SUID_FILE=${dataline}" >> ${LOGFILE}
 done
@@ -343,22 +611,45 @@ find_file_perm PERM_SHADOW_FILE /etc/shadow "root"
 # find_file_perm PERM_SENDMAIL_FILE /etc/sendmail.cf
 
 # ======================================================================
+# Are cron.allow and cron.deny being used ?
+# ======================================================================
+if [ -f /etc/cron.deny ];
+then
+   echo "CRON_DENY_EXISTS=YES" >> ${LOGFILE}
+   cat /etc/cron.deny | while read dataline
+   do
+      echo "CRON_DENY_DATA=${dataline}" >> ${LOGFILE}
+   done
+else
+   echo "CRON_DENY_EXISTS=NO" >> ${LOGFILE}
+fi
+if [ -f /etc/cron.allow ];
+then
+   echo "CRON_ALLOW_EXISTS=YES" >> ${LOGFILE}
+   cat /etc/cron.allow | while read dataline
+   do
+      echo "CRON_ALLOW_DATA=${dataline}" >> ${LOGFILE}
+   done
+else
+   echo "CRON_ALLOW_EXISTS=NO" >> ${LOGFILE}
+fi
+
+# ======================================================================
 # Collect permissions of jobs run by cron
 # ======================================================================
-# Anacron if present
-if [ -f /etc/anacrontab ];
-then
-   grep "run-parts" /etc/anacrontab | grep -v "^#" | while read dataline
-   do
-         fname=`echo "${dataline}" | awk {'print $5'}`
-         find_file_perm PERM_CRON_JOB_FILE ${fname} "root" "anacrontab"
-   done
-fi
 # User cron jobs
-find /var/spool/cron -type f | while read dataline
+find /var/spool/cron -type f 2>/dev/null | while read dataline
 do
-   grep -v "^#" ${dataline} | while read crontabline
+   # record each crontab filename, we check those in processing also
+   filenamedata=`basename ${dataline}`
+   echo "CRON_SPOOL_CRONTAB_FILE=${filenamedata}" >> ${LOGFILE}
+   # then record the contents of each crontab
+   crontabowner=`basename ${dataline}`
+   # exclude commands and common environment variable settings that may be in crontabs before schedules
+   grep -v "^#" ${dataline} | grep -v "^PATH=" | grep -v "^SHELL=" | while read crontabline
    do
+      if [ ${#crontabline} -gt 10 ]; # try and ignore blank lines
+      then
          # allow for * * * * * file, and * * * * * sh -c "file"
          testvar=`echo "${crontabline}" | grep "\-c"`
          if [ "${testvar}." = "." ];
@@ -366,9 +657,29 @@ do
             fname=`echo "${crontabline}" | awk {'print $6'}`
          else
             fname=`echo "${crontabline}" | awk {'print $8'}`
+            # if command after "shell -c" is in quotes remove the start/end quotes
+            aa=${fname:0:1}
+            if [ "${aa}." == "\"." -o "${aa}." == "\'." ];
+            then
+               fname=${fname:1:${#fname}}
+               # may not have a tailing quote if there was a space after the command,
+               # so test before  removing the last char.
+               aa=${fname:$(( ${#fname} - 1 )):1}
+               if [ "${aa}." == "\"." -o "${aa}." == "\'." ];
+               then
+                  fname=${fname:0:$((${#fname} - 1))}
+               fi
+            fi
          fi
-         crontabowner=`basename ${dataline}`
-         find_file_perm PERM_CRON_JOB_FILE ${fname} "${crontabowner}" "crontab"
+         resultdata=`find_file_perm_nolog PERM_CRON_JOB_FILE ${fname} "${crontabowner}" "crontab"`
+         if [ "${resultdata}." != "." ];
+         then
+            echo "${resultdata}@${crontabline}" >> ${LOGFILE}
+         else # record crontab lines we could not check file perms for
+              # these will be lines with commands such as 'cd xxx;./command'
+            echo "NO_PERM_CRON_JOB_FILE=${crontabowner} crontab:@${crontabline}" >> ${LOGFILE}
+         fi
+      fi
    done
 done
 
@@ -389,12 +700,12 @@ then
    find_file_perm PERM_HOSTS_EQIV_SYSTEM "/etc/ssh/shosts.equiv" "root"
    record_file HOSTS_EQIV /etc/ssh/shosts.equiv
 fi
-find / -name ".rhosts" | while read dataline
+find / -name ".rhosts" 2>/dev/null | while read dataline
 do
    find_file_perm PERM_HOSTS_EQIV_USER "${dataline}" "NA"
    record_file HOSTS_EQIV ${dataline}
 done
-find / -name ".shosts" | while read dataline
+find / -name ".shosts" 2>/dev/null | while read dataline
 do
    find_file_perm PERM_HOSTS_EQIV_USER "${dataline}" "NA"
    record_file HOSTS_EQIV ${dataline}
@@ -413,26 +724,33 @@ then
 fi
 
 # --- what ports are being listened to ? ---
-netstat -an | grep LISTEN | grep "tcp "| grep -v "::" | while read dataline
+netstat -an | grep LISTEN | grep "^tcp "| grep -v "::" | while read dataline
 do
    echo "PORT_TCP_LISTENING=${dataline}" >> ${LOGFILE}
 done
-netstat -an | grep LISTEN | grep "tcp6 "| grep "::" | while read dataline
+netstat -an | grep LISTEN | grep "^tcp6 "| grep "::" | while read dataline
 do
    echo "PORT_TCPV6_LISTENING=${dataline}" >> ${LOGFILE}
 done
-netstat -an | grep "udp "| grep -v "::" | while read dataline
+netstat -an | grep "^udp "| grep -v "::" | while read dataline
 do
    echo "PORT_UDP_LISTENING=${dataline}" >> ${LOGFILE}
 done
-netstat -an | grep "udp6 "| grep "::" | while read dataline
+netstat -an | grep "^udp6 "| grep "::" | while read dataline
 do
    echo "PORT_UDPV6_LISTENING=${dataline}" >> ${LOGFILE}
+done
+netstat -an | grep "^raw"| grep "::" | while read dataline
+do
+   echo "PORT_RAW_LISTENING=${dataline}" >> ${LOGFILE}
 done
 netstat -an | grep LISTEN | grep "unix "| while read dataline
 do
    echo "PORT_UNIX_LISTENING=${dataline}" >> ${LOGFILE}
 done
+
+# try to match a running process to any listening network port
+identify_network_listening_processes
 
 # Whats in the services file
 record_file SERVICES_FILE /etc/services
@@ -556,6 +874,24 @@ Use yum install lshw on server ${myhost} to resolve this.
 ******************************************************************
 EOF
    fi
+fi
+
+# ======================================================================
+# Depending on processing options some files may not have been produced
+# so only list those that were.
+echo "Copy the below files to the reporting server to be processed."
+echo "${LOGFILE}"
+if [ -f ${ETCTARFILE} ];
+then
+   echo "${ETCTARFILE}"
+fi
+if [ -f ${HWFILE} ];
+then
+   echo "${HWFILE}"
+fi
+if [ -f ${RPMFILE} ];
+then
+   echo "${RPMFILE}"
 fi
 
 # ======================================================================
