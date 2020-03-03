@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.05 of the processing script<br />
-Version 0.05 of the data collection script<br />
-Last upadted 21 February 2020
+Version 0.06 of the processing script<br />
+Version 0.06 of the data collection script<br />
+Last upadted 3 March 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -507,8 +507,8 @@ interfaces</em>, you can only get an OK when it is more securely bound to
 a specific interface or address.
 </p>
 <p>
-The syntax of a TCP-IP override (where <type> is either 4 or 6 for tcp4/tcp6) line is...<br>
-<span style="background-color: #FFCCFF"><b>TCP_PORTV<type>_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b><br><br></span>
+The syntax of a TCP-IP override (where &ltversion&gt is either 4 or 6 for tcp4/tcp6) line is...<br>
+<span style="background-color: #FFCCFF"><b>TCP_PORTV&ltversion&gt_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b><br><br></span>
 
 For example...<br>
 <span style="background-color: #D7FFFF"><b>TCP_PORTV4_ALLOWED=:22:ssh</b></span>
@@ -520,6 +520,11 @@ for the specified port to be listening on all interfaces (on 0.0.0.0 or :::),
 but this should be used only if your site has a specific reason for an application
 to listen on all interfaces, you should configure your application to only listen
 on the interfaces it needs.
+</p>
+<p>
+Additional parameters to manage what is expected to be permittted to use
+TCP ports have been implemented as of version 0.06 onward; refer to Appendix B
+for all the options available.
 </p>
 
 
@@ -541,8 +546,8 @@ There are seperate custom statements for UDP ports as we don't want to
 confuse an allowed tcp port of 123 with a disallowed udp port of 123.
 </p>
 <p>
-The syntax of a UDP override (where <type> is either 4 or 6 for tcp4/tcp6) line is...<br>
-<span style="background-color: #FFCCFF"><b>UDP_PORTV<type>_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b><br><br></span>
+The syntax of a UDP override (where &ltversion&gt is either 4 or 6 for tcp4/tcp6) line is...<br>
+<span style="background-color: #FFCCFF"><b>UDP_PORTV&ltversion&gt_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b><br><br></span>
 
 For example...<br>
 <span style="background-color: #D7FFFF"><b>UDP_PORTV4_ALLOWED=:2049:tcp Network Filesystem - NFS</b></span>
@@ -550,6 +555,11 @@ For example...<br>
 <p>
 The optional :WILD option performs the same function as discussed in the
 tcp section above.
+</p>
+<p>
+Additional parameters to manage what is expected to be permittted to use
+UDP ports have been implemented as of version 0.06 onward; refer to Appendix B
+for all the options available.
 </p>
 
 <H3>4. Home Directory Ownership Overrides</H3>
@@ -927,6 +937,48 @@ be configured in a more secure manner. If used while it will not be treated as
 an alert the report will highlight it in a different color to indicate that it
 is considered insecure.
 </td></tr>
+<tr><td>NETWORK_TCPV4_PROCESS_ALLOW=<em>full process details as shown by 'ps'</em></td><td>
+This parameter can be used in the case where a known process is permitted to
+use a TCPV4 port but the port cannot be explicitly defined using the above entries
+because the process uses random port numbers. This parameter can only be used if
+the server had 'fuser' installed and was able to obtain the process details<br />
+While if used it will not be treated as
+an alert the report will highlight it in a different color to indicate that it
+is considered insecure.
+</td></tr>
+<tr><td>NETWORK_TCPV6_PROCESS_ALLOW=<em>full process details as shown by 'ps'</em></td><td>
+This parameter can be used in the case where a known process is permitted to
+use a TCPV6 port but the port cannot be explicitly defined using the above entries
+because the process uses random port numbers. This parameter can only be used if
+the server had 'fuser' installed and was able to obtain the process details<br />
+While if used it will not be treated as
+an alert the report will highlight it in a different color to indicate that it
+is considered insecure.
+</td></tr>
+<tr><td>NETWORK_UDPV4_PROCESS_ALLOW=<em>full process details as shown by 'ps'</em></td><td>
+This parameter can be used in the case where a known process is permitted to
+use a UDPV4 port but the port cannot be explicitly defined using the above entries
+because the process uses random port numbers. This parameter can only be used if
+the server had 'fuser' installed and was able to obtain the process details<br />
+Example<br />
+NETWORK_UDPV4_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
+<br />
+While if used it will not be treated as
+an alert the report will highlight it in a different color to indicate that it
+is considered insecure.
+</td></tr>
+<tr><td>NETWORK_UDPV6_PROCESS_ALLOW=<em>full process details as shown by 'ps'</em></td><td>
+This parameter can be used in the case where a known process is permitted to
+use a UDPV6 port but the port cannot be explicitly defined using the above entries
+because the process uses random port numbers. This parameter can only be used if
+the server had 'fuser' installed and was able to obtain the process details<br />
+Example<br />
+NETWORK_UDPV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
+<br />
+While if used it will not be treated as
+an alert the report will highlight it in a different color to indicate that it
+is considered insecure.
+</td></tr>
 <tr><td>ALLOW_OWNER_ROOT=<em>directoryname</em></td><td>
 Allows a directory that is expected to be owned by a user other than root to
 be accepted as OK for reporting if the directory is owned by the root user.
@@ -1141,6 +1193,33 @@ Results are accessable from results/index.html under the application directory.
 <a name="sect8"></a>
 <center><a href="#sect7">[Previous Section]</a> <a href="#sect0">[Index]</a></center>
 <h1>8. Appendix D - Major changes between versions you need to know</h1>
+<p>
+This section does not list all changes, bug-fixes and enhancements.
+This section is specifically for changes that will impact the way you
+use this toolkit and the results that will be produced.
+</p>
+<ul>
+<li><b>Major changes between version 0.05 and 0.06</b>
+   <ul>
+   <li>existence of cron.allow or cron.deny is now checked for so you
+       can expect to see a new alert as most users do not use those</li>
+   <li>a new report page is available when files are suppressed from the report totals
+      (specifically if group write is allowed under /var)
+      as an additional link on the filesystem check page to a page where users can see exactly what files
+      were suppressed</li>
+   <li>the 'fuser' command is now expected to be available on all servers for which data
+       is collected to provide additional information on what processes are using
+       network ports and network socket files. Populates new table entries plus is
+       used in new custom file parameters</li>
+   <li>custom file parameter changes and additonal parameters added for open network ports,
+       all custom files using the old parameter format will still work (until version 0.07)
+       but an alert will be raised for servers using the obsolete parameters in the server 
+       totals and a list of servers using obsolete parameters will be shown on the main
+       index page</li>
+   </ul>
+</li>
+</ul>
+
 <ul>
 <li><b>Major changes between version 0.04 and 0.05</b>
     <ul>
@@ -1155,7 +1234,7 @@ Results are accessable from results/index.html under the application directory.
         will not run if you use the old name with the underscore</em></b> and to
         avoid hundreds of errors the script checks the path it is in before doing any
         real work</li>
-    <li>it is now possible to re-process a single servers results rather than having
+    <li><b>it is now possible to re-process a single servers results</b> rather than having
         to re-process all servers to see changes for one. It is important to note
         that in some cases this requires user interaction to prompts from the 
         processing script so you cannot automate that (refer to the processing
@@ -1216,8 +1295,9 @@ I chose not to code for all possible OS's but only the ones I use.
 </p>
 <ul>
 <li>the crontab check section does its best to identify the files run from the crontabs
-but does not handle multiple commands (ie: 55 10 * * 0 cd /home/user/dir;./runcommand)
-so is only usefull if crontab entries run explicit files 
+but does not handle multiple commands (ie: 55 10 * * 0 cd /home/user/dir;./runcommand
+will perform a permissions check on the cd command as that is considered the command)
+so is only usefull if crontab entries run explicit script files 
 (ie: 55 10 * * 0 cd /home/user/dir/runcommand) that can be checked. But it is still
 able to check many entries so better than nothing, plus all entries that could not
 be correctly checked are reported on. Implement site standards that require
