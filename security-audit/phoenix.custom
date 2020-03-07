@@ -21,6 +21,7 @@ TCP_PORTV6_ALLOWED=:9090:Cockpit
 UDP_PORTV4_ALLOWED=:123:NTP
 UDP_PORTV6_ALLOWED=:123:NTP
 UDP_PORTV6_ALLOWED=:1716:kdeconnectd
+RAW_PORTV6_ALLOWED=:58:NetworkManager
 #
 # These processes listen on random ports, permit them
 # to be OK, although they will be reported with

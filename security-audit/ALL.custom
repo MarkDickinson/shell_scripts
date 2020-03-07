@@ -14,8 +14,27 @@
 # ===============================================================
 # Network check overrides
 # ===============================================================
-# TCP Ports that are permitted to be listening on all servers
+# By default all open ports are reported as critical until defined
+# in a server customisation file, as it is important you know
+# what network ports are expected to be open on your server(s).
+#
+# ------- Customising by known port number --------
+#
+# When defining ports in a customisation file the following
+# processing rules will occur
+# -- if the port is bound to specific addresses the port is
+#    considered OK
+# -- if the port is listening on all interfaces it is reported as 
+#    a warning and the server warning count incremented
+# -- if the optional :WILD parameter is used to indicate that
+#    you require the port to listen on all interfaces no counters
+#    are incremented but the report will display it in a different
+#    colour to indicate it is still considered insecure.
+#
 # Syntax: TCP_PORTV<type>_ALLOWED=:<port-num>:<description>[:WILD]
+#         UDP_PORTV<type>_ALLOWED=:<port-num>:<description>[:WILD]
+#         RAW_PORTV<type>_ALLOWED=:<port-num>:<description>[:WILD]
+#
 # Notes: The ":" around the port number is to make exact
 #        matching agaist the port number easier for the
 #        processing script.
@@ -25,6 +44,8 @@
 #        insecure. ONLY set that for ports you know cannot be 
 #        configured to a specific interface or has a site reason 
 #        to listen on all interfaces.
+#
+# Common TCP ports on Fedora systems
 TCP_PORTV4_ALLOWED=:22:ssh:WILD
 TCP_PORTV4_ALLOWED=:25:sendmail
 TCP_PORTV4_ALLOWED=:111:portmapper
@@ -34,27 +55,52 @@ TCP_PORTV6_ALLOWED=:111:portmapper
 TCP_PORTV6_ALLOWED=:5666:NRPE
 TCP_PORTV6_ALLOWED=:9090:Cockpit
 #
-# UDP Ports that are permitted to be listening on all servers
-# Syntax: UDP_PORTV<type>_ALLOWED=:<port-num>:<description>[:WILD]
+# Common UDP ports on Fedora systems
 UDP_PORTV4_ALLOWED=:111:portmapper
 UDP_PORTV4_ALLOWED=:123:NTP
 UDP_PORTV6_ALLOWED=:111:portmapper
 UDP_PORTV6_ALLOWED=:123:NTP
 #
-# processes allowed to bind to random ports, as they use
-# random ports they cannot be explicitly defined in the
-# entries above. The value must be an exact 'full' match
-# for the process details returned by 'fuser'... and obviously
-# can only be used if th server had fuser installed at the 
-# time the data was collected.
+# Common RAW ports on Fedora systems, if tcpipv6 is enabled on the server
+RAW_PORTV6_ALLOWED=:58:NetworkManager
+#
+# ------- Customising by known process name --------
+#
+# These parameters are for processes that use random ports,
+# such as rpcbind, where it is impossible to define them
+# as known ports using the parameters above.
+# The value must be an exact 'full' match
+# for the process details returned by 'ps'.
 # Note: CentOS7 runs the below as '/sbin/rpcbind -w' (no -f and from sbin)
+#
+# When defining a process as being permitted/expected to use
+# a port the following procesisng rules occur
+# -- if the port is bound to specfic ip-addresses no
+#    alert/warning counters are incremented, but the report
+#    will display it in a different colour to indicate it
+#    is insecure (as a process could match on multiple ports)
+# -- if the port listens on all interfaces instead of a
+#    critical alert a warning alert will be raised and the
+#    warning counters incremented.
+#    There is no facility such as the :WILD parameter in
+#    the above section available here as having to
+#    match by process must always be considered insecure.
+#
+# Syntax: NETWORK_TCPV4_PROCESS_ALLOW=/the/full/programname and parms
+#         NETWORK_TCPV6_PROCESS_ALLOW=/the/full/programname and parms
+#         NETWORK_UDPV4_PROCESS_ALLOW=/the/full/programname and parms
+#         NETWORK_UDPV6_PROCESS_ALLOW=/the/full/programname and parms
+#         NETWORK_RAWV4_PROCESS_ALLOW=/the/full/programname and parms
+#         NETWORK_RAWV6_PROCESS_ALLOW=/the/full/programname and parms
+#
+# Coomon values required for Fedora systems
 NETWORK_UDPV4_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
 NETWORK_UDPV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
-# The below are server specific so cannot be used in ALL.custom
-# as they rely on the server name, the below example would
-# be for server phoenix
+# The below are server specific so cannot be used in ALL.custom,
+# needed for desktop machines so set for your environment
 #NETWORK_UDPV4_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]
 #NETWORK_UDPV6_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]
+#
 #
 # ===============================================================
 # Filesystem check check overrides
@@ -73,7 +119,10 @@ ADD_SYSTEM_FILE_OWNER=setroubleshoot
 # ---------------------------------------------------------------
 # Overrides affecting home directory checks
 # ---------------------------------------------------------------
-# Home Directory ownership overrides as required
+# Home Directory ownership overrides as required. Used in the
+# case where many system users have home directories that are
+# system directories that need to be owned by root and not the
+# userid that has it defined as their home directory.
 ALLOW_OWNER_ROOT=bin
 ALLOW_OWNER_ROOT=sbin
 ALLOW_OWNER_ROOT=daemon
@@ -128,6 +177,7 @@ ALLOW_DIRPERM_SYSTEM=root
 ALLOW_DIRPERM_EXPLICIT=mail drwxrwxr-x
 ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T
 ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
+#
 # The below two are probably Fedora specific, some system userids
 # are defined with the home directories below, which are actually
 # symbolic links so will always fail checks.

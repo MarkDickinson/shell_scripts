@@ -32,8 +32,8 @@
 #      B.4 - check SAMBA
 #   C. Network Connectivity
 #      C.1.1 - compare listening ports against allowed ports (tcp/tcp6/udp/udp6/raw)
-#      C.1.2 - details of open network sockets
-#      C.1.3 - check for obsolete custom entries (ports in custom file no longer in use on server)
+#      C.1.2 - check for obsolete custom entries (ports in custom file no longer in use on server)
+#      C.1.3 - details of network sockets in use
 #   D. Cron security
 #      D.1 - cron.allow and cron.deny checks
 #      D.2 - check all cronjob script files secured tightly, to correct owner
@@ -120,7 +120,19 @@
 #                       report on in the cron security checks.
 #                   (5) report on obsolete customisation parameters still
 #                       in custom files after upgrade to 0.06 that will
-#                       be removed in version 0.07
+#                       be removed in version 0.08
+# MID: 2020/03/06 - Version 0.07
+#                   (1) updated to use the new parameters and information
+#                       provided for processes using network ports
+#                   (2) moved custom file checks and unix socket
+#                       report into seperate routines so I can swap
+#                       them about in the report easily, as socket
+#                       listings do not alert the custom check where users
+#                       can take action was moved above, but when socket
+#                       checking is enforced in later versions will want
+#                       to swap them around again.
+#                   (3) add network 'raw' port custom file handling to
+#                       match existing tcp/udp handling
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -151,7 +163,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.06"
+PROCESSING_VERSION="0.07"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -793,7 +805,7 @@ can_user_use_cron() {
    echo "${resultdata}"
 } # end of can_user_use_cron
 
-# ----------------------------------------------------------
+# ==========================================================
 #                      Appendix A.
 #   A. Users
 #      A.1 - Check users all have unique uids
@@ -803,8 +815,7 @@ can_user_use_cron() {
 #            (yes, A.3 should be in B.3, but we need the files from A so 'so be it'.
 #      A.5 - /etc/shadow must be tightly secured
 #      A.6 - Check system default passwd maxage, minlen etc
-# ----------------------------------------------------------
-
+# ==========================================================
 extract_appendix_a_files() {
    hostid="$1"
    # password file entries
@@ -1198,14 +1209,14 @@ build_appendix_a() {
    server_index_addline "${hostid}" "Appendix A - User Checks" "${htmlfile}"
 } # build_appendix_a
 
-# ----------------------------------------------------------
+# ==========================================================
 #                      Appendix B.
 #   B. Network access
 #      B.1 - check system host equivalences files
 #      B.2 - check user host equivalences files and security of
 #      B.3 - check NFS file shares
 #      B.4 - check SAMBA
-# ----------------------------------------------------------
+# ==========================================================
 
 extract_appendix_b_files() {
    hostid="$1"
@@ -1347,15 +1358,17 @@ build_appendix_b() {
    server_index_addline "${hostid}" "Appendix B - Network Access Checks" "${htmlfile}"
 } # build_appendix_b
 
-# ----------------------------------------------------------
+# ==========================================================
 #                      Appendix C.
 #   C. Network Connectivity
 #      C.1 - compare listening ports against allowed ports
 #      C.2 - check services/portconf file for insecure applications ?
+# ==========================================================
 # ----------------------------------------------------------
 # We extract the values we will be checking against from the
 # main file so we have much smaller files to grep against
-# when doing our checks.
+# when doing our many checks.
+# ----------------------------------------------------------
 extract_appendix_c_files() {
    hostid="$1"
    clean_prev_work_files
@@ -1363,13 +1376,14 @@ extract_appendix_c_files() {
 
    # ====== Ports listening for connections ======
    # ---- tcp ports open ----
-   grep "^PORT_TCP_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
+   grep "^PORT_TCPV4_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
    do
       realdata=`echo "${dataline}" | cut -d\= -f2`
       listenaddr=`echo "${realdata}" | awk {'print $4'}`
       listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
       listenaddr=`echo "${listenaddr}" | awk -F: {'print $1'}`
-      echo "${listenport} ${listenaddr} 4" >> ${WORKDIR}/active_tcp_services.wrk
+      programname=`echo "${dataline}" | awk -F\/ {'print $2'}`
+      echo "${listenport} ${listenaddr} 4 ${programname}" >> ${WORKDIR}/active_tcp_services.wrk
    done
    grep "^PORT_TCPV6_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
    do
@@ -1380,21 +1394,23 @@ extract_appendix_c_files() {
       # the last field we know is the port, print the fieldcount field
       listenport=`echo "${listenaddr}" | awk -F: '{print $NF}'`
       listenaddr=`echo "${listenaddr} X" | sed -e"s/:$listenport X/:/g"`
-      echo "${listenport} ${listenaddr} 6" >> ${WORKDIR}/active_tcp_services.wrk
+      programname=`echo "${dataline}" | awk -F\/ {'print $2'}`
+      echo "${listenport} ${listenaddr} 6 ${programname}" >> ${WORKDIR}/active_tcp_services.wrk
    done
    if [ -f ${WORKDIR}/active_tcp_services.wrk ];
    then
       cat ${WORKDIR}/active_tcp_services.wrk | sort -n >> ${WORKDIR}/active_tcp_services.wrk2
    fi 
 
-   grep "^PORT_UDP_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
+   grep "^PORT_UDPV4_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
    do
       realdata=`echo "${dataline}" | cut -d\= -f2`
       # udp        0      0 0.0.0.0:111             0.0.0.0:*
       listenaddr=`echo "${realdata}" | awk {'print $4'}`
       listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
       listenaddr=`echo "${listenaddr}" | awk -F: {'print $1'}`
-      echo "${listenport} ${listenaddr} 4" >> ${WORKDIR}/active_udp_services.wrk
+      programname=`echo "${dataline}" | awk -F\/ {'print $2'}`
+      echo "${listenport} ${listenaddr} 4 ${programname}" >> ${WORKDIR}/active_udp_services.wrk
    done
    grep "^PORT_UDPV6_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
    do
@@ -1411,19 +1427,13 @@ extract_appendix_c_files() {
       # the last field we know is the port, print the fieldcount field
       listenport=`echo "${listenaddr}" | awk -F: {'print $NF'}`
       listenaddr=`echo "${listenaddr} X" | sed -e"s/:$listenport X/:/g"`
-      echo "${listenport} ${listenaddr} 6" >> ${WORKDIR}/active_udp_services.wrk
+      programname=`echo "${dataline}" | awk -F\/ {'print $2'}`
+      echo "${listenport} ${listenaddr} 6 ${programname}" >> ${WORKDIR}/active_udp_services.wrk
    done
    if [ -f ${WORKDIR}/active_udp_services.wrk ];
    then
       cat ${WORKDIR}/active_udp_services.wrk | sort -n >> ${WORKDIR}/active_udp_services.wrk2
    fi
-
-   # --- The unix ports open ---
-   grep "^PORT_UNIX_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
-   do
-     realdata=`echo "${dataline}" | cut -d\= -f2`
-     echo "${realdata}" >> ${WORKDIR}/active_unix_services
-   done
 
    # ====== And other stuff needed ======
    # --- Extract The server services file for xref use ---
@@ -1436,14 +1446,14 @@ extract_appendix_c_files() {
    # --- Build the allowed ports files if a server customisation file exists ---
    if [ "${CUSTOMFILE}." != "." ];
    then
-      # First the old format parameters we will obsolete in version 0.07
+      # First the old format parameters we will obsolete in version 0.08
       badparms=`grep "PORT_ALLOWED" ${CUSTOMFILE} | wc -l`
       if [ ${badparms} -gt 0 ];
       then
          echo "***WARNING*** Your custom file contains obsolete network parameters"
          echo ".   File: ${CUSTOMFILE}"
          echo ".   The parameters TCP_PORT_ALLOWED and UDP_PORT_ALLOWED are obsolete,"
-         echo ".   and will not be supported in version 0.07."
+         echo ".   and will not be supported in version 0.08."
          echo ".   Replace with the new TCP_PORTV4_ALLOWED, TCP_PORTV6_ALLOWED,"
          echo ".   UDP_PORTV4_ALLOWED and UDP_PORTV6_ALLOWED as soon as possible."
          echo "Note: you cannot have both formats in the same configuration file,"
@@ -1454,7 +1464,7 @@ extract_appendix_c_files() {
 
       # Then the new format parameters available from version 0.06 onward
       # If the files are created the disable old version processing so only do anything if
-      # there is data. remove all the if for version 0.07
+      # there is data. remove all the if for version 0.08
       counter=`grep "^TCP_PORTV4_ALLOWED" ${CUSTOMFILE} | wc -l`
       if [ ${counter} -gt 0 ];
       then
@@ -1475,12 +1485,24 @@ extract_appendix_c_files() {
       then
          grep "^UDP_PORTV6_ALLOWED" ${CUSTOMFILE} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_udp_ports_v6
       fi
+      counter=`grep "^RAW_PORTV4_ALLOWED" ${CUSTOMFILE} | wc -l`
+      if [ ${counter} -gt 0 ];
+      then
+         grep "^RAW_PORTV4_ALLOWED" ${CUSTOMFILE} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_raw_ports_v4
+      fi
+      counter=`grep "^RAW_PORTV6_ALLOWED" ${CUSTOMFILE} | wc -l`
+      if [ ${counter} -gt 0 ];
+      then
+         grep "^RAW_PORTV6_ALLOWED" ${CUSTOMFILE} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_raw_ports_v6
+      fi
    fi
 } # extract_appendix_c_files
 
+# ----------------------------------------------------------
 # For the new parameters introduced in version 0.06 checks that all custom
 # parameters using a port number actually have the port open, to detect
 # obsolete entries.
+# ----------------------------------------------------------
 appendix_c_check_unused_number_port() {
    datatype="$1"
    dataversion="$2"
@@ -1500,9 +1522,11 @@ appendix_c_check_unused_number_port() {
    fi
 } # end of appendix_c_check_unused_number_port
 
+# ----------------------------------------------------------
 # For the new parameters introduced in version 0.06 checks that all custom
 # parameters using a process name actually have a process of that name
 # listening on the correct type of port, to check for obsolete entries.
+# ----------------------------------------------------------
 appendix_c_check_unused_process_port() {
    datatype="$1"
    dataversion="$2"
@@ -1511,6 +1535,10 @@ appendix_c_check_unused_process_port() {
       processallow=`echo "${dataline}" | awk -F\= {'print $2'}`
       bb=`echo "${processallow}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
       exists=`grep "${bb}" ${SRCDIR}/secaudit_${hostid}.txt | grep "^NETWORK_${datatype}V${dataversion}_PORT_"`
+      if [ "${exists}." == "." ];   # if no fuser provided info use the netstat process name info
+      then
+          exists=`grep "${bb}" ${SRCDIR}/secaudit_${hostid}.txt | grep "^PORT_${datatype}V${dataversion}_LISTENING"`
+      fi
       if [ "${exists}." == "." ];
       then
          echo "<tr bgcolor=\"${colour_alert}\"><td>${datatype}V${dataversion}</td><td>any process</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
@@ -1518,6 +1546,7 @@ appendix_c_check_unused_process_port() {
       else
          # may be more than one partial match entry
          delete_file ${WORKDIR}/appendixc_foundmatch
+         # --- checks on fuser collected info
          grep "${bb}" ${SRCDIR}/secaudit_${hostid}.txt | grep "^NETWORK_${datatype}V${dataversion}_PORT_" | while read exists
          do
             exists=`echo "${exists}" | awk -F\= {'print $2'}`        # get the process field
@@ -1527,6 +1556,20 @@ appendix_c_check_unused_process_port() {
                touch ${WORKDIR}/appendixc_foundmatch
             fi
          done
+         # --- if needed check against netstat collected info
+         if [ ! -f ${WORKDIR}/appendixc_foundmatch ];
+         then
+            grep "${bb}" ${SRCDIR}/secaudit_${hostid}.txt | grep "^PORT_${datatype}V${dataversion}_LISTENING" | while read exists
+            do
+               exists=`echo "${exists}" | awk -F\/ {'print $2'}`     # get the process field
+               exists=`echo "${exists}"`        # removes training spaces
+               if [ "${exists}." == "${processallow}." ];               # need an exact match
+               then
+                  touch ${WORKDIR}/appendixc_foundmatch
+               fi
+            done
+         fi
+         # then check for any match found
          if [ ! -f ${WORKDIR}/appendixc_foundmatch ];
          then
             echo "<tr bgcolor=\"${colour_alert}\"><td>${datatype}V${dataversion}</td><td>any process</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
@@ -1536,290 +1579,82 @@ appendix_c_check_unused_process_port() {
    done
 } # end of appendix_c_check_unused_process_port
 
-build_appendix_c() {
+# ----------------------------------------------------------
+# This routine produces the socket in use report.
+# It needs to be in its own routine to make it easy to
+# move about in the report.
+# ----------------------------------------------------------
+appendix_c_unix_socket_port_report() {
    hostid="$1"
-   htmlfile="${RESULTS_DIR}/${hostid}/appendix_C.html"
-   log_message ".     Building Appendix C - performing network connectivity checks"
 
-   extract_appendix_c_files "${hostid}"
-
-   echo "<html><head><title>Network Connectivity Checks for ${hostid}</title></head><body>" >> ${htmlfile}
-   echo "<h1>Appendix C - Network Connectivity Checks for ${hostid}</h1>" >> ${htmlfile}
-
-   echo "<p>This appendix lists all the open ports on the server, even" >> ${htmlfile}
-   echo "if the ports are expected to be open you should review" >> ${htmlfile}
-   echo "the ports in use to see if any can be closed.</p>" >> ${htmlfile}
-
-   # This block can be removed in version 0.07 when the parameters are 
-   # completely dropped.
-   testoldver1=`grep "^TCP_PORT_ALLOWED" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
-   testoldver2=`grep "^UDP_PORT_ALLOWED" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
-   if [ ${testoldver1} -gt 0 -o ${testoldver2} -gt 0 ];
-   then
-      echo "<p><b>Your customisation file is using obsolete parameters that will" >> ${htmlfile}
-      echo "be dropped in the next release; critical alert count incremented for that issue.</b></p>" >> ${htmlfile}
-      inc_counter ${hostid} alert_count
-   fi
-
-   # C.1 Check all listening ports against the allowed services and the
-   #    services files. Report allowed services as green fields, unexpected
-   #    ones in red as alerts for review.
-   #    Note: anything lstening on 0.0.0.0 rates a warning even if allowed
-   #          as this can be attached to by all interfaces, even internet ones.
-   #          Updated for tcp6 to also warn for ::: as well as 0.0.0.0
-   #    Note2: there will always be something listening so don't bother
-   #           checking if the file exists before creating the table headers here.
-   echo "<h1>C.1.1 - TCP access ports open on the server</h1>" >> ${htmlfile}
-   echo "<p>These are the open ports listening for incoming connections" >> ${htmlfile}
-   echo "to this server. These need to be reviewed periodically.</p>" >> ${htmlfile}
-   echo "<p>As a general rule services specifically allowed to run on" >> ${htmlfile}
-   echo "the servers (as defined in custom file) will be green, <em>unless they listen on all interfaces" >> ${htmlfile}
-   echo "which rates them a warning unless explicity permitted by the custom file</em>. For all other ports that are listening" >> ${htmlfile}
-   echo "you will get an alert as they are unexpected.</p>" >> ${htmlfile}
-   echo "<p>You should not try to suppress the warnings for known ports using the customisation file unless it is" >> ${htmlfile}
-   echo "impossible to customise the application. In all cases you should try to secure the application first.</p>" >> ${htmlfile}
-
-   echo "<table><tr><td bgcolor=\"${colour_banner}\" colspan=\"4\">Colour mappings used</td></tr><tr>" >> ${htmlfile}
-   echo "<td bgcolor=\"${colour_OK}\">OK, no issues</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"${colour_warn}\">insecure value<br />warning count incremeted</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"${colour_alert}\">undocumented port<br />alert count incremeted</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"${colour_override_insecure}\">insecure value allowed by override<br />no counters incremeted</td></tr>" >> ${htmlfile}
-   echo "</table><br /><br />" >> ${htmlfile}
-   echo "<p>The insecure values highligthed are either tcp/tcp6/udp/udp6 ports the custom file has specified" >> ${htmlfile}
-   echo "as permitted to listen on all interfaces or listening ports forced OK by a listening process name match." >> ${htmlfile}
-   echo "The first is obviously insecure, the second is insecure as processes using random ports are inherently insecure" >> ${htmlfile}
-   echo "and any process using them should be confined to localhost.</p>" >> ${htmlfile}
-
-   hadfuser=`grep "^FUSER_INSTALLED" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
-   if [ "${hadfuser}." != "YES." ];
-   then
-      if [ "${hadfuser}." == "DISABLED." ];
-      then
-         echo "<p><b>'fuser' processing was explicitly disabled during data collection</b> for this server." >> ${htmlfile}
-      else  # else not installed or an older version of the collection script that did not use it
-         echo "<p>The 'fuser' utility was not available on this server at the time of data collection." >> ${htmlfile}
-      fi
-      echo "This means the Process fields of this report cannot be populated.</p>" >> ${htmlfile}
-   fi
-   echo "<table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"4\"><center>TCP Ports open on the server</center></td></tr>" >> ${htmlfile}
-   echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td><td>Process</td></tr>" >> ${htmlfile}
-   cat ${WORKDIR}/active_tcp_services.wrk2 | while read dataline
-   do
-      # 80 0.0.0.0 
-      listenaddr=`echo "${dataline}" | awk {'print $2'}`
-      listenport=`echo "${dataline}" | awk {'print $1'}`
-      ipversion=`echo "${dataline}" | awk {'print $3'}`
-      # get details of process using the port if available
-      # NETWORK_TCPV4_PORT_portnum or NETWORK_TCPV6_PORT_portnum
-      searchmatch=`grep "^NETWORK_TCPV${ipversion}_PORT_${listenport}" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
-      allowed=""
-      if [ -f ${WORKDIR}/allowed_tcp_ports_v${ipversion} ];
-      then
-         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_tcp_ports_v${ipversion}`
-         allowwild=`echo "${allowed}" | awk -F: {'print $4'}`
-      else    # else fallback to old collector format
-         if [ -f ${WORKDIR}/allowed_tcp_ports ];
-         then
-            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_tcp_ports`
-         else
-            allowed=""
-         fi
-      fi
-      if [ "${allowed}." != "." ];  # found an allowed match
-      then
-         desc=`echo "${allowed}" | awk -F: {'print $3'}`
-         if [ "${listenaddr}." == "0.0.0.0." -o "${listenaddr}." == ":::." ];
-         then
-            if [ "${allowwild}." != "WILD." ];   # if not explicitly allowed to listen on all interfaces
-            then 
-               # make a warning colour
-               echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-               inc_counter ${hostid} warning_count
-            else
-               # make a insecure attention colour, but no alert total increment
-               echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-            fi
-         else
-            # make a green colour
-            echo "<tr bgcolor=\"${colour_OK}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-         fi
-      else
-         # get data to populate the description field
-         portname=`grep -w "${listenport}.tcp" ${WORKDIR}/services` # Use -w for exact word match
-         if [ "${portname}." == "." ];
-         then
-            desc="NOT DESCRIBED IN SERVICES FILE"
-         else
-            desc=`echo "${portname}" | awk {'print $2" "$3" "$4" "$5" "$6'}`
-         fi
-         # before raising an alert see if the actual process is permitted
-         # to listen on any port (avahi-deamon and rpcbinf for example use
-         # random ports that cannot be explicitly defined by port number)
-         # must be a full match against the reported process
-         if [ "${CUSTOMFILE}." != "." ];
-         then
-            searchmatch=`echo "${searchmatch}"`   # remove training spaces
-            # grep needs [ and ] changed to \[ and \] for searches so into a temp car for the search
-            bb=`echo "${aa}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
-            processmatch1=`grep "^NETWORK_TCPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
-            processmatch1=`echo "${processmatch1}"`           # remove trailing spaces
-            if [ "${processmatch1}." == "${searchmatch}." ]
-            then
-               # make a insecure attention colour, but no alert total increment
-               echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-            else
-               inc_counter ${hostid} alert_count
-               # An unexpected port, all in red
-               echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-            fi
-         else
-            inc_counter ${hostid} alert_count
-            # An unexpected port, all in red
-            echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-         fi
-      fi
-   done
-   echo "</table>" >> ${htmlfile}
-
-   # UDP Ports active
-   echo "<br><br><table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"4\"><center>UDP Ports open on the server</center></td></tr>" >> ${htmlfile}
-   echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td><td>Process</td></tr>" >> ${htmlfile}
-   cat ${WORKDIR}/active_udp_services.wrk2 | while read dataline
-   do
-      # 80 0.0.0.0
-      listenaddr=`echo "${dataline}" | awk {'print $2'}`
-      listenport=`echo "${dataline}" | awk {'print $1'}`
-      ipversion=`echo "${dataline}" | awk {'print $3'}`
-      # get details of process using the port if available
-      # NETWORK_UDPV4_PORT_portnum or NETWORK_UDPV6_PORT_portnum
-      searchmatch=`grep "^NETWORK_UDPV${ipversion}_PORT_${listenport}" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
-      if [ -f ${WORKDIR}/allowed_udp_ports_v${ipversion} ];
-      then
-         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_udp_ports_v${ipversion}`
-         allowwild=`echo "${allowed}" | awk -F: {'print $4'}`
-      else   # else fall back to old version of customfile paramaters
-         if [ -f ${WORKDIR}/allowed_udp_ports ];
-         then
-            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_udp_ports`
-         else
-            allowed=""
-         fi
-      fi
-      if [ "${allowed}." != "." ];  # found an allowed match
-      then
-         desc=`echo "${allowed}" | awk -F: {'print $3'}`
-         if [ "${listenaddr}." == "0.0.0.0." -o "${listenaddr}." == ":::." ];
-         then
-            if [ "${allowwild}." != "WILD." ];   # if not explicitly allowed to listen on all interfaces
-            then 
-               # make a warning colour
-               echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-               inc_counter ${hostid} warning_count
-            else
-               # make a standout override is permitting insecure setting colour
-               echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-            fi
-         else
-            # make a green colour
-            echo "<tr bgcolor=\"${colour_OK}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-         fi
-      else
-         # get data to populate the descriotion field
-         portname=`grep -w "${listenport}.udp" ${WORKDIR}/services` # Use -w for exact word match
-         if [ "${portname}." == "." ];
-         then
-            desc="NOT DESCRIBED IN SERVICES FILE"
-         else
-            desc=`echo "${portname}" | awk {'print $2" "$3" "$4" "$5" "$6'}`
-         fi
-         if [ "${CUSTOMFILE}." != "." ];
-         then
-            aa=`echo "${searchmatch}" | sed 's/ *$//g'`                  # remove trailing spaces
-            # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the grep
-            bb=`echo "${aa}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
-            processmatch1=`grep "^NETWORK_UDPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
-            processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`     # remove trailing spaces
-            if [ "${processmatch1}." == "${aa}." ]
-            then
-               # make a standout override is permitting insecure setting colour
-               echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-            else
-               inc_counter ${hostid} alert_count
-               # An unexpected port, all in red
-               echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-            fi
-         else
-            inc_counter ${hostid} alert_count
-            # An unexpected port, all in red
-            echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
-         fi
-      fi
-   done
-   echo "</table>" >> ${htmlfile}
-
-   # RAW ports listening
-   rawcount=`grep "^PORT_RAW_LISTENING=" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
-   if [ ${rawcount} -gt 0 ];
-   then
-      echo "<p>This server has some <em>raw</em> network sockets open." >> ${htmlfile}
-      echo "As 'fuser' is unable to query raw sockets there" >> ${htmlfile}
-      echo "is no way of knowing what is using raw ports so these are always raised as alerts.</p>" >> ${htmlfile}
-      echo "<br><br><table border=\"1\" bgcolor=\"${colour_banner}\"><tr><td><center>RAW Ports open on the server</center></td></tr>" >> ${htmlfile}
-      echo "<tr><td>Netstat information for RAW ports</td></tr>" >> ${htmlfile}
-      grep "^PORT_RAW_LISTENING=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read dataline
-      do
-         echo "<tr bgcolor=\"${colour_alert}\"><td>${dataline}</td></tr>" >> ${htmlfile}
-         inc_counter ${hostid} alert_count
-      done
-      echo "</table>" >> ${htmlfile}
-   fi
-
-   echo "<h1>C.1.2 - Unix Socket ports open on the server</h1>" >> ${htmlfile}
+   echo "<h1>C.1.3 - Unix Socket ports open on the server</h1>" >> ${htmlfile}
    # ADD THE UNIX port checks
    echo "<p>Unix domain sockets will always be present, and" >> ${htmlfile}
    echo "it would be a hell of a job to spot possible security" >> ${htmlfile}
-   echo "holes here, so this toolkit does not try.<br>" >> ${htmlfile}
+   echo "holes here, so this toolkit does not have customisation at this time.<br>" >> ${htmlfile}
    echo "Review the unix domain sockets here to see if you can" >> ${htmlfile}
-   echo "identify anything that should not be running.</p>" >> ${htmlfile}
-   echo "<p>This will have to always be a manual task, so the" >> ${htmlfile}
-   echo "toolkit will never report alerts or violations for" >> ${htmlfile}
-   echo "the unix domain sockets, check these yourself please.</p>" >> ${htmlfile}
-   echo "<table border=\"1\" width=\"100%\"><tr bgcolor=\"${colour_banner}\"><td colspan=\"4\"><center>UNIX Sockets Listening on the server</center></td></tr>" >> ${htmlfile}
-   echo "<tr bgcolor=\"${colour_banner}\"><td>State</td><td>I-Node</td><td>Socket Name</td><td>Process Using the socket</td></tr>" >> ${htmlfile}
-   cat ${WORKDIR}/active_unix_services | while read dataline
+   echo "identify any processes that should not be running.</p>" >> ${htmlfile}
+   echo "<p>This is currently a manual task, so the" >> ${htmlfile}
+   echo "toolkit will not report alerts or violations for" >> ${htmlfile}
+   echo "the unix domain sockets in this release, check these yourself please.</p>" >> ${htmlfile}
+   echo "<table border=\"1\" width=\"100%\"><tr bgcolor=\"${colour_banner}\"><td colspan=\"5\"><center>UNIX Sockets Listening on the server</center></td></tr>" >> ${htmlfile}
+   echo "<tr bgcolor=\"${colour_banner}\"><td>Type</td><td>State</td><td>I-Node</td><td>Socket Name</td><td>Process Using the socket</td></tr>" >> ${htmlfile}
+
+   grep "^PORT_UNIX_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | egrep -h "STREAM|SEQPACKET" | while read dataline
    do
       dataline=`echo "${dataline}" | awk -F\] {'print $2'}`
+      type=`echo "${dataline}" | awk {'print $1'}`
       state=`echo "${dataline}" | awk {'print $2'}`
-      inode=`echo "${dataline}" | awk {'print $3'}`
-      streampath=`echo "${dataline}" | awk {'print $4'}`
-      processname=`grep "^NETWORK_UNIX_SOCKET=${streampath}" ${SRCDIR}/secaudit_${hostid}.txt | head -1`
-      if [ "${processname}." != "." ];
+      testvar=`echo "${state}" | sed 's/[0-9]//g'`   # remove numerics, if nothing left was no state field and we have inode
+      if [ "${testvar}." == "." ];
       then
-         processname=`echo "${processname}" | awk -F: {'print $2'}`
+         inode="${state}"
+         state=""
+         streampath=`echo "${dataline}" | awk {'print $4'}`
+      else
+         inode=`echo "${dataline}" | awk {'print $3'}`
+         streampath=`echo "${dataline}" | awk {'print $5'}`
       fi
-      # the fuser error is meaningless in the report, set to nothing if present.
-      if [ "${processname}." == "not queryable by fuser." ];
+      processname=`grep "^NETWORK_UNIX_STREAM=${inode}:${streampath}=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $3'}`
+      if [ "${processname}." == "." ];
       then
-         processname=""
+         processnam=`echo "${dataline}" | awk {'print $4'} | awk -F\/ {'print $2'}`
       fi
-      echo "<tr><td>${state}</td><td>${inode}</td><td>${streampath}</td><td>${processname}</td></tr>" >> ${htmlfile}
+      echo "<tr><td>${type}</td><td>${state}</td><td>${inode}</td><td>${streampath}</td><td>${processname}</td></tr>" >> ${htmlfile}
    done
+
    # There are not always datagram services captured, check before displaying
    # and only display if they are present.
-   linecount=`cat ${WORKDIR}/active_unix_services | grep "DGRAM" | wc -l | awk {'print $1'}`
+   linecount=`grep "^PORT_UNIX_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | grep "DGRAM" | wc -l`
    if [ "${linecount}." != "0." ]
    then
-      echo "<tr bgcolor=\"${colour_banner}\"><td colspan=\"3\"><center>Unix Datagram Connections Active</center></td></tr>" >> ${htmlfile}
-      cat ${WORKDIR}/active_unix_services | grep "DGRAM" | while read dataline
+      echo "<tr bgcolor=\"${colour_banner}\"><td colspan=\"5\"><center>Unix Datagram Connections Active</center></td></tr>" >> ${htmlfile}
+      echo "<tr bgcolor=\"${colour_banner}\"><td>Type</td><td>State</td><td>I-Node</td><td>Socket Name</td><td>Process Using the datagram</td></tr>" >> ${htmlfile}
+      grep "^PORT_UNIX_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | grep "DGRAM" | while read dataline
       do
          dataline=`echo "${dataline}" | awk -F\] {'print $2'}`
          inode=`echo "${dataline}" | awk {'print $2'}`
-         dgrampath=`echo "${dataline}" | awk {'print $3'}`
-         echo "<tr><td>N/A</td><td>${inode}</td><td>${dgrampath}</td></tr>" >> ${htmlfile}
+         dgrampath=`echo "${dataline}" | awk {'print $4'}`
+         processname=`grep "^NETWORK_UNIX_DGRAM=${inode}:" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $3'}`
+         if [ "${processname}." == "." ];  # if no seperate entry use the truncated command from netstat
+         then
+            processnam=`echo "${dataline}" | awk {'print $3'} | awk -F\/ {'print $2'}`
+         fi
+         echo "<tr><td>DGRAM</td><td>N/A</td><td>${inode}</td><td>${dgrampath}</td><td>${processname}</td></tr>" >> ${htmlfile}
       done
    fi
    echo "</table>" >> ${htmlfile}
+} # end appendix_c_unix_socket_port_report
 
+# ----------------------------------------------------------
+# This routine checks that all custom file parameters 
+# (for network) still refer to port sthat are still in
+# use. It also checks for obsolete parameters in use.
+# This needs to be in its own routine to make it easy
+# to move about in the report.
+# ----------------------------------------------------------
+appendix_c_check_unused_custom() {
+   hostid="$1"
 
    # ----------------------------------------------------------
    # Added another check. When adding my overrides I found the
@@ -1831,7 +1666,7 @@ build_appendix_c() {
    # is no longer in use, so it can be taken out of the custom
    # file before another sly task uses it.
    # ----------------------------------------------------------
-   echo "<h1>C.1.3 - TCP customisation sanitation deptartment</h1>" >> ${htmlfile}
+   echo "<h1>C.1.2 - TCP customisation sanitation deptartment</h1>" >> ${htmlfile}
    echo "<p>This section is just to ensure you have been keeping" >> ${htmlfile}
    echo "your customisation file clean. It will report on any allowed" >> ${htmlfile}
    echo "ports in the customisation file that were not in use at the" >> ${htmlfile}
@@ -1841,7 +1676,7 @@ build_appendix_c() {
    delete_file "${WORKDIR}/network_sanitation.wrk"
 
    # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-   # below is for obsolete old port parameters still supported until version 0.07
+   # below is for obsolete old port parameters still supported until version 0.08
    badparms=`grep "PORT_ALLOWED" ${CUSTOMFILE} | wc -l`
    if [ ${badparms} -gt 0 ];
    then
@@ -1917,9 +1752,359 @@ build_appendix_c() {
    then
       echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
       echo "The customisation file is using obsolete network customisation settings." >> ${htmlfile}
-      echo "These will be removed in version 0.07 so update these as soon as possible.</td></tr></table>" >> ${htmlfile}
+      echo "These will be removed in version 0.08 so update these as soon as possible.</td></tr></table>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
    fi
+} # end of appendix_c_check_unused_custom
+
+# ----------------------------------------------------------
+# ----------------------------------------------------------
+build_appendix_c() {
+   hostid="$1"
+   htmlfile="${RESULTS_DIR}/${hostid}/appendix_C.html"
+   log_message ".     Building Appendix C - performing network connectivity checks"
+
+   extract_appendix_c_files "${hostid}"
+
+   echo "<html><head><title>Network Connectivity Checks for ${hostid}</title></head><body>" >> ${htmlfile}
+   echo "<h1>Appendix C - Network Connectivity Checks for ${hostid}</h1>" >> ${htmlfile}
+
+   echo "<p>This appendix lists all the open ports on the server, even" >> ${htmlfile}
+   echo "if the ports are expected to be open you should review" >> ${htmlfile}
+   echo "the ports in use to see if any can be closed.</p>" >> ${htmlfile}
+
+   # This block can be removed in version 0.08 when the parameters are 
+   # completely dropped.
+   testoldver1=`grep "^TCP_PORT_ALLOWED" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   testoldver2=`grep "^UDP_PORT_ALLOWED" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   if [ ${testoldver1} -gt 0 -o ${testoldver2} -gt 0 ];
+   then
+      echo "<p><b>Your customisation file is using obsolete parameters that will" >> ${htmlfile}
+      echo "be dropped in the next release; critical alert count incremented for that issue.</b></p>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   fi
+
+   # C.1 Check all listening ports against the allowed services and the
+   #    services files. Report allowed services as green fields, unexpected
+   #    ones in red as alerts for review.
+   #    Note: anything lstening on 0.0.0.0 rates a warning even if allowed
+   #          as this can be attached to by all interfaces, even internet ones.
+   #          Updated for tcp6 to also warn for ::: as well as 0.0.0.0
+   #    Note2: there will always be something listening so don't bother
+   #           checking if the file exists before creating the table headers here.
+   echo "<h1>C.1.1 - TCP access ports open on the server</h1>" >> ${htmlfile}
+   echo "<p>These are the open ports listening for incoming connections" >> ${htmlfile}
+   echo "to this server. These need to be reviewed periodically.</p>" >> ${htmlfile}
+   echo "<p>As a general rule services specifically allowed to run on" >> ${htmlfile}
+   echo "the servers (as defined in custom file) will be green, <em>unless they listen on all interfaces" >> ${htmlfile}
+   echo "which rates them a warning unless explicity permitted by the custom file</em>. For all other ports that are listening" >> ${htmlfile}
+   echo "you will get an alert as they are unexpected.</p>" >> ${htmlfile}
+   echo "<p>You should not try to suppress the warnings for known ports using the customisation file unless it is" >> ${htmlfile}
+   echo "impossible to customise the application. In all cases you should try to secure the application first.</p>" >> ${htmlfile}
+
+   echo "<table><tr><td bgcolor=\"${colour_banner}\" colspan=\"4\">Colour mappings used</td></tr><tr>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_OK}\">OK, no issues</td>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_warn}\">insecure value<br />warning count incremeted</td>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_alert}\">undocumented port<br />alert count incremeted</td>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_override_insecure}\">insecure value allowed by override<br />no counters incremeted</td></tr>" >> ${htmlfile}
+   echo "</table><br /><br />" >> ${htmlfile}
+   echo "<p>The insecure values highligthed are either tcp/tcp6/udp/udp6 ports the custom file has specified" >> ${htmlfile}
+   echo "as permitted to listen on all interfaces or listening ports forced OK by a listening process name match." >> ${htmlfile}
+   echo "The first is obviously insecure, the second is insecure as processes using random ports are inherently insecure" >> ${htmlfile}
+   echo "and any process using them should be confined to localhost.</p>" >> ${htmlfile}
+
+   hadfuser=`grep "^FUSER_INSTALLED" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+   if [ "${hadfuser}." != "YES." ];
+   then
+      if [ "${hadfuser}." == "DISABLED." ];
+      then
+         echo "<p><b>'fuser' processing was explicitly disabled during data collection</b> for this server." >> ${htmlfile}
+      else  # else not installed or an older version of the collection script that did not use it
+         echo "<p>The 'fuser' utility was not available on this server at the time of data collection." >> ${htmlfile}
+      fi
+      echo "This means the Process fields of this report can only be propulated with truncated details from netstat." >> ${htmlfile}
+      echo "This may generate alerts for process match rules that require full details.</p>" >> ${htmlfile}
+   fi
+   echo "<table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"4\"><center>TCP Ports open on the server</center></td></tr>" >> ${htmlfile}
+   echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td><td>Process</td></tr>" >> ${htmlfile}
+   cat ${WORKDIR}/active_tcp_services.wrk2 | while read dataline
+   do
+      # 80 0.0.0.0 
+      listenaddr=`echo "${dataline}" | awk {'print $2'}`
+      listenport=`echo "${dataline}" | awk {'print $1'}`
+      ipversion=`echo "${dataline}" | awk {'print $3'}`
+      # get details of process using the port as identified by fuser if available
+      # NETWORK_TCPV4_PORT_portnum or NETWORK_TCPV6_PORT_portnum
+      searchmatch=`grep "^NETWORK_TCPV${ipversion}_PORT_${listenport}=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+      # -- if no fuser returned info in searchmatch, get the netstat truncated process info
+      if [ "${searchmatch}." == "." ];
+      then
+          searchmatch=`grep "^PORT_TCPV${ipversion}_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | grep "${listenaddr}:${listenport}" | awk -F\/ {'print $2'}`
+      fi
+      allowed=""
+      if [ -f ${WORKDIR}/allowed_tcp_ports_v${ipversion} ];
+      then
+         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_tcp_ports_v${ipversion}`
+         allowwild=`echo "${allowed}" | awk -F: {'print $4'}`
+      else    # else fallback to old collector format
+         if [ -f ${WORKDIR}/allowed_tcp_ports ];
+         then
+            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_tcp_ports`
+         else
+            allowed=""
+         fi
+      fi
+      if [ "${allowed}." != "." ];  # found an allowed match
+      then
+         desc=`echo "${allowed}" | awk -F: {'print $3'}`
+         if [ "${listenaddr}." == "0.0.0.0." -o "${listenaddr}." == ":::." ];
+         then
+            if [ "${allowwild}." != "WILD." ];   # if not explicitly allowed to listen on all interfaces
+            then 
+               # make a warning colour
+               echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+               inc_counter ${hostid} warning_count
+            else
+               # make a insecure attention colour, but no alert total increment
+               echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+            fi
+         else
+            # make a green colour
+            echo "<tr bgcolor=\"${colour_OK}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+         fi
+      else
+         # get data to populate the description field
+         portname=`grep -w "${listenport}.tcp" ${WORKDIR}/services` # Use -w for exact word match
+         if [ "${portname}." == "." ];
+         then
+            desc="NOT DESCRIBED IN SERVICES FILE"
+         else
+            desc=`echo "${portname}" | awk {'print $2" "$3" "$4" "$5" "$6'}`
+         fi
+         # before raising an alert see if the actual process is permitted
+         # to listen on any port (avahi-deamon and rpcbinf for example use
+         # random ports that cannot be explicitly defined by port number)
+         # must be a full match against the reported process
+         if [ "${CUSTOMFILE}." != "." ];
+         then
+            searchmatch=`echo "${searchmatch}"`   # remove training spaces
+            # grep needs [ and ] changed to \[ and \] for searches so into a temp car for the search
+            bb=`echo "${aa}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
+            processmatch1=`grep "^NETWORK_TCPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+            processmatch1=`echo "${processmatch1}"`           # remove trailing spaces
+            if [ "${processmatch1}." == "${searchmatch}." ]
+            then
+               if [ "${listenaddr}." == "0.0.0.0." -o "${listenaddr}." == ":::." ];
+               then
+                  # if listening on all interfaces always warn, process match cannot use 'wild'
+                  echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+                  inc_counter ${hostid} warning_count
+               else
+                  # make a insecure attention colour, but no alert total increment
+                  echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+               fi
+            else
+               inc_counter ${hostid} alert_count
+               # An unexpected port, all in red
+               echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+            fi
+         else
+            inc_counter ${hostid} alert_count
+            # An unexpected port, all in red
+            echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+         fi
+      fi
+   done
+   echo "</table>" >> ${htmlfile}
+
+   # UDP Ports active
+   echo "<br><br><table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"4\"><center>UDP Ports open on the server</center></td></tr>" >> ${htmlfile}
+   echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td><td>Process</td></tr>" >> ${htmlfile}
+   cat ${WORKDIR}/active_udp_services.wrk2 | while read dataline
+   do
+      # 80 0.0.0.0
+      listenaddr=`echo "${dataline}" | awk {'print $2'}`
+      listenport=`echo "${dataline}" | awk {'print $1'}`
+      ipversion=`echo "${dataline}" | awk {'print $3'}`
+      # get details of process using the port if available
+      # NETWORK_UDPV4_PORT_portnum or NETWORK_UDPV6_PORT_portnum
+      searchmatch=`grep "^NETWORK_UDPV${ipversion}_PORT_${listenport}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+      # -- if no 'ps' returned info in searchmatch, get the netstat truncated process info
+      if [ "${searchmatch}." == "." ];
+      then
+          searchmatch=`grep "^PORT_UDPV${ipversion}_LISTENING" ${SRCDIR}/secaudit_${hostid}.txt | grep "${listenaddr}:${listenport}" | awk -F\/ {'print $2'}`
+      fi
+      if [ -f ${WORKDIR}/allowed_udp_ports_v${ipversion} ];
+      then
+         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_udp_ports_v${ipversion}`
+         allowwild=`echo "${allowed}" | awk -F: {'print $4'}`
+      else   # else fall back to old version of customfile paramaters
+         if [ -f ${WORKDIR}/allowed_udp_ports ];
+         then
+            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_udp_ports`
+         else
+            allowed=""
+         fi
+      fi
+      if [ "${allowed}." != "." ];  # found an allowed match
+      then
+         desc=`echo "${allowed}" | awk -F: {'print $3'}`
+         if [ "${listenaddr}." == "0.0.0.0." -o "${listenaddr}." == ":::." ];
+         then
+            if [ "${allowwild}." != "WILD." ];   # if not explicitly allowed to listen on all interfaces
+            then 
+               # make a warning colour
+               echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+               inc_counter ${hostid} warning_count
+            else
+               # make a standout override is permitting insecure setting colour
+               echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+            fi
+         else
+            # make a green colour
+            echo "<tr bgcolor=\"${colour_OK}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+         fi
+      else
+         # get data to populate the descriotion field
+         portname=`grep -w "${listenport}.udp" ${WORKDIR}/services` # Use -w for exact word match
+         if [ "${portname}." == "." ];
+         then
+            desc="NOT DESCRIBED IN SERVICES FILE"
+         else
+            desc=`echo "${portname}" | awk {'print $2" "$3" "$4" "$5" "$6'}`
+         fi
+         if [ "${CUSTOMFILE}." != "." ];
+         then
+            aa=`echo "${searchmatch}" | sed 's/ *$//g'`                  # remove trailing spaces
+            # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the grep
+            bb=`echo "${aa}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
+            processmatch1=`grep "^NETWORK_UDPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+            processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`     # remove trailing spaces
+            if [ "${processmatch1}." == "${aa}." ]
+            then
+               if [ "${listenaddr}." == "0.0.0.0." -o "${listenaddr}." == ":::." ];
+               then
+                  # if on all interfaces always a warning increment
+                  echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+                  inc_counter ${hostid} warning_count
+               else
+                  # make a standout override is permitting insecure setting colour
+                  echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+               fi
+            else
+               inc_counter ${hostid} alert_count
+               # An unexpected port, all in red
+               echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+            fi
+         else
+            inc_counter ${hostid} alert_count
+            # An unexpected port, all in red
+            echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
+         fi
+      fi
+   done
+   echo "</table>" >> ${htmlfile}
+
+   # RAW ports listening
+   rawcount=`grep "^PORT_RAW.._LISTENING=" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   if [ ${rawcount} -gt 0 ];
+   then
+      echo "<br><br><table width=\"100%\" border=\"1\" bgcolor=\"${colour_banner}\"><tr><td colspan=\"4\"><center>RAW Ports open on the server</center></td></tr>" >> ${htmlfile}
+      echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td><td>Program Name</td></tr>" >> ${htmlfile}
+      grep "^PORT_RAWV._LISTENING=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read dataline
+      do
+         ipversion=`echo "${dataline}" | awk {'print $1'}`
+         if [ "${ipversion}." == "raw6." ];
+         then
+            ipversion=6
+            listenaddr=`echo "${dataline}" | awk '{print $4'}`
+            # the last field we know is the port, print the fieldcount field
+            listenport=`echo "${listenaddr}" | awk -F: '{print $NF}'`
+            listenaddr=`echo "${listenaddr} X" | sed -e"s/:$listenport X/:/g"`
+         else
+            ipversion=4
+            listenaddr=`echo "${dataline}" | awk {'print $4'}`
+            listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
+            listenaddr=`echo "${listenaddr}" | awk -F: {'print $1'}`
+         fi 
+         programname=`grep "^NETWORK_RAWV${ipversion}_PORT_${listenport}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+         # -- if no 'ps' returned info in searchmatch, get the netstat truncated process info
+         if [ "${programname}." == "." ];
+         then
+            programname=`echo "${dataline}" | awk -F\/ {'print $2'}`
+         fi
+         programname=`echo "${programname}" | sed 's/ *$//g'`                  # remove trailing spaces
+         portdesc=""
+         allowed=""
+         allowwild=""
+         usecolour="${colour_alert}"
+         if [ -f ${WORKDIR}/allowed_raw_ports_v${ipversion} ];
+         then
+            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_raw_ports_v${ipversion}`
+            portdesc=`echo "${allowed}" | awk -F: {'print $3'}`
+            allowwild=`echo "${allowed}" | awk -F: {'print $4'}`
+         fi
+         if [ "${allowed}." == "." ];    # if not an explicit port, is there a process match
+         then
+            # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the grep
+            bb=`echo "${programname}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
+            processmatch1=`grep "^NETWORK_RAWV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+            processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`     # remove trailing spaces
+            if [ "${processmatch1}." == "${programname}." ]
+            then
+               allowed="match"
+               # make a standout override is permitting insecure setting colour
+               usecolour="${colour_override_insecure}"
+            fi
+         fi  # end else search for process allow
+         if [ "${portdesc}." == "." ];
+         then
+            portdesc=`grep -w "${listenport}.raw" ${WORKDIR}/services` # Use -w for exact word match
+            if [ "${portdesc}." == "." ];
+            then
+               portdesc="NOT DESCRIBED IN SERVICES FILE"
+            else
+               portdesc=`echo "${portdesc}" | awk {'print $2" "$3" "$4" "$5" "$6'}`
+            fi
+         fi
+         if [ "${allowed}." == "." ]
+         then
+            # An unexpected port, all in red
+            echo "<tr bgcolor=\"${colour_alert}\"><td>${listenport}</td><td>${listenaddr}</td><td>${portdesc}</td><td>${programname}</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} alert_count
+         elif [ "${allowed}." == "match." ];
+         then
+            if [ "${listenaddr}." == "0.0.0.0." -o "${listenaddr}." == ":::." ];
+            then
+               echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${portdesc}</td><td>${programname}</td></tr>" >> ${htmlfile}
+               inc_counter ${hostid} warning_count
+            else
+               # make a standout override is permitting insecure setting colour
+               echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${portdesc}</td><td>${programname}</td></tr>" >> ${htmlfile}
+            fi
+         else
+            if [ "${listenaddr}." == "0.0.0.0." -o "${listenaddr}." == ":::." ];
+            then
+               if [ "${allowwild}." != "WILD." ];   # if not explicitly allowed to listen on all interfaces
+               then 
+                  echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${portdesc}</td><td>${programname}</td></tr>" >> ${htmlfile}
+                  inc_counter ${hostid} warning_count
+               else
+                  echo "<tr bgcolor=\"${colour_override_insecure}\"><td>${listenport}</td><td>${listenaddr}</td><td>${portdesc}</td><td>${programname}</td></tr>" >> ${htmlfile}
+               fi
+            else
+               echo "<tr bgcolor=\"${colour_OK}\"><td>${listenport}</td><td>${listenaddr}</td><td>${portdesc}</td><td>${programname}</td></tr>" >> ${htmlfile}
+            fi
+         fi
+      done
+      echo "</table>" >> ${htmlfile}
+   fi
+
+   # normally the obsolete parameters would be at the end of the report,
+   # however as we do not in this release check processes using sockets
+   # so they are just informative, for now move the custom check above it
+   appendix_c_check_unused_custom "${hostid}"
+   appendix_c_unix_socket_port_report "${hostid}"
 
    # Close the appendix page
    write_details_page_exit "${hostid}" "${htmlfile}"
@@ -2789,7 +2974,7 @@ build_main_index_page() {
       then
          lastprocdate=`cat ${RESULTS_DIR}/${dataline}/last_processing_date`
       else
-         lastprocdate="rerun for 0.06"
+         lastprocdate="rerun for ${PROCESSING_VERSION}"
       fi
       scanlevel=`grep "TITLE_FileScanLevel" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
       extractversion=`grep "TITLE_ExtractVersion" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
@@ -2807,7 +2992,7 @@ build_main_index_page() {
    echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2020</small></td><td colspan=\"2\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}
    echo "</table></center><br><br>" >> ${htmlfile}
 
-   # Added to check for obsolete parms, this check block can be removed again in version 0.07
+   # Added to check for obsolete parms, this check block can be removed again in version 0.08
    headerdone="NO"
    find ${OVERRIDES_DIR} -type f -name "*custom" | while read fname
    do

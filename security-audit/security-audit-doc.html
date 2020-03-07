@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.06 of the processing script<br />
-Version 0.06 of the data collection script<br />
-Last upadted 3 March 2020
+Version 0.07 of the processing script<br />
+Version 0.07 of the data collection script<br />
+Last upadted 6 March 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -40,8 +40,8 @@ Last upadted 3 March 2020
 				<li>USING CUSTOM FILES
 				<ul>
 			  	  <li>1. Why Custom Files</li>
-				  <li>2. TCP-IP Ports</li>
-				  <li>3. UDP Ports</li>
+				  <li>2. Network Port Overrides</li>
+				  <li>3. Network Overrides by process</li>
 				  <li>4. Home Directory Ownership Overrides</li>
 				  <li>5. Home Directory Permission Overrides</li>
 				  <li>5.1 General System Directory Overrides</li>
@@ -69,18 +69,13 @@ Last upadted 3 March 2020
 
 <h3>1.1 Requirements, packages needed</h3>
 <ul>
-<li>the BASH shell <b>/bin/bash</b> must be available on all servers, the scripts make use of the
+<li>(required) the BASH shell <b>/bin/bash</b> must be available on all servers, the scripts make use of the
 bash substring functions not available in other shells</li>
-<li>the <b>netstat</b> command must be installed on all servers for collecting the tcp/udp ports
+<li>(required) the <b>netstat</b> command must be installed on all servers for collecting the tcp/udp ports
 in use</li>
-<li><b>dmidecode</b> and <b>lshw</b> commands must be installed on all servers for collecting
+<li>(optional) <b>dmidecode</b> and <b>lshw</b> commands should be installed on all servers for collecting
 the hardware details. If they are not installed the only information on the hardware details
 page will be that they are not installed</li>
-<li>the <b>fuser</b> command on all servers, used to identify the processes listening
-on tcp/udp/socket-file interfaces for network checks. If fuser is not installed that
-information will not be collected resulting in blank fields in the network check report
-and the inability to suppress critical alerts for processes such as avahi-daemon and rpcbind
-that use random ports</li>
 </ul>
 
 <h3>1.2 Requirements, environment needed</h3>
@@ -248,6 +243,10 @@ down N levels of directories in the permission check searches.
 To do this provide the parameter '--scanlevel=<n>' to select the
 number of directory levels that will be descended during the file
 permission search.
+<b>It is important to note that overriding the scanlevel only affects file
+permision checks, checks for suid files will always traverse full
+file paths as these must be reported on</b>.
+</p>
 <pre>
 Normal syntax          : <span style="background-color: #FFCCFF">bin/collect_server_details.sh</span>
 Limiting capture syntax: <span style="background-color: #FFCCFF">bin/collect_server_details.sh --scanlevel=<em><b>n</b></em></span>
@@ -255,7 +254,6 @@ Example                : <span style="background-color: #D7FFFF">bin/collect_ser
 
 All options: bin/collect_server_details.sh [--scanlevel=<number>] [--backup-etc=yes|no] [--record-packages=yes|no] [--hwlist=yes|no] [--disable-fuser]
 </pre>
-</p>
 
 <hr>
 <a name="sect3"></a>
@@ -394,7 +392,7 @@ The overrides may be set at a <em>global site level</em> or at
 an <em>individual server level</em> depending upon your requirements.
 There are two types of override files
 <ul>
-	<li>ALL.custom        - will override defaults for all processed servers</li>
+	<li>ALL.custom        - will override defaults for all processed servers that do not have their own custom file</li>
 	<li><em>hostname</em>.custom - will override defaults for a specific hostname</li>
 </ul>
 </p>
@@ -494,7 +492,7 @@ The expected tree structure is...
 directory (../custom/*) so please keep this directory structure.
 </p>
 
-<H3>2. TCP-IP Ports</H3>
+<H3>2. Network Port Overrides</H3>
 <p>
 TCP-IP ports are a gateway to your system. You should know
 what is listening on them. <em>If a port is not defined in the custom file
@@ -507,59 +505,62 @@ interfaces</em>, you can only get an OK when it is more securely bound to
 a specific interface or address.
 </p>
 <p>
-The syntax of a TCP-IP override (where &ltversion&gt is either 4 or 6 for tcp4/tcp6) line is...<br>
-<span style="background-color: #FFCCFF"><b>TCP_PORTV&ltversion&gt_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b><br><br></span>
-
+Overrides are available for tcp, tcp6, udp, udp4, raw and raw6 ports.
+An override must be correct for the protocol type, an allow line for a tcp6 port
+will not affect alerting behavior on any other port type, this allows for the unlikely case
+where one application may use tcp port NNN and another application use tcp6 port NNN.
+</p>
+<p>
+The syntax of network port overrides are (where &ltversion&gt is either 4 or 6) line is...<br>
+<span style="background-color: #FFCCFF"><b>TCP_PORTV&ltversion&gt_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b></span><br />
+<span style="background-color: #FFCCFF"><b>UDP_PORTV&ltversion&gt_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b></span><br />
+<span style="background-color: #FFCCFF"><b>RAW_PORTV&ltversion&gt_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b></span><br />
+<br />
 For example...<br>
-<span style="background-color: #D7FFFF"><b>TCP_PORTV4_ALLOWED=:22:ssh</b></span>
-<span style="background-color: #D7FFFF"><b>TCP_PORTV6_ALLOWED=:9090:cockpit</b></span>
+<span style="background-color: #D7FFFF">TCP_PORTV4_ALLOWED=:22:ssh</span>
+<span style="background-color: #D7FFFF">TCP_PORTV6_ALLOWED=:9090:cockpit</span>
 </p>
 <p>
 If the optional :WILD is appended after the description it will be considered OK
 for the specified port to be listening on all interfaces (on 0.0.0.0 or :::),
-but this should be used only if your site has a specific reason for an application
-to listen on all interfaces, you should configure your application to only listen
-on the interfaces it needs.
-</p>
-<p>
-Additional parameters to manage what is expected to be permittted to use
-TCP ports have been implemented as of version 0.06 onward; refer to Appendix B
-for all the options available.
+<b>but this should be used only if your site has a specific reason for an application
+to listen on all interfaces</b>, you should configure your application to only listen
+on the interfaces it needs rather than on all interfaces.
 </p>
 
-
-<H3>3. UDP Ports</H3>
+<H3>3. Network Overrides by process</H3>
 <p>
-Connections using UDP ports are also a gateway to your system.
-You should know what is using UDP services on your server also.
-<em>As with the TCP overrides if a port is not defined in the custom file
-it will be considered an unexpected open port and will be considered critical</em>.
+Unfortunately some applications use randomly assigned network ports
+and as such cannot be configured using the explicit port paramaters above.
+An example of such a process would be rpcbind.
 </p>
 <p>
-In the reports, even if a UDP port is allowed <em>you will
-still get a warning if the port is listening on all
-interfaces</em>, you can only get an OK when it is more securely bound to
-a specific interface or address.
+In order to allow you to downgrade these from critical alerts
+by defining the processes that can use random ports.
 </p>
 <p>
-There are seperate custom statements for UDP ports as we don't want to
-confuse an allowed tcp port of 123 with a disallowed udp port of 123.
+Using these parameters will still result in warnings if the
+port is listening on all interfaces as that is insecure, and there
+is no ability provided to permit listening on all interfaces to
+be permitted using this method. If the port is listening on specific
+interfaces no alerts will be raised but the report will show
+alerts suppressed this way in a different colour to indicate they are
+still considered as insecure.
 </p>
 <p>
-The syntax of a UDP override (where &ltversion&gt is either 4 or 6 for tcp4/tcp6) line is...<br>
-<span style="background-color: #FFCCFF"><b>UDP_PORTV&ltversion&gt_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b><br><br></span>
-
-For example...<br>
-<span style="background-color: #D7FFFF"><b>UDP_PORTV4_ALLOWED=:2049:tcp Network Filesystem - NFS</b></span>
-</p>
+The value passed in this parameter must be the full details of the running
+process as reported by 'ps -ef' as we want as exact match as possible.
 <p>
-The optional :WILD option performs the same function as discussed in the
-tcp section above.
-</p>
-<p>
-Additional parameters to manage what is expected to be permittted to use
-UDP ports have been implemented as of version 0.06 onward; refer to Appendix B
-for all the options available.
+The syntax of network port overrides by process name are (where &ltversion&gt is either 4 or 6) line is...<br>
+<span style="background-color: #FFCCFF"><b>NETWORK_TCPV&ltversion&gt_PROCESS_ALLOW=/program/name and parameters</b></span><br />
+<span style="background-color: #FFCCFF"><b>NETWORK_UDPV&ltversion&gt_PROCESS_ALLOW=/program/name and parameters</b></span><br />
+<span style="background-color: #FFCCFF"><b>NETWORK_RRAW&ltversion&gt_PROCESS_ALLOW=/program/name and parameters</b></span><br />
+<br />
+Examples:<br />
+<span style="background-color: #D7FFFF">NETWORK_UDPV4_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]</span><br />
+<span style="background-color: #D7FFFF">NETWORK_UDPV6_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]</span><br />
+<span style="background-color: #D7FFFF">NETWORK_UDPV4_PROCESS_ALLOW=/sbin/rpcbind -w</span><br />
+<span style="background-color: #D7FFFF">NETWORK_UDPV6_PROCESS_ALLOW=/sbin/rpcbind -w</span><br />
 </p>
 
 <H3>4. Home Directory Ownership Overrides</H3>
@@ -847,7 +848,7 @@ TCP_PORT_ALLOWED=:9090:Cockpit
 Note that this will stop a port being raised as a critical issue in the report, but
 if the port is listening on all interfaces it will still be raised as a warning.
 <br />
-<b>This option is obsolete and will be removed in version 0.07</b>
+<b>This option is obsolete and will be removed in version 0.08</b>
 </td></tr>
 <tr><td>UDP_PORT_ALLOWED=:<em>port</em>:<em>description</em></td><td>
 Used to specify a UDP (v4 or v6) port that is expected to be opened on the server.
@@ -859,7 +860,7 @@ UDP_PORT_ALLOWED=:111:RPC portmap daemon (portmap)
 Note that this will stop a port being raised as a critical issue in the report, but
 if the port is listening on all interfaces it will still be raised as a warning.
 <br />
-<b>This option is obsolete and will be removed in version 0.07</b>
+<b>This option is obsolete and will be removed in version 0.08</b>
 </td></tr>
 <tr><td>TCP_PORTV4_ALLOWED=:<em>port:description[:WILD]</em></td><td>
 Used to specify a TCPV4 port that is expected to be opened on the server.
@@ -940,44 +941,68 @@ is considered insecure.
 <tr><td>NETWORK_TCPV4_PROCESS_ALLOW=<em>full process details as shown by 'ps'</em></td><td>
 This parameter can be used in the case where a known process is permitted to
 use a TCPV4 port but the port cannot be explicitly defined using the above entries
-because the process uses random port numbers. This parameter can only be used if
-the server had 'fuser' installed and was able to obtain the process details<br />
+because the process uses random port numbers.<br />
 While if used it will not be treated as
-an alert the report will highlight it in a different color to indicate that it
-is considered insecure.
+an critical alert, but if it listens on a specific interface the report will highlight it
+in a different color to indicate that it is considered insecure.
+<em>If the port listens on all interfaces it will still raise a warning alert</em>.
 </td></tr>
 <tr><td>NETWORK_TCPV6_PROCESS_ALLOW=<em>full process details as shown by 'ps'</em></td><td>
 This parameter can be used in the case where a known process is permitted to
 use a TCPV6 port but the port cannot be explicitly defined using the above entries
-because the process uses random port numbers. This parameter can only be used if
-the server had 'fuser' installed and was able to obtain the process details<br />
+because the process uses random port numbers.<br />
 While if used it will not be treated as
-an alert the report will highlight it in a different color to indicate that it
-is considered insecure.
+an critical alert, but if it listens on a specific interface the report will highlight it
+in a different color to indicate that it is considered insecure.
+<em>If the port listens on all interfaces it will still raise a warning alert</em>.
 </td></tr>
 <tr><td>NETWORK_UDPV4_PROCESS_ALLOW=<em>full process details as shown by 'ps'</em></td><td>
 This parameter can be used in the case where a known process is permitted to
 use a UDPV4 port but the port cannot be explicitly defined using the above entries
-because the process uses random port numbers. This parameter can only be used if
-the server had 'fuser' installed and was able to obtain the process details<br />
+because the process uses random port numbers.<br />
 Example<br />
 NETWORK_UDPV4_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
 <br />
 While if used it will not be treated as
-an alert the report will highlight it in a different color to indicate that it
-is considered insecure.
+an critical alert, but if it listens on a specific interface the report will highlight it
+in a different color to indicate that it is considered insecure.
+<em>If the port listens on all interfaces it will still raise a warning alert</em>.
 </td></tr>
 <tr><td>NETWORK_UDPV6_PROCESS_ALLOW=<em>full process details as shown by 'ps'</em></td><td>
 This parameter can be used in the case where a known process is permitted to
 use a UDPV6 port but the port cannot be explicitly defined using the above entries
-because the process uses random port numbers. This parameter can only be used if
-the server had 'fuser' installed and was able to obtain the process details<br />
+because the process uses random port numbers.<br />
 Example<br />
 NETWORK_UDPV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
 <br />
 While if used it will not be treated as
-an alert the report will highlight it in a different color to indicate that it
-is considered insecure.
+an critical alert, but if it listens on a specific interface the report will highlight it
+in a different color to indicate that it is considered insecure.
+<em>If the port listens on all interfaces it will still raise a warning alert</em>.
+</td></tr>
+<tr><td>NETWORK_RAWV4_PROCESS_ALLOW=<em>full process details as shown by 'ps'</em></td><td>
+This parameter can be used in the case where a known process is permitted to
+use a RAWV4 port but the port cannot be explicitly defined using the above entries
+because the process uses random port numbers.<br />
+Example<br />
+NETWORK_RAWV4_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
+<br />
+While if used it will not be treated as
+an critical alert, but if it listens on a specific interface the report will highlight it
+in a different color to indicate that it is considered insecure.
+<em>If the port listens on all interfaces it will still raise a warning alert</em>.
+</td></tr>
+<tr><td>NETWORK_RAWV6_PROCESS_ALLOW=<em>full process details as shown by 'ps'</em></td><td>
+This parameter can be used in the case where a known process is permitted to
+use a RAWV6 port but the port cannot be explicitly defined using the above entries
+because the process uses random port numbers.<br />
+Example<br />
+NETWORK_RAWV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
+<br />
+While if used it will not be treated as
+an critical alert, but if it listens on a specific interface the report will highlight it
+in a different color to indicate that it is considered insecure.
+<em>If the port listens on all interfaces it will still raise a warning alert</em>.
 </td></tr>
 <tr><td>ALLOW_OWNER_ROOT=<em>directoryname</em></td><td>
 Allows a directory that is expected to be owned by a user other than root to
@@ -1198,6 +1223,20 @@ This section does not list all changes, bug-fixes and enhancements.
 This section is specifically for changes that will impact the way you
 use this toolkit and the results that will be produced.
 </p>
+
+<ul>
+<li><b>Major changes between version 0.06 and 0.07</b>
+   <ul>
+   <li>new parameters added for 'raw' network ports, and improved data collection for network
+    port usage to allow for those</li>
+   <li>internal parameter name changes used by the scripts, <em>this will require data collection
+   to be rerun on all servers</em> as the old collector files cannot be sucessfully processed
+   by the new version of the processing  script (affects only the network processing section
+   which will generate many false alerts if an old format data collection file is used)</li>
+   </ul>
+</li>
+</ul>
+
 <ul>
 <li><b>Major changes between version 0.05 and 0.06</b>
    <ul>
@@ -1212,7 +1251,7 @@ use this toolkit and the results that will be produced.
        network ports and network socket files. Populates new table entries plus is
        used in new custom file parameters</li>
    <li>custom file parameter changes and additonal parameters added for open network ports,
-       all custom files using the old parameter format will still work (until version 0.07)
+       all custom files using the old parameter format will still work (until version 0.08)
        but an alert will be raised for servers using the obsolete parameters in the server 
        totals and a list of servers using obsolete parameters will be shown on the main
        index page</li>
@@ -1283,8 +1322,7 @@ docker containers I keep the userid numbers well away from 'real' users on the h
 'bad ownership' alerts logged for user numbers as they do not exist on the host.<br />
 I have decided not
 to provide a customisation entry flag to suppress those as I believe it is important to know what
-setuid files exist on the system being checked. As these are well down the directory structure using
-a 'scanlevel=5' or above is needed to capture them, but they do need to be reported on.
+setuid files exist on the system being checked.
 </p>
 <p>
 <b><em>None of these are issues with the toolkit itself but the effect of different *nix implementations</em></b>,
@@ -1302,25 +1340,7 @@ so is only usefull if crontab entries run explicit script files
 able to check many entries so better than nothing, plus all entries that could not
 be correctly checked are reported on. Implement site standards that require
 a full script path and no command concatenation and this will cease to be an issue</li>
-<li>network checks have an issue, in that some network ports are opened multiple times, for example 
-<pre>
-root@vmhost1 ~]# netstat -an | grep 123
-udp        0      0 192.168.1.181:123       0.0.0.0:*                          
-udp        0      0 127.0.0.1:123           0.0.0.0:*                          
-udp        0      0 0.0.0.0:123             0.0.0.0:*                          
-udp6       0      0 fe80::fc54:ff:fe59::123 :::*                               
-udp6       0      0 fe80::fc54:ff:fe50::123 :::*                               
-udp6       0      0 fe80::fc54:ff:fe38::123 :::*                               
-udp6       0      0 fe80::ac36:dcff:feb:123 :::*                               
-udp6       0      0 fe80::be5f:f4ff:fef:123 :::*                               
-udp6       0      0 ::1:123                 :::*                               
-udp6       0      0 :::123                  :::*
-</pre>
-and fuser can show a port open by multiple processes. As there is no way of identifying
-exactly what process is bound to exactly what interface my processing just records
-the first pid listening on a port and uses that as the 'identified process' using the port.
-In most cases this will be correct, but the Process table generated in the report
-cannot be guarantted to be 100% accurate because of this issue</li>
+<li>and end of known issues</li>
 </ul>
 <hr>
 <center><a href="#sect0">[Index]</a></center>

@@ -32,11 +32,7 @@ Usage:   The collection script is run an all servers and the output files
          -- Documentation is in the file security-audit-doc.html --
 
 Requirements: (1) only runs on Linux servers [tested on Fedora/CentOS/Kali]
-              (2) required 'fuser' installed on all the server in order
-                  to obtain information on what processes are using network
-                  ports and sockets [optional but if not present on the
-                  server report fields will be blank and some network 
-                  options in the server customisation file cannot be used]
+              (2) 'netstat' must be available on all the servers
               (3) 'dmidecode' and 'lshw' need to be installed on each
                   server if you intent to also capture hardware information
                   [optional but if not installed the hardware details page

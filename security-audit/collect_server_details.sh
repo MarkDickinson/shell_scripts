@@ -52,7 +52,7 @@
 # 2020/02/20 - changed parm input handling, etc tarfile backup, rpm list
 #              and hardware listing now optional. Still defaulting to yes
 #              for backward compatibility.       
-# 2020/02/xx - include 'raw' network ports listening as well as the
+# 2020/02/29 - include 'raw' network ports listening as well as the
 #              existing tcp/tcp6/udp/udp6 port recording (they exist
 #              on my CentOS7 systems).
 #              use fuser (if installed on the server) to collect info
@@ -64,6 +64,11 @@
 #              running it is a little less cludgy looking
 #              Now collect cron.allow and cron.deny info if those files
 #              exist on the server.
+# 2020/03/06 - remove requirement for fuser, now use the pid from    
+#              netstat and the ps command to find what process is
+#              listening on a port (fuser could not query all ports
+#              (ie: it doesn't support raw ports, and failed to return
+#              info on some udp ports).
 #
 # ======================================================================
 MAX_SYSSCAN=""            # default is no limit parameter
@@ -71,7 +76,6 @@ SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="yes"          # default is to tar up etc
 BACKUP_RPMLIST="yes"      # default is to create a rpm package list
 DO_HWLIST="yes"           # default is to create the hardware listing
-DISABLE_FUSER="NO"        # default is to use fuser if installed on the server
 
 while [[ $# -gt 0 ]];
 do
@@ -118,10 +122,8 @@ do
                       DO_HWLIST="${value}"
                       shift
                       ;;
-      "--disable-fuser") DISABLE_FUSER="YES"
-                      ;;
       *)              echo "Unknown paramater value ${key}"
-                      echo "Syntax:$0 [--scanlevel=<number>] [--backup-etc=yes|no] [--record-packages=yes|no] [--hwlist=yes|no] [--disable-fuser]"
+                      echo "Syntax:$0 [--scanlevel=<number>] [--backup-etc=yes|no] [--record-packages=yes|no] [--hwlist=yes|no]"
                       echo "Please read the documentation."
                       exit 1
                       ;;
@@ -167,6 +169,16 @@ fi
 # ======================================================================
 #                           Helper tools
 # ======================================================================
+# ----------------------------------------------------------------------
+# Added so I can see what tasks are taking the longest time so I can
+# tune those collection functions later.
+# ----------------------------------------------------------------------
+timestamp_action() {
+   msgtext="$1"
+   tstamp=`date`
+   echo "${tstamp} : ${msgtext}"
+} # end of timestamp_action
+
 # ----------------------------------------------------------------------
 # ----------------------------------------------------------------------
 record_file() {
@@ -342,13 +354,14 @@ get_process_by_exact_pid() {
    pid="$1"
    if [ "${pid}." != "." ];
    then
-      ps -ef | grep "${pid}" | grep -v "grep" | while read yy
+      grep "${pid}" identify_network_listening_processes.wrk | while read yy
       do
          # pid is field 2, only return the exact match
          exact=`echo "${yy}" | awk {'print $2'}`
          if [ "${exact}." == "${pid}." ];
          then
-            programname=`echo "${yy}" | awk {'print $8" "$9" "$10" "$11'}`
+            programname=`echo "${yy}" | awk {'print $8" "$9" "$10" "$11" "$12" "$13" "$14" "$15'}`
+            programname=`echo "${programname}"`     # remove traing spaces we may have inserted
             echo "${programname}"
          fi
       done
@@ -358,179 +371,152 @@ get_process_by_exact_pid() {
 } # end of get_process_by_exact_pid
 
 # ----------------------------------------------------------------------
-#                   get_fuser_network_process_exact
-# called by identify_network_listening_processes to return the progam
-# that has a tcp/tcp6/udp/udp6 port open and listening for connections.
-# If multiple pids have the port open we only return the first.
-#
-# Note: reguardless of output format on RHEL
-# based systems the pid list is written to stdout and all other
-# information to stderr, so the pid list field starts at position 1
-# always. This may not be the case on non RHEL systems.
-#    [root@vmhost3 bin]# fuser -n tcp -v6 9090
-#                         USER        PID ACCESS COMMAND
-#    9090/tcp:            root          1 F.... systemd
-#    [root@vmhost3 bin]# fuser -n tcp -v4 22
-#                         USER        PID ACCESS COMMAND
-#    22/tcp:              root      112022 F.... sshd
-#    [root@vmhost3 bin]# fuser -n tcp  9090
-#    9090/tcp:                1
-# Also while we could 2>&1 and extract the command we can get a lot
-# more detail from the ps output so we use that instead.
-# ----------------------------------------------------------------------
-get_fuser_network_process_exact() {
-   # can be many pids on a port, only get info on the first
-   # example fuser output below
-   # [root@vmhost3 bin]# fuser -n tcp 44321
-   # 44321/tcp:            1959
-   # IMPORTANT: on RHEL based systems (Fedora/CentOS etc) the 44321/tcp: field
-   #            is written to stderr and the pid list to stdout so we
-   #            get the pid from postion 1 of stdout
-   firstpid=`fuser $1 2>/dev/null | awk {'print $1'}`
-   if [ "${firstpid}." != "." ];
-   then
-      programname=`get_process_by_exact_pid "${firstpid}"`
-      echo "${programname}"
-   else
-      echo "fuser can find no process associated with this port"
-   fi
-} # end of get_fuser_network_process_exact
-
-# ----------------------------------------------------------------------
-#              get_fuser_socket_process_exact
-# ----------------------------------------------------------------------
-get_fuser_socket_process_exact() {
-   sockname="$1"
-   isreal=${sockname:0:1}
-   if [ "${isreal}." == "/." ];
-   then
-      pidlist=`fuser ${sockname} 2>/dev/null`
-      # most sockets have pid '1' as their owner, then additional pids
-      pid2=""
-      pid1=`echo "${pidlist}" | awk {'print $1'}`
-      if [ "${pid1}." == "1." ];
-      then
-         pid2=`echo "${pidlist}" | awk {'print $2'}`
-      fi
-      if [ "${pid2}." != "." ];
-      then
-         programname=`get_process_by_exact_pid ${pid2}`
-      else
-         programname=`get_process_by_exact_pid ${pid1}`
-      fi
-      if [ "${programname}." != "." ];
-      then
-         echo "${programname}"
-      else
-         echo "fuser was unable to locate process"
-      fi
-   else
-      echo "not queryable by fuser"
-   fi
-} # end of get_fuser_socket_process_exact
-
-# ----------------------------------------------------------------------
 #             identify_network_listening_processes
 # ----------------------------------------------------------------------
 identify_network_listening_processes() {
-   # We can only collect this information if the "fuser" command is 
-   # installed on the server.
-   havefuser=`which fuser`
-   if [ "${DISABLE_FUSER}." == "YES." ];
-   then
-      echo "FUSER_INSTALLED=DISABLED" >> ${LOGFILE}
-   elif [ "${havefuser}." != "." ];
-   then
-      echo "FUSER_INSTALLED=YES" >> ${LOGFILE}
-      netstat -an | while read xx
-      do
-         listenport=""
-         listenprocess=""
-         # handling for tcp listening ports
-         testvar=`echo "${xx}" | grep "^tcp"`
-         if [ "${testvar}." != "." ];
-         then
-            testvar=`echo "${xx}" | grep "^tcp6"`
-            if [ "${testvar}." != "." ];
-            then
-               islistening=`echo "${xx}" | grep "LISTEN"`
-               if [ "${islistening}." != "." ];
-               then
-                  listenaddr=`echo "${xx}" | awk '{print $4'}`
-                  # the last field we know is the port, print the fieldcount field
-                  listenport=`echo "${listenaddr}" | awk -F: '{print $NF}'`
-                  listenprocess=`get_fuser_network_process_exact "-n tcp -6 ${listenport}"`
-                  if [ "${listenprocess}." != "." ]
-                  then
-                     echo "NETWORK_TCPV6_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
-                  fi
-               fi
-            else
-               islistening=`echo "${xx}" | grep "LISTEN"`
-               if [ "${islistening}." != "." ];
-               then
-                  listenaddr=`echo "${xx}" | awk {'print $4'}`
-                  listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
-                  listenprocess=`get_fuser_network_process_exact "-n tcp -4 ${listenport}"`
-                  if [ "${listenprocess}." != "." ]
-                  then
-                     echo "NETWORK_TCPV4_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
-                  fi
-               fi
-            fi   # if/else tcp5
-         fi   # if tcp
-         # handling for udp listening ports
-         testvar=`echo "${xx}" | grep "^udp"`
-         if [ "${testvar}." != "." ];
-         then
-            testvar=`echo "${xx}" | grep "^udp6"`
-            if [ "${testvar}." != "." ];
-            then
-               # different number of : delimeters in addresses
-               listenaddr=`echo "${xx}" | awk '{print $4'}`
-               # the last field we know is the port, print the fieldcount field
-               listenport=`echo "${listenaddr}" | awk -F: {'print $NF'}`
-               listenprocess=`get_fuser_network_process_exact "-n udp -6 ${listenport}"`
-               if [ "${listenprocess}." != "." ]
-               then
-                  echo "NETWORK_UDPV6_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
-               fi
-            else
-               listenaddr=`echo "${xx}" | awk {'print $4'}`
-               listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
-               listenprocess=`get_fuser_network_process_exact "-n udp -4 ${listenport}"`
-               if [ "${listenprocess}." != "." ]
-               then
-                  echo "NETWORK_UDPV4_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
-               fi
-            fi
-         fi
-         # fuser does not return info on ports listening on 'raw' sockets
-         testvar=`echo "${xx}" | grep "^raw"`
-         if [ "${testvar}." != "." ];
-         then
-            listenaddr=`echo "${xx}" | awk {'print $4'}`
-            listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
-            echo "NETWORK_RAW_PORT_${listenport}=fuser cannot return info on raw sockets" >> ${LOGFILE}
-         fi
-         # identify processes listening on sockets if possible
-         testvar=`echo "${xx}" | grep "^unix"`
+   # put ps into a workfile to avoid running it many times
+   ps -ef > identify_network_listening_processes.wrk
+   netstat -an -p | while read xx
+   do
+      listenport=""
+      listenprocess=""
+      # handling for tcp listening ports
+      testvar=`echo "${xx}" | grep "^tcp"`
+      if [ "${testvar}." != "." ];
+      then
+         testvar=`echo "${xx}" | grep "^tcp6"`
          if [ "${testvar}." != "." ];
          then
             islistening=`echo "${xx}" | grep "LISTEN"`
             if [ "${islistening}." != "." ];
             then
-               socketname=`echo "${xx}" | awk {'print $9'}`
-               listenprocess=`get_fuser_socket_process_exact "${socketname}"`
-               echo "NETWORK_UNIX_SOCKET=${socketname}:${listenprocess}" >> ${LOGFILE}
+               listenaddr=`echo "${xx}" | awk '{print $4'}`
+               # the last field we know is the port, print the fieldcount field
+               listenport=`echo "${listenaddr}" | awk -F: '{print $NF}'`
+               # get the pid from the netstat value
+               pid=`echo "${xx}" | awk {'print $7'} | awk -F\/ {'print $1'}`
+               listenprocess=`get_process_by_exact_pid "${pid}"`
+               if [ "${listenprocess}." != "." ]
+               then
+                  echo "NETWORK_TCPV6_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+               fi
+            fi
+         else
+            islistening=`echo "${xx}" | grep "LISTEN"`
+            if [ "${islistening}." != "." ];
+            then
+               listenaddr=`echo "${xx}" | awk {'print $4'}`
+               listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
+               # get the pid from the netstat value
+               pid=`echo "${xx}" | awk {'print $7'} | awk -F\/ {'print $1'}`
+               listenprocess=`get_process_by_exact_pid "${pid}"`
+               if [ "${listenprocess}." != "." ]
+               then
+                  echo "NETWORK_TCPV4_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+               fi
+            fi
+         fi   # if/else tcp6
+      fi   # if tcp
+      # handling for udp ports (they do not LISTEN and are always active)
+      testvar=`echo "${xx}" | grep "^udp"`
+      if [ "${testvar}." != "." ];
+      then
+         testvar=`echo "${xx}" | grep "^udp6"`
+         if [ "${testvar}." != "." ];
+         then
+            # different number of : delimeters in addresses
+            listenaddr=`echo "${xx}" | awk '{print $4'}`
+            # the last field we know is the port, print the fieldcount field
+            listenport=`echo "${listenaddr}" | awk -F: {'print $NF'}`
+            # get the pid from the netstat value
+            pid=`echo "${xx}" | awk {'print $6'} | awk -F\/ {'print $1'}`
+            listenprocess=`get_process_by_exact_pid "${pid}"`
+            if [ "${listenprocess}." != "." ]
+            then
+               echo "NETWORK_UDPV6_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+            fi
+         else
+            listenaddr=`echo "${xx}" | awk {'print $4'}`
+            listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
+            # get the pid from the netstat value
+            pid=`echo "${xx}" | awk {'print $6'} | awk -F\/ {'print $1'}`
+            listenprocess=`get_process_by_exact_pid "${pid}"`
+            if [ "${listenprocess}." != "." ]
+            then
+               echo "NETWORK_UDPV4_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
             fi
          fi
-      done
-   else
-      echo "FUSER_INSTALLED=NO" >> ${LOGFILE}
-      echo "**warning** as 'fuser' is not installed on this server information is not"
-      echo ".           being collected for processes listening on network ports."
-   fi  # if we have a fuser commmand
+      fi
+      testvar=`echo "${xx}" | grep "^raw"`
+      if [ "${testvar}." != "." ];
+      then
+         testvar=`echo "${xx}" | grep "^raw6"`
+         if [ "${testvar}." == "." ];     # not raw6, so raw4
+         then
+            listenaddr=`echo "${xx}" | awk {'print $4'}`
+            listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
+            # get the pid from the netstat value
+            pid=`echo "${xx}" | awk {'print $7'} | awk -F\/ {'print $1'}`
+            listenprocess=`get_process_by_exact_pid "${pid}"`
+            if [ "${listenprocess}." != "." ]
+            then
+               echo "NETWORK_RAWV4_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+            fi
+         else   # is raw6
+            # different number of : delimeters in addresses
+            listenaddr=`echo "${xx}" | awk '{print $4'}`
+            # the last field we know is the port, print the fieldcount field
+            listenport=`echo "${listenaddr}" | awk -F: {'print $NF'}`
+            # get the pid from the netstat value
+            pid=`echo "${xx}" | awk {'print $7'} | awk -F\/ {'print $1'}`
+            listenprocess=`get_process_by_exact_pid "${pid}"`
+            if [ "${listenprocess}." != "." ]
+            then
+               echo "NETWORK_RAWV6_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+            fi
+         fi
+      fi
+      # identify processes listening on sockets if possible
+      testvar=`echo "${xx}" | grep "^unix"`
+      if [ "${testvar}." != "." ];
+      then
+         checktype=`echo "${xx}" | egrep -h "STREAM|SEQPACKET"`
+         if [ "${checktype}." != "." ];
+         then
+            socketname=`echo "${xx}" | awk -F\] {'print $2'} | awk {'print $5'}`
+            inode=`echo "${xx}" | awk -F\] {'print $2'} | awk {'print $3'}`
+            # get the pid from the netstat value
+            pid=`echo "${xx}" | awk -F\] {'print $2'} | awk {'print $4'} | awk -F\/ {'print $1'}`
+            # some 'stream' entries do not have a state field so all parms are back one
+            if [ "${pid}." == "." ];
+            then
+               socketname=`echo "${xx}" | awk -F\] {'print $2'} | awk {'print $4'}`
+               inode=`echo "${xx}" | awk -F\] {'print $2'} | awk {'print $2'}`
+               pid=`echo "${xx}" | awk -F\] {'print $2'} | awk {'print $3'} | awk -F\/ {'print $1'}`
+            fi
+            listenprocess=`get_process_by_exact_pid "${pid}"`
+            if [ "${listenprocess}." != "." ]
+            then
+               echo "NETWORK_UNIX_STREAM=${inode}:${socketname}=${listenprocess}" >> ${LOGFILE}
+            fi
+         else
+            checktype=`echo "${xx}" | grep "DGRAM"`
+            if [ "${checktype}." != "." ];
+            then
+               socketname=`echo "${xx}" | awk -F\] {'print $2'} | awk {'print $4'}`
+               inode=`echo "${xx}" | awk -F\] {'print $2'} | awk {'print $2'}`
+               # get the pid from the netstat value
+               pid=`echo "${xx}" | awk -F\] {'print $2'} | awk {'print $3'} | awk -F\/ {'print $1'}`
+               listenprocess=`get_process_by_exact_pid "${pid}"`
+               if [ "${listenprocess}." != "." ]
+               then
+                  echo "NETWORK_UNIX_DGRAM=${inode}:${socketname}=${listenprocess}" >> ${LOGFILE}
+               fi
+            fi
+         fi
+      fi
+   done
+   /bin/rm identify_network_listening_processes.wrk
 } # end of identify_network_listening_processes
 
 # MAINLINE STARTS
@@ -546,11 +532,12 @@ echo "TITLE_CAPTUREDATE=${mydate}" >> ${LOGFILE}
 echo "TITLE_OSVERSION=${osversion}" >> ${LOGFILE}
 echo "TITLE_OSTYPE=${ostype}" >> ${LOGFILE}
 echo "TITLE_FileScanLevel=${SCANLEVEL_USED}" >> ${LOGFILE}
-echo "TITLE_ExtractVersion=0.06" >> ${LOGFILE}
+echo "TITLE_ExtractVersion=0.07" >> ${LOGFILE}
 
 # ======================================================================
 # Collect User Details and key system defaults.
 # ======================================================================
+timestamp_action "collecting security config files"
 record_file PASSWD_FILE /etc/passwd           # user details
 record_file PASSWD_SHADOW_FILE /etc/shadow    # password and expiry details
 record_file FTPUSERS_FILE /etc/ftpusers       # users that cannot use ftp
@@ -567,6 +554,7 @@ record_file LOGIN_DEFS /etc/login.defs        # passwd maxage, minlen etc
 #                       in /home had violations). So can no longer scan
 #                       from /, so specify all the system file directories.
 # ======================================================================
+timestamp_action "collecting system file details"
 #find_perms_under_system_dir PERM_SYSTEM_FILE /
 find_perms_under_system_dir PERM_SYSTEM_FILE /bin
 find_perms_under_system_dir PERM_SYSTEM_FILE /boot
@@ -582,6 +570,7 @@ find_perms_under_system_dir PERM_SYSTEM_FILE /var
 # ======================================================================
 # Collect perms of user directories.
 # ======================================================================
+timestamp_action "collecting user home directory information"
 cat /etc/passwd | while read dataline
 do
    userdetails=`echo "${dataline}" | awk -F: {'print $6" "$1'}` # dir and user
@@ -590,9 +579,10 @@ done
 
 # ======================================================================
 # Find all SUID fileser directories.
-# From F20 (19?) -perm +6000 is npr permitted to find both,
+# From F20 (19?) -perm +6000 is not permitted to find both,
 # we have to seperately search on -4000 and -2000 now
 # ======================================================================
+timestamp_action "collecting suid file details"
 find / -type f -perm -4000 -exec ls -la {} \; 2>/dev/null | while read dataline
 do
    echo "SUID_FILE=${dataline}" >> ${LOGFILE}
@@ -613,6 +603,7 @@ find_file_perm PERM_SHADOW_FILE /etc/shadow "root"
 # ======================================================================
 # Are cron.allow and cron.deny being used ?
 # ======================================================================
+timestamp_action "collecting cron information"
 if [ -f /etc/cron.deny ];
 then
    echo "CRON_DENY_EXISTS=YES" >> ${LOGFILE}
@@ -686,6 +677,7 @@ done
 # ======================================================================
 # Collect basic network info to be checked
 # ======================================================================
+timestamp_action "collecting information on open network ports and sockets"
 
 record_file HOSTS_ALLOW /etc/hosts.allow
 record_file HOSTS_DENY /etc/hosts.deny
@@ -724,27 +716,31 @@ then
 fi
 
 # --- what ports are being listened to ? ---
-netstat -an | grep LISTEN | grep "^tcp "| grep -v "::" | while read dataline
+netstat -an -p | grep LISTEN | grep "^tcp "| grep -v "::" | while read dataline
 do
-   echo "PORT_TCP_LISTENING=${dataline}" >> ${LOGFILE}
+   echo "PORT_TCPV4_LISTENING=${dataline}" >> ${LOGFILE}
 done
-netstat -an | grep LISTEN | grep "^tcp6 "| grep "::" | while read dataline
+netstat -an -p | grep LISTEN | grep "^tcp6 "| grep "::" | while read dataline
 do
    echo "PORT_TCPV6_LISTENING=${dataline}" >> ${LOGFILE}
 done
-netstat -an | grep "^udp "| grep -v "::" | while read dataline
+netstat -an -p | grep "^udp "| grep -v "::" | while read dataline
 do
-   echo "PORT_UDP_LISTENING=${dataline}" >> ${LOGFILE}
+   echo "PORT_UDPV4_LISTENING=${dataline}" >> ${LOGFILE}
 done
-netstat -an | grep "^udp6 "| grep "::" | while read dataline
+netstat -an -p | grep "^udp6 "| grep "::" | while read dataline
 do
    echo "PORT_UDPV6_LISTENING=${dataline}" >> ${LOGFILE}
 done
-netstat -an | grep "^raw"| grep "::" | while read dataline
+netstat -an -p | grep "^raw"| grep -v "::" | while read dataline
 do
-   echo "PORT_RAW_LISTENING=${dataline}" >> ${LOGFILE}
+   echo "PORT_RAWV4_LISTENING=${dataline}" >> ${LOGFILE}
 done
-netstat -an | grep LISTEN | grep "unix "| while read dataline
+netstat -an -p | grep "^raw6"| while read dataline
+do
+   echo "PORT_RAWV6_LISTENING=${dataline}" >> ${LOGFILE}
+done
+netstat -an -p | grep "^unix" | while read dataline
 do
    echo "PORT_UNIX_LISTENING=${dataline}" >> ${LOGFILE}
 done
@@ -778,6 +774,7 @@ echo "APPLICATION_SAMBA_RUNNING=${sambaRunning}" >> ${LOGFILE}
 # motd should contain a auth/business notice.
 # as should the sshd config, check root login flag here also
 # ======================================================================
+timestamp_action "collecting motd and ssh-banner information"
 record_file MOTD_DATA /etc/motd
 find_file_perm PERM_ETC_MOTD "/etc/motd" "root"
 # MID: 2008/07/03 added sshd config and banner capture
@@ -798,6 +795,7 @@ fi
 # ======================================================================
 # Files that must exist and be retained for a specific period (days)
 # ======================================================================
+timestamp_action "collecting info on files that must be retained"
 require_file /var/log/auth.log 60 ".gz"
 require_file /var/log/wtmp 60 ".gz"
 
@@ -815,6 +813,7 @@ require_file /var/log/wtmp 60 ".gz"
 # ======================================================================
 if [ "${BACKUP_ETC}." == "yes." ];
 then
+   timestamp_action "performing tar of /etc"
    mydir=`pwd`
    cd /etc
    tar -cf ${ETCTARFILE} *
@@ -828,6 +827,7 @@ fi
 # ======================================================================
 if [ "${BACKUP_RPMLIST}." == "yes." ];
 then
+   timestamp_action "saving the installed packages information"
    rpm -qa > ${RPMFILE}
 fi
 
@@ -840,6 +840,7 @@ then
 fi
 if [ "${DO_HWLIST}." == "yes." ];
 then
+   timestamp_action "collecting hardware information"
    # DMIDECODE will list all hardware details
    #   - number of memory slots, number used, max memory card size per slot
    #   - all IDE/ATA slots, and whether in use or free
