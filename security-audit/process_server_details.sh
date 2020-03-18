@@ -388,7 +388,7 @@ update_system_file_owner_list() {
       grep "^ADD_SYSTEM_FILE_OWNER=" ${CUSTOMFILE} | awk -F\= '{print $2}' | while read newowner
       do
          SYSTEM_FILE_OWNERS="${SYSTEM_FILE_OWNERS} ${newowner}"
-         echo "${SYSTEM_FILE_OWNERS}" > ${WORKDIR}/delme
+         echo "${SYSTEM_FILE_OWNERS}" >> ${WORKDIR}/delme
       done
       SYSTEM_FILE_OWNERS=`cat ${WORKDIR}/delme`
       rm -f ${WORKDIR}/delme
