@@ -6,14 +6,47 @@
 #
 # Part of the server security checking suite.
 #
-# useage: process_server_details.sh --datadir=<directory> [--archivedir] [--oneserver=<servername>]
-#      datadir is where the collected snapshots are
-#      archivedir can be used to take an archive of the results
-#      onseserver will only prcess the names server instead of all servers
+# usage: one of the below four
+#
+#         process_server_details.sh --datadir=<directory> [--archivedir] \
+#              [--oneserver=<servername>] [--customfiledir=<directory>] 
+#
+#         process_server_details.sh --datadir=<directory> [--archivedir] \
+#              [--customfiledir=<directory>] --checkchanged=list|process
+#
+#         process_server_details.sh --datadir=<directory> --indexonly=yes
+#
+#         process_server_details.sh --clearlock
+#
+#      --datadir         is where the collected snapshots are
+#      --archivedir      can be used to take an archive of the results
+#      --customfiledir   can be used to override the default location of ./custom
+#      --clearlock       if a previous run was aborted *vtrl-c or server reboot) the
+#                        lockfile can be cleared with this option, it will check to
+#                        make sure the pid of the process that created the lock is 
+#                        no longer running before doing so
+#   *  --onseserver      will only process the named server instead of all servers,
+#                        unless checks identify other servers that also need processing
+#   *  --checkchanged    will list all the servers that would be processed if the
+#                        option --checkchanged=list was used
+#                        if --checkchanged=process was used process all servers with
+#                        collector data files more recent than the last processing
+#                        time for the server plus all new server collected files
+#                        that have never been processed
+#   *  --indexonly       will just recreate the main index page. This is to allow results
+#                        processed on other servers to be merged, however it will alert on
+#                        servers that have no captured datafiles in place (so if merging
+#                        results ensure the data is also copied; risking a full reprocess
+#                        on that central server when processing versions are updated) and warn on
+#                        servers with capture files more recent than the last processing date
+#   *  << parameters marked with this are intended to cut down on processing time
+#      when only a few servers need to be reprocessed and you do not want a full
+#      processing run against the 100's of servers you may have. The --oneserver is particularly
+#      useful if you are just working on squashing alerts one server at a time.
 #
 # function:
 #    will read all server extract files named secaudit_<hostname>.txt
-#    and produce an html documentation system for each server, highlighting
+#    and produce an html documentation report for each server, highlighting
 #    security deviations and recording the servers key configuration
 #    data files.
 #
@@ -47,6 +80,10 @@
 #      F.2 - security log retention checks
 #      F.3 - sshd configuration checks
 #   G. Report on custom file used (if any)
+#   H. Firewall rule checks to determine if open ports in the firewall
+#      rules match ports actualy in use on the server
+#   I. Webserver file security checks if webserver file
+#      information was collected
 #   Z. Record /etc file settings for the server
 #
 # MID: 2004/xx/xx - initial version needing a lot of work
@@ -133,12 +170,40 @@
 #                       to swap them around again.
 #                   (3) add network 'raw' port custom file handling to
 #                       match existing tcp/udp handling
+# MID: 2020/03/23 - Version 0.08
+#                   (1) added specific webserver checks, custom parm
+#                       ADD_WEBSERVER_FILE_OWNER and new collector 
+#                       parms PERM_WEBSERVER_FILE now handled for checking
+#                       all files under specified web directories (defined
+#                       on the server with collector options) are read-only.
+#                   (2) added handling of new collector parm IPTABLES_ACCEPT
+#                       to perform firewall rule checks, ensure ports
+#                       open on the firewall have matching custom file
+#                       entries for ip listening parms to spot obsolete
+#                       firewall ports etc.
+#                   (3) use a logical lock file to prevent two copies of
+#                       the processing script running at the same time,
+#                       and a --clearlock option to recover from user
+#                       aborted (ctrl-c or reboot) processing
+#                   (4) add the --indexonly=yes|no option
+#                   (5) removed all backward compatibility for parms used
+#                       prior to version 0.07 (users had the lifetime of 0.07
+#                       which issues warnings they would not be in 0.08 so if
+#                       they neglected to take action tough
+#                   (6) Altered custom file parm FORCE_PERM_OK=/path/and/file
+#                       to require FORCE_PERM_OK=/path/and/file:exactperms
+#                   (7) Altered custom file parm FORCE_OWNER_OK=/path/and/file
+#                       to require FORCE_OWNER_OK=/path/and/file:exactowner
+#                   (8) implement --checkchanged=list|process
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
-SRCDIR=""         # where are the raw datafiles to process (required)
-ARCHIVEDIR=""     # if populated archive the reports to here also (optional)
-SINGLESERVER=""   # process all servers by default if this is not populated (optional)
+SRCDIR=""           # where are the raw datafiles to process (required)
+ARCHIVEDIR=""       # if populated archive the reports to here also (optional)
+SINGLESERVER=""     # process all servers by default if this is not populated (optional)
+INDEXONLY="no"      # default is to actually process something
+CHECKCHANGE=""      # default nothing, depending on parms may be list or process
+ONLYCLEARLOCK="no"  # default is normal processing
 while [[ $# -gt 0 ]];
 do
    parm=$1
@@ -148,10 +213,26 @@ do
       "--archivedir") ARCHIVEDIR="${value}"
                    shift
                    ;;
+      "--customfiledir") OVERRIDES_DIR="${value}"
+                   shift
+                   ;;
       "--datadir") SRCDIR="${value}"
                    shift
                    ;;
+      "--indexonly") INDEXONLY="${value}"
+                   shift
+                   ;;
       "--oneserver") SINGLESERVER="${value}"
+                   shift
+                   ;;
+      "--checkchanged") CHECKCHANGE="${value}"
+                   if [ "${CHECKCHANGE}." == "." ];
+                   then
+                      CHECKCHANGE="error"   # stop falling through on the default of empty
+                   fi
+                   shift
+                   ;;
+      "--clearlock") ONLYCLEARLOCK="yes"
                    shift
                    ;;
       *)          echo "Unknown paramater value ${key}"
@@ -163,7 +244,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.07"
+PROCESSING_VERSION="0.08"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -187,6 +268,29 @@ OVERRIDES_DIR="${BASEDIR}/custom"
 PERM_CHECK_RESULT="OK"
 NUM_VALUE=0      # used a lot
 CUSTOMFILE=""                        # set on a per server being processed basis
+LOGICAL_LOCK="${RESULTS_DIR}/logical_lock.dat"
+
+# First see if the request was to clear the lockfile, if so we need to
+# do nothing else.
+if [ "${ONLYCLEARLOCK}." == "yes." ];
+then
+   if [ ! -f ${LOGICAL_LOCK} ];
+   then
+      echo "No lockfile exists."
+   else
+      # Lockfile data is as below
+      # Sun Mar 22 19:00:15 NZDT 2020 - pid 1431396 has the lock
+      pidlock=`cat ${LOGICAL_LOCK} | awk {'print $9'}`
+      stillrunning=`ps -ef | awk {'print $2'} | grep "${pidlock}"`
+      if [ "${stillrunning}." != "." ];
+      then
+         echo "Process pid ${pidlock} is still running, a processing run is still in progress"
+      else
+         /bin/rm ${LOGICAL_LOCK}
+      fi
+   fi
+   exit 0
+fi
 
 # Space seperated list of users that can own files of class SYSTEM.
 # Additional users can be added on a per server basis from the server
@@ -194,6 +298,8 @@ CUSTOMFILE=""                        # set on a per server being processed basis
 # NOTE: THIS LIST IS ACTUALLY INITIALISED IN update_system_file_owner_list
 #       FOR EACH SERVER SO IF YOU CHANGE THE BELOW ALSO CHANGE IT THERE.
 SYSTEM_FILE_OWNERS=""
+# Additional for ADD_WEBSERVER_FILE_OWNER=xx
+WEBSERVER_FILE_OWNERS=""
 
 # Added below for single server processing. Can contain
 # a list of additional servers that also need processing
@@ -242,6 +348,23 @@ then
    fi
 fi
 
+# If an customfile directory was specified it must exist using full path name
+# Note: if none was provided we already set the default to a full path so
+# this check will always be performed.
+if [ "${OVERRIDES_DIR}." != "." ];
+then
+   testroot=${OVERRIDES_DIR:0:1}
+   if [ "${testroot}." != "/." ];
+   then
+      OVERRIDES_DIR="${BASEDIR}/${OVERRIDES_DIR}"   
+   fi
+   if [ ! -d ${OVERRIDES_DIR} ];
+   then
+      echo "*Error* customfile directory ${OVERRIDES_DIR} does not exist"
+      exit 1
+   fi
+fi
+
 # Ensure there are valid collector files in the source directory
 # Set the files to process to the default of all available if there are.
 testvar=`ls ${SRCDIR}/secaudit*txt 2>/dev/null | wc -l | awk {'print $1'}`
@@ -250,6 +373,31 @@ then
    echo "There are no valid files in ${SRCDIR}, nothing to do"
    exit 1
 fi
+
+if [ "${INDEXONLY}." != "no." -a "${INDEXONLY}." != "yes." ];
+then
+   echo "the --indexonly=value must have a value of yes or no"
+   exit 1
+fi
+
+if [ "${CHECKCHANGE}." != "." -a "${CHECKCHANGE}." != "list." -a "${CHECKCHANGE}." != "process." ];
+then
+   echo "the --checkchanged=value must have a value of list or process"
+   exit 1
+fi
+
+# check for an existing processing run in progress
+if [ -f ${LOGICAL_LOCK} ];
+then
+   lastlock=`cat ${LOGICAL_LOCK}`
+   echo "A processing run is already in progress !. Started at ${lastlock}"
+   exit 1
+fi
+# indicate we are the process holding the lock
+timenow=`date`
+mypid=$$
+echo "${timenow} - pid ${mypid} has the lock" > ${LOGICAL_LOCK}
+
 FILES_TO_PROCESS="${testvar}"
 FILES_PROCESSED=0
 
@@ -395,6 +543,37 @@ update_system_file_owner_list() {
       echo "Note: System file owners updated to be ${SYSTEM_FILE_OWNERS} by config file"
    fi
 } # end of update_system_file_owner_list
+
+# ---------------------------------------------------------------
+# Are we adding additional users that may own WEBSERVER class files
+# If additional users are to be added to that list do that here
+# and update the global WEBSERVER_FILE_OWNERS variable.
+# ---------------------------------------------------------------
+update_webserver_file_owner_list() {
+   hostid="$1"
+   # Space seperated list of users that can own files of class SYSTEM.
+   # Additional users can be added on a per server basis from the server
+   # customisation file with ADD_SYSTEM_FILE_OWNER=xx
+   WEBSERVER_FILE_OWNERS=""
+   if [ "${CUSTOMFILE}." != "." ];
+   then
+      if [ -f ${WORKDIR}/delme ];
+      then
+         /bin/rm -f ${WORKDIR}/delme
+      fi
+      grep "^ADD_WEBSERVER_FILE_OWNER=" ${CUSTOMFILE} | awk -F\= '{print $2}' | while read newowner
+      do
+         WEBSERVER_FILE_OWNERS="${WEBSERVER_FILE_OWNERS} ${newowner}"
+         echo "${WEBSERVER_FILE_OWNERS}" > ${WORKDIR}/delme
+      done
+      if [ -f ${WORKDIR}/delme ];
+      then
+         WEBSERVER_FILE_OWNERS=`cat ${WORKDIR}/delme`
+         /bin/rm -f ${WORKDIR}/delme
+         echo "Note: Webserver file owners updated to be ${WEBSERVER_FILE_OWNERS} by config file"
+      fi
+   fi
+} # end of update_webserver_file_owner_list
 
 # ---------------------------------------------------------------
 # Used to check file permissions, we do a lot of that.
@@ -551,6 +730,7 @@ check_file_perms() {
    # USE AWK, cut doesn't handle the tabs in the dataline
    perm=`echo "${databuffer}" | awk {'print $1'}`
    perm=${perm:0:10}   # fix for trailing . on perms now
+   saveperm="${perm}"  # want an unmodified copy for force ok test
    reqd_permMask=${reqd_permMask:0:10}   # in case passed in mask also
    realowner=`echo "${databuffer}" | awk {'print $3'}`
    # now processed as ls output=owner optdata
@@ -574,10 +754,16 @@ check_file_perms() {
                then
                   # See if we have a FORCE_PERM_OK for this file
                   thefilename=`echo "${databuffer}" | awk -F\= {'print $1'} | awk {'print $9'}`
-                  testvar=`grep "^FORCE_PERM_OK=${thefilename}" ${CUSTOMFILE}`
+                  testvar=`grep "^FORCE_PERM_OK=${thefilename}:" ${CUSTOMFILE}`
                   if [ "${testvar}." == "." ];
                   then
                      PERM_CHECK_RESULT="Bad Permissions"
+                  else   # if an entry get the perm needed from field 2
+                     permfromfile=`echo "${testvar}" | awk -F: {'print $2'}`
+                     if [ "${saveperm}." != "${permfromfile}." ];
+                     then
+                        PERM_CHECK_RESULT="Bad Permissions"
+                     fi
                   fi
                else
                   PERM_CHECK_RESULT="Bad Permissions"
@@ -617,28 +803,37 @@ check_file_perms() {
    then
       if [ "${neededowner}." != "SYSTEM." ];
       then
-         if [ "${realowner}." != "${neededowner}." ];
+         if [ "${neededowner}." == "WEBUSER." ];     # a webpath directory, allow any valid webserver user
          then
-            # Original processing, an error
-            if [ "${PERM_CHECK_RESULT}." == "OK." ];
+            testvar=`echo "${WEBSERVER_FILE_OWNERS}" | grep -w "${realowner}"`
+            if [ "${testvar}." == "." ];
             then
-               PERM_CHECK_RESULT="Bad Ownership ${realowner}, should be ${neededowner}"
-            else
                PERM_CHECK_RESULT="${PERM_CHECK_RESULT}<br>Bad Ownership ${realowner}, should be ${neededowner}"
+            fi
+         else  # must be the real user
+            if [ "${realowner}." != "${neededowner}." ];
+            then
+               # Original processing, an error
+               if [ "${PERM_CHECK_RESULT}." == "OK." ];
+               then
+                  PERM_CHECK_RESULT="Bad Ownership ${realowner}, should be ${neededowner}"
+               else
+                  PERM_CHECK_RESULT="${PERM_CHECK_RESULT}<br>Bad Ownership ${realowner}, should be ${neededowner}"
+               fi
             fi
          fi
       else  # System ownership checks
          testvar=`echo "${SYSTEM_FILE_OWNERS}" | grep -w "${realowner}"`
          if [ "${testvar}." == "." ];
          then
-            # check for a pecific override for this file
+            # check for a specific override for this file
             testuser=""
             if [ "${CUSTOMFILE}." != "." ];
             then
                # See if we have a FORCE_OWNER_OK for this file
-               thefilename=`echo "${databuffer}" | awk -F\= {'print $2'}`
+               thefilename=`echo "${databuffer}" | awk -F\= {'print $1'}`
                thefilename=`echo "${thefilename}" | awk {'print $9'}`
-               testuser=`grep "^FORCE_OWNER_OK=${thefilename}" ${CUSTOMFILE}`
+               testuser=`grep "^FORCE_OWNER_OK=${thefilename}:" ${CUSTOMFILE} | awk -F: {'print $2'}`
             fi
             if [ "${PERM_CHECK_RESULT}." == "OK." -a "${testuser}." == "."  ];
             then
@@ -647,6 +842,16 @@ check_file_perms() {
                if [ "${testuser}." == "." ];
                then
                   PERM_CHECK_RESULT="${PERM_CHECK_RESULT}<br>Bad Ownership ${realowner}, should be ${neededowner}"
+               else
+                  if [ "${testuser}." != "${realowner}." ];
+                  then
+                     if [ "${PERM_CHECK_RESULT}." == "OK." ];
+                     then
+                        PERM_CHECK_RESULT="Bad Ownership ${realowner}, should be ${testuser} (by custom override)"
+                     else
+                        PERM_CHECK_RESULT="${PERM_CHECK_RESULT}<br>Bad Ownership ${realowner}, should be ${testuser} (by custom override)"
+                     fi
+                  fi
                fi
             fi
          fi
@@ -815,6 +1020,7 @@ can_user_use_cron() {
 #            (yes, A.3 should be in B.3, but we need the files from A so 'so be it'.
 #      A.5 - /etc/shadow must be tightly secured
 #      A.6 - Check system default passwd maxage, minlen etc
+#      A.7 - Check no additional users in the root group
 # ==========================================================
 extract_appendix_a_files() {
    hostid="$1"
@@ -1145,9 +1351,9 @@ build_appendix_a() {
    if [ -f ${WORKDIR}/login.defs ];      # check, added later so not in all collection releases
    then
       echo "<h3>A.6 User default attributes file</h3>" >> ${htmlfile}
-	  echo "<p>The default attributes used when adding a new user need to be set to" >> ${htmlfile}
-	  echo "reasonable values, the defaults are generally unaceptable. These are" >> ${htmlfile}
-	  echo "the values in /etc/login.defs for server ${hostid}.</p>" >> ${htmlfile}
+      echo "<p>The default attributes used when adding a new user need to be set to" >> ${htmlfile}
+      echo "reasonable values, the defaults are generally unaceptable. These are" >> ${htmlfile}
+      echo "the values in /etc/login.defs for server ${hostid}.</p>" >> ${htmlfile}
       # Get and ensure values exist for the data being checked
       maxdays=`grep "^PASS_MAX_DAYS" ${WORKDIR}/login.defs | awk {'print $2'}`
       mindays=`grep "^PASS_MIN_DAYS" ${WORKDIR}/login.defs | awk {'print $2'}`
@@ -1200,6 +1406,23 @@ build_appendix_a() {
          echo "<tr bgcolor=\"${colour_OK}\"><td>Default password expiry warning is >= 7 days, OK</td></tr>" >> ${htmlfile}
       fi
       echo "</table>" >> ${htmlfile}
+   fi
+
+   # A.7 must be no additional users in the root group
+   echo "<h3>A.7 No additional users in the root group</h3>" >> ${htmlfile}
+   echo "<p>Many system files are secured for root:root write access, so it is important to" >> ${htmlfile}
+   echo "ensure no additional users are permitted in the root group.</p>" >> ${htmlfile}
+   testextra=`grep "^ETC_GROUP_FILE=root:" ${SRCDIR}/secaudit_${hostid}.txt | awk -F: {'print $4'}`
+   if [ "${testextra}." != "." ];
+   then
+      echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
+      echo "<p>The following additional users are in the root group : ${testextra}</p>" >> ${htmlfile}
+      echo "</td></tr></table>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   else
+      echo "<table bgcolor=\"${colour_OK}\"><tr><td>" >> ${htmlfile}
+      echo "<p>No additional users have been added to the root group.</p>" >> ${htmlfile}
+      echo "</td></tr></table>" >> ${htmlfile}
    fi
 
    # Close the appendix page
@@ -1446,25 +1669,6 @@ extract_appendix_c_files() {
    # --- Build the allowed ports files if a server customisation file exists ---
    if [ "${CUSTOMFILE}." != "." ];
    then
-      # First the old format parameters we will obsolete in version 0.08
-      badparms=`grep "PORT_ALLOWED" ${CUSTOMFILE} | wc -l`
-      if [ ${badparms} -gt 0 ];
-      then
-         echo "***WARNING*** Your custom file contains obsolete network parameters"
-         echo ".   File: ${CUSTOMFILE}"
-         echo ".   The parameters TCP_PORT_ALLOWED and UDP_PORT_ALLOWED are obsolete,"
-         echo ".   and will not be supported in version 0.08."
-         echo ".   Replace with the new TCP_PORTV4_ALLOWED, TCP_PORTV6_ALLOWED,"
-         echo ".   UDP_PORTV4_ALLOWED and UDP_PORTV6_ALLOWED as soon as possible."
-         echo "Note: you cannot have both formats in the same configuration file,"
-         echo "as soon as one new-format parameter is used all old formats are ignored."
-      fi
-      grep "^TCP_PORT_ALLOWED" ${CUSTOMFILE} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_tcp_ports
-      grep "^UDP_PORT_ALLOWED" ${CUSTOMFILE} | cut -d\= -f2 | cat > ${WORKDIR}/allowed_udp_ports
-
-      # Then the new format parameters available from version 0.06 onward
-      # If the files are created the disable old version processing so only do anything if
-      # there is data. remove all the if for version 0.08
       counter=`grep "^TCP_PORTV4_ALLOWED" ${CUSTOMFILE} | wc -l`
       if [ ${counter} -gt 0 ];
       then
@@ -1675,40 +1879,6 @@ appendix_c_check_unused_custom() {
    delete_file "${WORKDIR}/port_sanitation"
    delete_file "${WORKDIR}/network_sanitation.wrk"
 
-   # vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-   # below is for obsolete old port parameters still supported until version 0.08
-   badparms=`grep "PORT_ALLOWED" ${CUSTOMFILE} | wc -l`
-   if [ ${badparms} -gt 0 ];
-   then
-      if [ -f ${WORKDIR}/allowed_tcp_ports ];
-      then
-         cat ${WORKDIR}/allowed_tcp_ports | while read dataline
-         do
-            portnum=`echo "${dataline}" | awk -F: {'print $2'}`
-            exists=`grep -w "${portnum}" ${WORKDIR}/active_tcp_services.wrk2`
-            if [ "${exists}." == "." ];
-            then
-               echo "<tr bgcolor=\"${colour_alert}\"><td>TCP</td><td>${portnum}</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
-               inc_counter ${hostid} alert_count
-            fi
-         done
-      fi
-      if [ -f ${WORKDIR}/allowed_udp_ports ];
-      then
-         cat ${WORKDIR}/allowed_udp_ports | while read dataline
-         do
-            portnum=`echo "${dataline}" | awk -F: {'print $2'}`
-            exists=`grep -w "${portnum}" ${WORKDIR}/active_udp_services.wrk2`
-            if [ "${exists}." == "." ];
-            then
-               echo "<tr bgcolor=\"${colour_alert}\"><td>UDP</td><td>${portnum}</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
-               inc_counter ${hostid} alert_count
-            fi
-         done
-      fi
-   fi
-   # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
    # The new files used in version 0.06 and above
    cat ${WORKDIR}/active_tcp_services.wrk2 | while read dataline
    do
@@ -1748,13 +1918,6 @@ appendix_c_check_unused_custom() {
       echo "All customisation entries have a matching active port number." >> ${htmlfile}
       echo "No action required to the customisation files.</td></tr></table>" >> ${htmlfile}
    fi
-   if [ ${badparms} -gt 0 ];
-   then
-      echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
-      echo "The customisation file is using obsolete network customisation settings." >> ${htmlfile}
-      echo "These will be removed in version 0.08 so update these as soon as possible.</td></tr></table>" >> ${htmlfile}
-      inc_counter ${hostid} alert_count
-   fi
 } # end of appendix_c_check_unused_custom
 
 # ----------------------------------------------------------
@@ -1772,17 +1935,6 @@ build_appendix_c() {
    echo "<p>This appendix lists all the open ports on the server, even" >> ${htmlfile}
    echo "if the ports are expected to be open you should review" >> ${htmlfile}
    echo "the ports in use to see if any can be closed.</p>" >> ${htmlfile}
-
-   # This block can be removed in version 0.08 when the parameters are 
-   # completely dropped.
-   testoldver1=`grep "^TCP_PORT_ALLOWED" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
-   testoldver2=`grep "^UDP_PORT_ALLOWED" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
-   if [ ${testoldver1} -gt 0 -o ${testoldver2} -gt 0 ];
-   then
-      echo "<p><b>Your customisation file is using obsolete parameters that will" >> ${htmlfile}
-      echo "be dropped in the next release; critical alert count incremented for that issue.</b></p>" >> ${htmlfile}
-      inc_counter ${hostid} alert_count
-   fi
 
    # C.1 Check all listening ports against the allowed services and the
    #    services files. Report allowed services as green fields, unexpected
@@ -1891,7 +2043,7 @@ build_appendix_c() {
             # grep needs [ and ] changed to \[ and \] for searches so into a temp car for the search
             bb=`echo "${aa}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
             processmatch1=`grep "^NETWORK_TCPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
-            processmatch1=`echo "${processmatch1}"`           # remove trailing spaces
+            processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`                  # remove trailing spaces
             if [ "${processmatch1}." == "${searchmatch}." ]
             then
                if [ "${listenaddr}." == "0.0.0.0." -o "${listenaddr}." == ":::." ];
@@ -2329,19 +2481,9 @@ build_appendix_e() {
    # what was found.
    allowsloppyvar="WARN" # default
    echo "0" > ${WORKDIR}/note_count
-   override_file=""
-   if [ -f ${OVERRIDES_DIR}/${hostid}.custom ];
+   if [ "${CUSTOMFILE}." != "." ];
    then
-      override_file="${OVERRIDES_DIR}/${hostid}.custom"
-   else
-      if [ -f ${OVERRIDES_DIR}/ALL.custom ];
-      then
-         override_file="${OVERRIDES_DIR}/ALL.custom"
-      fi
-   fi
-   if [ "${override_file}." != "." ];
-   then
-      testvar=`grep "^ALLOW_SLOPPY_VAR" ${override_file}`
+      testvar=`grep "^ALLOW_SLOPPY_VAR" ${CUSTOMFILE}`
       # Test and set the value here so it's only sanity
       # checked once outside the loop.
       if [ "${testvar}." != "." ];
@@ -2362,7 +2504,7 @@ build_appendix_e() {
       fi
       # See if files under /var are permitted to be group writeable
       allowvargroupwrite="NO"
-      testvar=`grep "^ALLOW_VAR_FILE_GROUPWRITE=YES" ${override_file} | awk -F\= {'print $2'}`
+      testvar=`grep "^ALLOW_VAR_FILE_GROUPWRITE=YES" ${CUSTOMFILE} | awk -F\= {'print $2'}`
       if [ "${testvar}." != "YES." ];
       then
          allowvargroupwrite="NO"
@@ -2370,7 +2512,7 @@ build_appendix_e() {
          allowvargroupwrite="YES"
       fi
       # save the allowed suid files now as well 
-      grep "^SUID_ALLOW" ${override_file} | awk -F\= '{print $2}' | while read dataline
+      grep "^SUID_ALLOW" ${CUSTOMFILE} | awk -F\= '{print $2}' | while read dataline
       do
          # note we add the space-X to force exact matches on filenames, to prevent
          # paths being used in the custom file.
@@ -2943,6 +3085,261 @@ build_appendix_g() {
 } # build_appendix_g
 
 # ----------------------------------------------------------
+#                      Appendix H.
+#   H. iptables information
+# ----------------------------------------------------------
+build_appendix_h() {
+   hostid="$1"
+   clean_prev_work_files
+   mkdir ${WORKDIR}
+   htmlfile="${RESULTS_DIR}/${hostid}/appendix_H.html"
+   log_message ".     Building Appendix H - firewall accept rules"
+   cat << EOF > ${htmlfile}
+<html><head><title>Firewall accept rules for ${hostid}</title></head><body>
+<h1>Appendix H - Firewall accept rules for ${hostid}</h1>
+<p>This information from the server does not identify what chains the rules are in,
+but should be a good indication of what network traffic is accepted by this server.
+</p>
+<p>
+It should also be noted that at this time as iptables does not distinguish between rules
+targetting ipv4 and ipv6 ports the checking is a little sloppy as if a custom file entry for
+either ip type matches we must just assume it is the correct one.
+</p>
+<p>
+Also it should be noted that unlike the network check section we do not currently
+warn if the destination is any interface.
+</p>
+<p>
+On a "desktop" machine you will get a lot of alerts depending on what services you
+have enabled, for example if you use firewalld to 'firewall-cmd --add-service kde-connect'
+it will open port range '1714:1764' (locically defined as 'sesi-lm:cft-3') which is an immediate 100
+alerts (50 for tcp and 50 for udp), or 98 if you actually start kde-connect as it only uses 1 tcp and 1 udp port within
+that entire range. <em>Which is why this report section is important as you need to know when such drastic rules are inserted</em>.
+</p>
+<p>
+Even though some alerts will be for firewall rules allowing traffic through to ports
+that are not in use on the server do not just blindly remove the firewall rules to
+resolve the alert, investigate first, it may be a needed port with the application using
+it just stopped for maintenance when the collection was run. There are also applications such as
+the puppet agent that uses port 8140 on a client server but only during the brief interval
+a periodic check for the server when the agent opens it to recieve data but closes it again
+as soon as it is done so in 99% of checks this port will not be in use, but delete the
+firewall rule for port and puppet breaks... basically know your applications.
+</p>
+EOF
+   totalcount=0
+   echo "${totalcount}" > ${WORKDIR}/iptables_totals_count
+   countlines=`grep "^IPTABLES_ACCEPT=" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   if [ ${countlines} -gt 0 ];
+   then
+      # explain colour mappings used
+      echo "<table border=\"1\">" >> ${htmlfile}
+      echo "<tr><td bgcolor=\"${colour_banner}\" colspan=\"4\">Colours codes used in this report</td></tr><tr>" >> ${htmlfile}
+      echo "<td bgcolor=\"${colour_alert}\">alert count bumped<br />A firewall rule for the port but either the matching port is not listening on the server or is not in custom file port entry or matching process match allow entry</td>" >> ${htmlfile}
+      echo "<td bgcolor=\"${colour_override_insecure}\">no counters changed<br />A firewall rule exists, port is listening on the server, custom allow rules use unsafe process rule match for the port</td>" >> ${htmlfile}
+      echo "<td bgcolor=\"${colour_OK}\">no counters changed<br />This firewall rule matches a port listening on the server and the port is permitted by customfile rules</td>" >> ${htmlfile}
+      echo "<td bgcolor=\"white\">no counters changed<br />This entry is not checked by the processing script as it has no explicit port number</td>" >> ${htmlfile}
+      echo "</tr></table><br />" >> ${htmlfile}
+
+      echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
+      echo "<tr><td colspan=\"8\"><center>Firewall port accept information</center></td></tr>" >> ${htmlfile}
+      echo "<tr><td>Type</td><td>input<br />interface</td><td>output<br />interface</td><td>source</td>" >> ${htmlfile}
+      echo "<td>destination</td><td>rule details</td><td>port</td><td>Process</td></tr>" >> ${htmlfile}
+      grep "^IPTABLES_ACCEPT=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read dataline
+      do
+         totalcount=$((${totalcount} + 1))
+         echo "${totalcount}" > ${WORKDIR}/iptables_totals_count
+         usecolour="white"
+         process=""
+         iprules=`echo "${dataline}" | awk '{print $10" "$11" "$12" "$13" "$14" "$15" "$16}'`
+         ipruletype=`echo "${iprules}" | awk {'print $1'}`
+         # everything excecpt leading tr and trailng process field and terminating tr
+         linedata=`echo "${dataline}" | awk '{print "<td>"$4"</td><td>"$6"</td><td>"$7"</td><td>"$8"</td><td>"$9"</td>"}'`
+         linedata="${linedata}<td>${iprules}</td>"   # cannot expand var inside awk above, so append seperately
+         if [ "${ipruletype}." == "tcp." -o "${ipruletype}." == "udp." -o "${ipruletype}." == "tcp6." -o "${ipruletype}." == "udp6." ];
+         then
+            if [ "${ipruletype}." == "tcp6." -o "${ipruletype}." == "udp6." ];
+            then 
+               ipversion="6"
+            else
+               ipversion="4"
+            fi
+            if [ "${ipruletype}." == "tcp." -o "${ipruletype}." == "tcp6." ];
+            then 
+               searchtype="TCP"
+            else
+               searchtype="UDP"
+            fi
+            xx=`echo "${iprules}" | awk {'print $2'}`
+            yy=`echo "${xx}" | grep "dpt"`
+            if [ "${yy}." == "." ];
+            then
+               xx=`echo "${iprules}" | awk {'print $3'}`
+            fi
+            yy=`echo "${xx}" | grep "dpt"`
+            if [ "${yy}." == "." ];
+            then
+               xx=`echo "${iprules}" | awk {'print $4'}`
+            fi
+            yy=`echo "${xx}" | grep "dpt"`
+            if [ "${yy}." == "." ];
+            then
+               xx=`echo "${iprules}" | awk {'print $5'}`
+            fi
+            if [ "${yy}." != "." ];
+            then
+               yy=`echo "${xx}" | grep "dpts:"`
+               if [ "${yy}." == "." ];
+               then   # only one port
+                  ipportmin=`echo "${xx}" | awk -F: {'print $2'}`
+                  ipportmax="${ipportmin}"
+               else   # else multiple ports as min:max range
+                  ipportmin=`echo "${xx}" | awk -F: {'print $2'}`
+                  ipportmax=`echo "${xx}" | awk -F: {'print $3'}`
+               fi
+               while [ ${ipportmin} -le ${ipportmax} ];
+               do
+                  # use head as some entries such as ntpd will have multiple entries as they listen on multiple addresses
+                  # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
+                  #process=`grep "NETWORK_${searchtype}V${ipversion}_PORT_${ipportmin}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+                  process=`grep "NETWORK_${searchtype}V._PORT_${ipportmin}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+                  process=`echo "${process}" | sed 's/ *$//g'`                  # remove trailing spaces
+                  # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
+                  # isallowed=`grep "${searchtype}_PORTV${ipversion}_ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
+                  isallowed=`grep "${searchtype}_PORTV._ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
+                  if [ "${isallowed}." == "." ];
+                  then
+                     if [ "${process}." == "." ];     # not allowed and no process using the port
+                     then
+                        usecolour="${colour_alert}"
+                        inc_counter ${hostid} alert_count
+                     else
+                        bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
+                        # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
+                        #procallow=`grep "^NETWORK_${searchtype}V${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+                        procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | head -1 | awk -F\= {'print $2'}`
+                        if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
+                        then
+                           usecolour="${colour_override_insecure}"
+                        else
+                           usecolour="${colour_alert}"
+                           inc_counter ${hostid} alert_count
+                        fi
+                     fi
+                  else
+                     if [ "${process}." != "." ];   # isallowed, and a process is using it
+                     then
+                        usecolour="${colour_OK}"
+                     else                           # isallowed but no process is using it
+                        usecolour="${colour_alert}"
+                        inc_counter ${hostid} alert_count
+                     fi
+                  fi
+                  echo "<tr bgcolor=\"${usecolour}\">${linedata}<td>${ipportmin}</td><td>${process}</td></tr>" >> ${htmlfile}
+                  ipportmin=$(( ${ipportmin} + 1 ))
+               done
+            else # no dpt field
+               # note: empty proces field in this condition
+               echo "<tr bgcolor=\"${usecolour}\">${linedata}<td>*</td><td></td></tr>" >> ${htmlfile}
+            fi
+         else
+            # note: empty process field or port in this condition
+            echo "<tr bgcolor=\"${usecolour}\">${linedata}<td></td><td></td></tr>" >> ${htmlfile}
+         fi
+      done
+      echo "</table>" >> ${htmlfile}
+   else
+      echo "<table bgcolor=\"${colour_alert}\"><tr><td>Either the iptables command did not exist on the server or the data capture" >> ${htmlfile}
+      echo "was performed with an older version of the data capture script.</td></tr></table>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   fi
+
+   # Close the appendix page
+   write_details_page_exit "${hostid}" "${htmlfile}"
+
+   # Add a summary of the section to the server index, and total alert & warning counts
+   server_index_addline "${hostid}" "Appendix H - firewall port accept information" "${htmlfile}"
+} # end of build_appendix_h
+
+# ----------------------------------------------------------
+#                      Appendix I.
+#   I. Webserver file security
+#      all specifically identified webserver files must
+#      be read only
+# ----------------------------------------------------------
+build_appendix_i() {
+   hostid="$1"
+   if [ "${WEBSERVER_FILE_OWNERS}." == "." ];
+   then
+      log_message "**warning** no ADD_WEBSERVER_FILE_OWNER entries in custom file but webserver data collected, defaulting to apache"
+      WEBSERVER_FILE_OWNERS="apache"
+   fi
+   htmlfile="${RESULTS_DIR}/${hostid}/appendix_I.html"
+   log_message ".     Building Appendix I - webserver file security checks, go get a coffee"
+
+   clean_prev_work_files
+   mkdir ${WORKDIR}
+   cat << EOF > ${htmlfile}
+<html><head><title>Webserver file security checks for ${hostid}</title></head><body>
+<h1>Appendix I - Webserver File Security Checks for ${hostid}</h1>
+<p>On publically accessable webservers for additional security all files in the
+webserver path should be read only. This section reports on the files under paths
+specificaly identified as requiring read-only files.
+</p>
+<p>The list of users allowed to own files classed as WEBUSER are <em>${WEBSERVER_FILE_OWNERS}</em>.</p>
+EOF
+   totalcount=0
+   echo "${totalcount}" > ${WORKDIR}/webserver_totals_count
+   grep "^PERM_WEBSERVER_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= '{print $2"="$3}' | while read dataline
+   do
+      totalcount=$((${totalcount} + 1))
+      echo "${totalcount}" > ${WORKDIR}/webserver_totals_count
+      check_file_perms "${dataline}" "XX-XX-XX-X"
+      if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not OK has error text
+      then
+         # see if the suffix is is a writable file type
+         fnamepart=`echo "${dataline}" | awk {'print $9'} | awk -F\= {'print $1'}`
+         filesuffix=`echo "${fnamepart}" | awk -F. '{print $NF}'`
+         match=`grep "^WEBSERVER_FILE_ALLOW_WRITE_SUFFIX=\.${filesuffix}:" ${CUSTOMFILE}`
+         if [ "${match}." == "." ];   # not an allowed suffix
+         then
+            match=`grep "^WEBSERVER_FILE_ALLOW_WRITE_EXACT=${fnamepart}:" ${CUSTOMFILE}`
+            if [ "${match}." == "." ];   # not an allowed file
+            then
+               inc_counter ${hostid} alert_count
+               echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_i_list
+            fi
+         fi
+      fi # if permcheckresult != OK
+   done
+   if [ -f ${WORKDIR}/appendix_i_list ];
+   then
+      echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
+      echo "<center>Webserver file security alerts</center></td></tr>" >> ${htmlfile}
+      echo "<tr><td><pre>" >> ${htmlfile}
+      cat ${WORKDIR}/appendix_i_list >> ${htmlfile}
+      echo "</pre></td></tr></table>" >> ${htmlfile}
+   else
+      echo "<table bgcolor=\"${colour_OK}\"><tr><td>No alerts for webserver files. No action required.</td></tr></table>" >> ${htmlfile}
+   fi
+
+   totalcount=`cat ${WORKDIR}/webserver_totals_count`
+   echo "<hr><b>There were ${totalcount} file permissions checked for section H</b><hr>" >> ${htmlfile}
+   if [ ${totalcount} -eq 0 ];
+   then
+      echo "<table bgcolor=\"${colour_alert}\"><tr><td>There were zero webserver files collected, but the custom file specified" >> ${htmlfile}
+      echo "a ADD_WEBSERVER_OWNER entry. Most likely the data collection was run without a --webpathlist file.</td></tr></table>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   fi
+
+   # Close the appendix page
+   write_details_page_exit "${hostid}" "${htmlfile}"
+
+   # Add a summary of the section to the server index, and total alert & warning counts
+   server_index_addline "${hostid}" "Appendix I - Webserver File Security Checks" "${htmlfile}"
+} # build_appendix_i
+
+# ----------------------------------------------------------
 #              build_main_index_page
 # Build a master index summarising and linking to each
 # servers main index and results.
@@ -2950,38 +3347,89 @@ build_appendix_g() {
 # clean the totals files also
 # ----------------------------------------------------------
 build_main_index_page() {
-   log_message "Building main index"
+   onseservername="$1"
+   log_message "Refreshing main index"
    # in case a prior aborted run clear these two
    delete_file ${RESULTS_DIR}/global_alert_totals
    delete_file ${RESULTS_DIR}/global_warn_totals
+   echo "0" > ${RESULTS_DIR}/global_alert_totals
+   echo "0" > ${RESULTS_DIR}/global_warn_totals
    htmlfile="${RESULTS_DIR}/index.html"
    echo "<html><head><title>Server Security Report Index</title></head><body>" > ${htmlfile}
    echo "<center><h1>Server Security Report</h1>" >> ${htmlfile}
-   echo "These are the servers that have been recorded in the processing run of<br><b>" >> ${htmlfile}
-   date >> ${htmlfile}
-   echo "</b><br> Any alerts or warnings should be reviewed.</p>" >> ${htmlfile}
+   echo "<p>Any alerts or warnings should be reviewed.</p>" >> ${htmlfile}
    echo "<table border=\"1\" cellpadding=\"5\">" >> ${htmlfile}
    echo "<tr bgcolor=\"${colour_banner}\"><td>Server Name</td><td>" >> ${htmlfile}
-   echo "Alerts</td><td>Warnings</td><td>Snapshot<br />Date</td><td>Processing<br />Date</td><td>File<br />ScanLevel</td><td>Versions</td></tr>" >> ${htmlfile}
+   echo "Alerts</td><td>Warnings</td><td>Snapshot Date</td><td>Last Date<br />Processed</td><td>File<br />ScanLevel</td><td>Versions</td></tr>" >> ${htmlfile}
    # NOTE: dataline here is the directory name found, we create a index entry for each server directory
    find ${RESULTS_DIR}/* -type d | while read dataline    # /* avoids getting root directory
    do
       dataline=`basename ${dataline}`
-      alerts=`cat ${RESULTS_DIR}/${dataline}/alert_totals`
-      warns=`cat ${RESULTS_DIR}/${dataline}/warning_totals`
-      captdate=`grep "TITLE_CAPTUREDATE" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
-      if [ -f ${RESULTS_DIR}/${dataline}/last_processing_date ];
+      if [ "${dataline}." != "${onseservername}." ];
       then
-         lastprocdate=`cat ${RESULTS_DIR}/${dataline}/last_processing_date`
+         if [ -f ${RESULTS_DIR}/${dataline}/alert_totals ];
+         then
+            alerts=`cat ${RESULTS_DIR}/${dataline}/alert_totals`
+         else
+            alerts=0
+         fi
+         if [ -f ${RESULTS_DIR}/${dataline}/warning_totals ];
+         then
+            warns=`cat ${RESULTS_DIR}/${dataline}/warning_totals`
+         else
+            warns=0
+         fi
+         if [ ! -f ${SRCDIR}/secaudit_${dataline}.txt ];
+         then
+            scanlevel="N/A"
+            extractversion="N/A"
+            captdate="NO DATAFILE"
+            captepoc=0
+         else
+            scanlevel=`grep "TITLE_FileScanLevel" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+            extractversion=`grep "TITLE_ExtractVersion" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+            captdate=`grep "TITLE_CAPTUREDATE" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+            captepoc=`grep "TITLE_CAPTURE_EPOC_SECONDS" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+            if [ "${captepoc}." == "." ];   # older collector versions did not capture this
+            then
+               captepoc=0
+            fi
+         fi
+         if [ -f ${RESULTS_DIR}/${dataline}/last_processing_date ];
+         then
+            lastprocdate=`cat ${RESULTS_DIR}/${dataline}/last_processing_date | awk '{print $1" "$2}'`
+            lastprocepoc=`cat ${RESULTS_DIR}/${dataline}/last_processing_date | awk '{print $3}'`
+            if [ "${lastprocepoc}." == "." ];  # if last processed under an older version does not exist
+            then
+               lastprocepoc=1
+            fi 
+         else
+            lastprocdate="rerun for ${PROCESSING_VERSION}"
+            lastprocepoc=0
+         fi
+         scanlevel=`grep "TITLE_FileScanLevel" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+         # in multiple lines, makes it easier to read that we change the capture date colour field if
+         # a newer cpature file has been put in place since the last processing date.
+         echo "<tr><td><a href=\"${dataline}/index.html\">${dataline}</a></td><td>${alerts}</td><td>${warns}</td>" >> ${htmlfile}
+         if [ "${captdate}." == "NO DATAFILE." ];
+         then
+            echo "<td bgcolor=\"${colour_alert}\">${captdate}</td>" >> ${htmlfile}
+         else
+            if [ ${lastprocepoc} -lt ${captepoc} ];
+            then
+               echo "<td bgcolor=\"${colour_warn}\">${captdate}</td>" >> ${htmlfile}
+            else
+               echo "<td>${captdate}</td>" >> ${htmlfile}
+            fi
+         fi
+         echo "<td>${lastprocdate}</td><td>${scanlevel}</td><td>Collector V${extractversion}</td></tr>" >> ${htmlfile}
+
+         # update global totals for report summary
+         update_globals "${warns}" "global_warn_totals"
+         update_globals "${alerts}" "global_alert_totals"
       else
-         lastprocdate="rerun for ${PROCESSING_VERSION}"
+         echo "<tr><td><a href=\"${dataline}/index.html\">${dataline}</a></td><td colspan=\"6\">Server is being processed</td></tr>" >> ${htmlfile}
       fi
-      scanlevel=`grep "TITLE_FileScanLevel" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
-      extractversion=`grep "TITLE_ExtractVersion" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
-      echo "<tr><td><a href=\"${dataline}/index.html\">${dataline}</a></td><td>${alerts}</td><td>${warns}</td><td>${captdate}</td><td>${lastprocdate}</td><td>${scanlevel}</td><td>Collector V${extractversion}</td></tr>" >> ${htmlfile}
-      # update global totals for report summary
-      update_globals "${warns}" "global_warn_totals"
-      update_globals "${alerts}" "global_alert_totals"
       # do not delete the alert_totals or warning_totals files, these can be used again
       # for index rebuild when we process an individual (rather than all) server to recreate
       # the index correctly.
@@ -2992,31 +3440,68 @@ build_main_index_page() {
    echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2020</small></td><td colspan=\"2\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}
    echo "</table></center><br><br>" >> ${htmlfile}
 
-   # Added to check for obsolete parms, this check block can be removed again in version 0.08
-   headerdone="NO"
-   find ${OVERRIDES_DIR} -type f -name "*custom" | while read fname
-   do
-      err1=`grep "PORT_ALLOWED" ${fname} | wc -l`
-      if [ ${err1} -gt 0 ];
-      then
-         if [ "${headerdone}." == "NO." ];
-         then
-            headerdone="YES"
-            echo "<ul>" >> ${htmlfile}
-         fi
-         echo "<li>${fname} is using ${err1} obsolete custom parameters that will be dropped in the next release</li>" >> ${htmlfile}
-      fi
-   done
-   if [ "${headerdone}." != "NO." ];
-   then
-      echo "</ul>" >> ${htmlfile}
-   fi
-
    echo "</body></html>" >> ${htmlfile}
    delete_file ${RESULTS_DIR}/global_alert_totals
    delete_file ${RESULTS_DIR}/global_warn_totals
-   log_message "...DONE, Built main index"
+   log_message "...DONE, Refreshed main index"
 } # end of build_main_index_page
+
+# ----------------------------------------------------------
+#                  check_for_new_files
+# Checks to see if there are newer data collected files than
+# the last time a server was processed, and if there are any
+# server collector files that have never been processed.
+# If a filename is prvided then the servers that need to be
+# processed are written to the file for use by the caller.
+# ----------------------------------------------------------
+check_for_new_files() {
+   processfile="$1"
+
+   # (1) check all existing results directories to see if there are newer source collector files to process
+   # NOTE: dataline here is the directory name found
+   find ${RESULTS_DIR}/* -type d | while read dataline    # /* avoids getting root directory
+   do
+      dataline=`basename ${dataline}`
+      if [ ! -f ${SRCDIR}/secaudit_${dataline}.txt ];
+      then
+         echo "* No capture data files available for server ${dataline}, results will be deleted at next full processing run"
+      else
+         captepoc=`grep "TITLE_CAPTURE_EPOC_SECONDS" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+         if [ "${captepoc}." == "." ];   # older collector versions did not capture this
+         then
+            captepoc=0
+            echo "* Capture data file for server ${dataline} is from an old version, false alerts will be produced"
+         fi
+         lastprocepoc=`cat ${RESULTS_DIR}/${dataline}/last_processing_date | awk '{print $3}'`
+         if [ ${lastprocepoc} -lt ${captepoc} ];
+         then
+            echo "* Capture data file for server ${dataline} is more recent than last processing date, processing required"
+            # if we are recording servers to be rerun do so
+            if [ "${processfile}." != "." ];
+            then
+               echo "${dataline}" >> ${processfile}
+            fi
+         fi
+      fi
+   done
+
+   # (2) check the source directory to see if there are any collector files that have no results yet
+   ls ${SRCDIR}/secaudit_*.txt | while read dataline
+   do
+      fname=`basename ${dataline}`
+      servername=`echo "${fname}" | cut -d_ -f2`
+      servername=`echo "${servername}" | cut -d. -f1`
+      if [ ! -d ${RESULTS_DIR}/${servername} ];
+      then
+         echo "* Capture data available for server ${servername} has not yet been processed"
+         # if we are recording servers to be rerun do so
+         if [ "${processfile}." != "." ];
+         then
+            echo "${servername}" >> ${processfile}
+         fi
+      fi
+   done
+} # end of check_for_new_files
 
 # ----------------------------------------------------------
 #            perform_single_server_processing
@@ -3028,6 +3513,7 @@ build_main_index_page() {
 # ----------------------------------------------------------
 perform_single_server_processing() {
    hostname="$1"
+   build_main_index_page "${hostname}"
    single_start_time=`date`
    FILES_PROCESSED=$((${FILES_PROCESSED} + 1))
    log_message "*********** Processing server ${hostname}, host ${FILES_PROCESSED} of ${FILES_TO_PROCESS} **********"
@@ -3054,16 +3540,26 @@ perform_single_server_processing() {
    locate_custom_file "${hostname}"
 
    update_system_file_owner_list "${hostname}"
+   update_webserver_file_owner_list "${hostname}"
 
    server_index_start ${hostname}
 
-   build_appendix_a ${hostname}
-   build_appendix_b ${hostname}
-   build_appendix_c ${hostname}
-   build_appendix_d ${hostname}
-   build_appendix_e ${hostname}
-   build_appendix_f ${hostname}
-   build_appendix_g ${hostname}
+   build_appendix_a ${hostname}               # user checks
+   build_appendix_b ${hostname}               # network access checks
+   build_appendix_c ${hostname}               # network connectivity
+   build_appendix_d ${hostname}               # cron job checks
+   build_appendix_e ${hostname}               # system file security checks
+   build_appendix_f ${hostname}               # server environmant checks
+   build_appendix_g ${hostname}               # customisations used
+   build_appendix_h ${hostname}               # iptables checks
+
+   # only create appendix H if the data collection used the option to explicity
+   # isoloate secure web directories from normal system directories
+   webcount=`grep "^PERM_WEBSERVER_FILE" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
+   if [ ${webcount} -gt 0 ];
+   then
+      build_appendix_i ${hostname}               # webserver files
+   fi
 
    # 2010/09/22 Added the hardware profile page
    hwprof_build "${hostname}"
@@ -3074,7 +3570,7 @@ perform_single_server_processing() {
    # for other servers performed with a prior version of the processing
    # script.
    echo "${PROCESSING_VERSION}" > ${RESULTS_DIR}/${hostname}/report_version
-   date +"%Y/%m/%d %H:%M" > ${RESULTS_DIR}/${hostname}/last_processing_date
+   date +"%Y/%m/%d %H:%M %s" > ${RESULTS_DIR}/${hostname}/last_processing_date
 
    # clean temp files we do not need to retain
    delete_file "${RESULTS_DIR}/${hostname}/alert_count"
@@ -3232,6 +3728,17 @@ then
    chmod 755 ${RESULTS_DIR}
 fi
 
+# if we are only listing changes list them and exit
+if [ "${CHECKCHANGE}." == "list." ];
+then
+   check_for_new_files
+   if [ -f ${LOGICAL_LOCK} ];
+   then
+      /bin/rm ${LOGICAL_LOCK}
+   fi
+   exit 0
+fi
+
 # And we need an empty work directory
 clean_prev_work_files
 mkdir ${WORKDIR}
@@ -3241,12 +3748,35 @@ chmod 755 ${WORKDIR}
 #      Default is still to process all files found
 # in-progress - if a single server jump to it via the
 # 'single_server_sanity_checks "${hostname}" interface
+# Additional check added, if we are redoing the --indexonly=yes
+# then do nothing, just drop trough to rebuild the index.
 # ----------------------------------------------------------
-if [ "${SINGLESERVER}." == "." ];
+if [ "${INDEXONLY}." != "yes." ];
 then
-   perform_all_servers_processing
-else
-   single_server_sanity_checks "${SINGLESERVER}"
+   if [ "${CHECKCHANGE}." == "process." ];
+   then
+      # note: use results_dir as workdir as workdir is
+      #       deleted as part of single_server_processing
+      check_for_new_files "${RESULTS_DIR}/newfilecheck1"
+      if [ -f ${RESULTS_DIR}/newfilecheck1 ];
+      then
+         FILES_TO_PROCESS=`cat ${RESULTS_DIR}/newfilecheck1 | wc -l`
+         cat ${RESULTS_DIR}/newfilecheck1 | while read servername
+         do
+            perform_single_server_processing "${servername}"
+         done
+         /bin/rm ${RESULTS_DIR}/newfilecheck1
+      else 
+         echo "There are no new files to process."
+      fi
+   else
+      if [ "${SINGLESERVER}." == "." ];
+      then
+         perform_all_servers_processing
+      else
+         single_server_sanity_checks "${SINGLESERVER}"
+      fi
+   fi
 fi
 
 # ----------------------------------------------------------
@@ -3281,6 +3811,12 @@ fi
 
 # we need to clean up the work directory
 clean_prev_work_files
+
+# remove the logical lockfile
+if [ -f ${LOGICAL_LOCK} ];
+then
+   /bin/rm ${LOGICAL_LOCK}
+fi
 
 log_message "Processing has completed, review the results in the web pages created please."
 exit 0

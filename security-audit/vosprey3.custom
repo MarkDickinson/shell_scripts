@@ -1,0 +1,225 @@
+# Customisation file specifically for VOSPREY3
+#
+#
+# TCP Ports that are permitted to be listening on falcon
+# Notes: The ":" around the port number is to make exact
+#        matching agaist the port number easier for the
+#        processing script.
+TCP_PORTV4_ALLOWED=:22:ssh
+TCP_PORTV4_ALLOWED=:25:sendmail
+TCP_PORTV6_ALLOWED=:80:http server
+TCP_PORTV4_ALLOWED=:111:RPC portmap daemon (portmap)
+TCP_PORTV6_ALLOWED=:111:RPC portmap daemon (portmap)
+TCP_PORTV6_ALLOWED=:443:http server
+TCP_PORTV6_ALLOWED=:3270:Container mvs3.8j
+TCP_PORTV4_ALLOWED=:3306:MySQL server
+TCP_PORTV4_ALLOWED=:5666:NRPE
+TCP_PORTV6_ALLOWED=:5666:NRPE
+TCP_PORTV6_ALLOWED=:6667:Container ircserver
+TCP_PORTV6_ALLOWED=:6668:Container ircserver
+TCP_PORTV6_ALLOWED=:8080:Jetty server
+TCP_PORTV4_ALLOWED=:9002:Marks job scheduler
+TCP_PORTV4_ALLOWED=:9003:Marks alert server
+TCP_PORTV6_ALLOWED=:9090:Cockpit
+TCP_PORTV4_ALLOWED=:9102:Bacula FD
+TCP_PORTV4_ALLOWED=:50000:Marks twit server
+#
+# UDP Ports that are permitted to be listening on falcon
+# Notes: The ":" around the port number is to make exact
+#        matching agaist the port number easier for the
+#        processing script.
+UDP_PORTV4_ALLOWED=:111:RPC portmap daemon (portmap)
+UDP_PORTV6_ALLOWED=:111:RPC portmap daemon (portmap)
+UDP_PORTV4_ALLOWED=:123:NTP
+UDP_PORTV6_ALLOWED=:123:NTP
+# uses randpm ports, so match by exact process
+NETWORK_UDPV4_PROCESS_ALLOW=/sbin/rpcbind -w 
+NETWORK_UDPV6_PROCESS_ALLOW=/sbin/rpcbind -w 
+#
+# RAW ports expected to be listening on this server
+RAW_PORTV6_ALLOWED=:58:NetworkManager
+#
+# Directory ownership overrides as required
+ALLOW_OWNER_ROOT=bin
+ALLOW_OWNER_ROOT=sbin
+ALLOW_OWNER_ROOT=daemon
+ALLOW_OWNER_ROOT=lpd
+ALLOW_OWNER_ROOT=sync
+ALLOW_OWNER_ROOT=shutdown
+ALLOW_OWNER_ROOT=halt
+ALLOW_OWNER_ROOT=rpm
+ALLOW_OWNER_ROOT=nfs
+ALLOW_OWNER_ROOT=postfix
+ALLOW_OWNER_ROOT=mail
+ALLOW_OWNER_ROOT=mqueue
+ALLOW_OWNER_ROOT=smmsp
+ALLOW_OWNER_ROOT=sshd
+ALLOW_OWNER_ROOT=dev
+ALLOW_OWNER_ROOT=fs
+ALLOW_OWNER_ROOT=gdm
+ALLOW_OWNER_ROOT=dovecot
+ALLOW_OWNER_ROOT=pvm3
+ALLOW_OWNER_ROOT=games
+ALLOW_OWNER_ROOT=operator
+ALLOW_OWNER_ROOT=ntp
+ALLOW_OWNER_ROOT=smolt
+ALLOW_OWNER_ROOT=hsqldb
+ALLOW_OWNER_ROOT=rtkit
+ALLOW_OWNER_ROOT=abrt
+ALLOW_OWNER_ROOT=pcp
+ALLOW_OWNER_ROOT=dockerroot
+ALLOW_OWNER_ROOT=httpd
+ALLOW_OWNER_ROOT=operator
+ALLOW_OWNER_ROOT=adm
+# multiple users have /root as a home dir (operator/shutdown/halt etc)
+ALLOW_OWNER_ROOT=root
+#
+# Directory permission overrides for shared system directories
+# These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
+ALLOW_DIRPERM_SYSTEM=bin
+ALLOW_DIRPERM_SYSTEM=sbin
+ALLOW_DIRPERM_SYSTEM=adm
+ALLOW_DIRPERM_SYSTEM=lpd
+ALLOW_DIRPERM_SYSTEM=httpd
+ALLOW_DIRPERM_SYSTEM=fs
+ALLOW_DIRPERM_SYSTEM=rpm
+ALLOW_DIRPERM_SYSTEM=named
+ALLOW_DIRPERM_SYSTEM=htdig
+ALLOW_DIRPERM_SYSTEM=nfs
+ALLOW_DIRPERM_SYSTEM=postfix
+ALLOW_DIRPERM_SYSTEM=pcap
+ALLOW_DIRPERM_SYSTEM=dev
+ALLOW_DIRPERM_SYSTEM=sshd
+ALLOW_DIRPERM_SYSTEM=usage
+ALLOW_DIRPERM_SYSTEM=hsqldb
+ALLOW_DIRPERM_SYSTEM=mysql
+ALLOW_DIRPERM_SYSTEM=named
+ALLOW_DIRPERM_SYSTEM=gdm
+ALLOW_DIRPERM_SYSTEM=dovecot
+ALLOW_DIRPERM_SYSTEM=pvm3
+ALLOW_DIRPERM_SYSTEM=jboss-4.0.4.GA
+ALLOW_DIRPERM_SYSTEM=daemon
+ALLOW_DIRPERM_SYSTEM=sync
+ALLOW_DIRPERM_SYSTEM=shutdown
+ALLOW_DIRPERM_SYSTEM=halt
+ALLOW_DIRPERM_SYSTEM=games
+ALLOW_DIRPERM_SYSTEM=avahi
+ALLOW_DIRPERM_SYSTEM=bittorrent
+ALLOW_DIRPERM_SYSTEM=ntp
+ALLOW_DIRPERM_SYSTEM=hsqldb
+ALLOW_DIRPERM_SYSTEM=smolt
+ALLOW_DIRPERM_SYSTEM=squid
+ALLOW_DIRPERM_SYSTEM=vdr
+ALLOW_DIRPERM_SYSTEM=vdradmin
+ALLOW_DIRPERM_SYSTEM=rtkit
+ALLOW_DIRPERM_SYSTEM=abrt
+ALLOW_DIRPERM_SYSTEM=clamupdate
+ALLOW_DIRPERM_SYSTEM=pcp
+#
+# Permission overrides for specific directories
+# Use with caution as they will catch-all any directory with this name.
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwxr-x
+ALLOW_DIRPERM_EXPLICIT=named drwxr-x---
+ALLOW_DIRPERM_EXPLICIT=gdm drwxrwx--T
+ALLOW_DIRPERM_EXPLICIT=sshd drwx--x--x
+ALLOW_DIRPERM_EXPLICIT=dockerroot drwx--x--x
+ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T
+ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
+ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
+#
+FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
+FORCE_PERM_OK=/opt/jetty/jetty.state:-rw-rw-r--
+FORCE_PERM_OK=/opt/dickinson/alert_management/run/monitor_var_log_parent.pid:-rw-rw-r--
+FORCE_PERM_OK=/opt/dickinson/alert_management/logs/evt_buffer.dat:-rw-rw-r--
+#
+FORCE_OWNER_OK=/etc/tcsd.conf:tss
+FORCE_OWNER_OK=/var/www/usage/msfree.png:webalizer
+FORCE_OWNER_OK=/var/www/usage/webalizer.png:webalizer
+FORCE_OWNER_OK=/var/lib/postfix/master.lock:postfix
+FORCE_OWNER_OK=/var/lib/pgsql/.bash_profile:postgres
+FORCE_OWNER_OK=/var/lib/nfs/state:rpcuser
+FORCE_OWNER_OK=/opt/jetty/jetty.state:jetty
+#
+FORCE_ANYFILE_OK=rescan --w--w----
+FORCE_ANYFILE_OK=remove --w--w----
+#
+# Turn off warnings for manual review needed of things
+NOWARN_ON_MANUALLOGCHECK=YES
+NOWARN_ON_CUSTOMFILE=YES
+#
+# Only warn for /var file security failures, cuts out a lot
+# of alerts as a lot of stuff in /var is owned by many different 
+# userids.
+ALLOW_SLOPPY_VAR=WARN
+# Allow group write on files under /var
+ALLOW_VAR_FILE_GROUPWRITE=YES
+#
+#
+# Allow a whole lot of files to have the suid bit set
+SUID_ALLOW=/usr/sbin/sendmail.sendmail
+SUID_ALLOW=/usr/sbin/userhelper
+SUID_ALLOW=/usr/bin/lockfile
+SUID_ALLOW=/usr/bin/sudo
+SUID_ALLOW=/usr/bin/crontab
+SUID_ALLOW=/usr/bin/gpasswd
+SUID_ALLOW=/usr/bin/at
+SUID_ALLOW=/usr/bin/locate
+SUID_ALLOW=/usr/bin/newgrp
+SUID_ALLOW=/usr/bin/ssh-agent
+SUID_ALLOW=/usr/bin/screen
+SUID_ALLOW=/usr/bin/chsh
+SUID_ALLOW=/usr/bin/chage
+SUID_ALLOW=/usr/bin/chfn
+SUID_ALLOW=/usr/bin/wall
+SUID_ALLOW=/usr/bin/write
+SUID_ALLOW=/usr/bin/passwd
+SUID_ALLOW=/usr/libexec/openssh/ssh-keysign
+SUID_ALLOW=/usr/libexec/utempter/utempter
+SUID_ALLOW=/usr/bin/mount
+SUID_ALLOW=/usr/bin/su
+SUID_ALLOW=/usr/bin/umount
+SUID_ALLOW=/usr/sbin/mount.nfs
+SUID_ALLOW=/usr/sbin/pam_timestamp_check
+SUID_ALLOW=/usr/sbin/netreport
+SUID_ALLOW=/usr/sbin/unix_chkpwd
+SUID_ALLOW=/usr/bin/pkexec
+SUID_ALLOW=/usr/bin/staprun
+SUID_ALLOW=/usr/bin/fusermount
+SUID_ALLOW=/usr/sbin/usernetctl
+SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1
+SUID_ALLOW=/usr/libexec/cockpit-session
+SUID_ALLOW=/usr/libexec/abrt-action-install-debuginfo-to-abrt-cache
+SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper
+SUID_ALLOW=/usr/sbin/postqueue
+SUID_ALLOW=/usr/sbin/postdrop
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_icmp
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_dhcp
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_ide_smart
+SUID_ALLOW=/usr/libexec/qemu-bridge-helper
+#
+# Additional users that may own files classed as SYSTEM ownership
+ADD_SYSTEM_FILE_OWNER=jetty
+ADD_SYSTEM_FILE_OWNER=smmsp
+ADD_SYSTEM_FILE_OWNER=logcheck
+ADD_SYSTEM_FILE_OWNER=mark
+#
+# Added for webserver specific checks
+ADD_WEBSERVER_FILE_OWNER=apache
+#
+# The below must be all terminated with a : so we can do exact matches when processing
+WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/html/news/hercnews.log:
+WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/html/news/localtwitter.log:
+# PAC and local blog
+WEBSERVER_FILE_ALLOW_WRITE_SUFFIX=.log:
+WEBSERVER_FILE_ALLOW_WRITE_SUFFIX=.dat:
+WEBSERVER_FILE_ALLOW_WRITE_SUFFIX=.post:
+WEBSERVER_FILE_ALLOW_WRITE_SUFFIX=.users:
+WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/cgi-bin/public/blog_code/etc/blog_list.sorted_by_date:
+WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/cgi-bin/public/blog_code/etc/blog_list.sorted_by_desc:
+WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/cgi-bin/public/blog_code/etc/blog_list:
+WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/cgi-bin/system/PAC/etc/security/passwd:
+WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/cgi-bin/system/PAC/external_emails/list.txt:
+# Below must be owned by root
+WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/html/news/site_outages.txt:

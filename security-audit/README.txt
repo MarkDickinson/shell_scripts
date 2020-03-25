@@ -8,7 +8,12 @@ Upgrade Notes: whenever upgrading between versions of this toolkit the
                run on all servers and a full processing run be performed
                on the reporting server. This is required to ensure any
                new data fields required by the new version of the processing 
-               script are present.
+               script are present, not using the latest collection script
+               results may generate false alerts and have missing needed
+               information.
+
+Redistribution: as long as it is never packaged for commercial use you
+                can copy and modify.
 
 History: I have quite a few Linux servers now, and need to make sure they
          and any new servers I build remain secure.
@@ -32,17 +37,23 @@ Usage:   The collection script is run an all servers and the output files
          -- Documentation is in the file security-audit-doc.html --
 
 Requirements: (1) only runs on Linux servers [tested on Fedora/CentOS/Kali]
-              (2) 'netstat' must be available on all the servers
-              (3) 'dmidecode' and 'lshw' need to be installed on each
+              (2) the 'netstat' command must be available on all the servers
+              (3) the 'iptables' command should be available on all servers
+                  [optional but if not installed no checking of firewall rules
+                  can be performed]
+              (4) 'dmidecode' and 'lshw' commands need to be installed on each
                   server if you intent to also capture hardware information
                   [optional but if not installed the hardware details page
                   of the report will just state that they were not installed]
-              (4) A LOT OF PATIENCE as a full scan of a server can produce
+              (5) A LOT OF PATIENCE as a full scan of a server can produce
                   well over 300,000 files to be checked which can take a
                   very long time, combine that with a full processing run
                   of 20-30 servers you will have to wait a few days.
                   (refer to the documentation for single server processing
-                  and doing limited data collection scans instead of full scans).
+                   and only 'updated' server processing to minimise the time
+                   needed) and you can of course perform limited file checking
+                   by using the --scanlevel on data collection scans instead of
+                   the default of full scans).
 
 Current status: 
   * filesystem checks - checks the permissions of all 'system files' to ensure
@@ -52,6 +63,12 @@ Current status:
     easy to add others (search in collection script on the string
     find_perms_under_system_dir and copy/paste and existing line to
     add a new directory if needed).
+  * filesystem checks (additional for my use) - checks all files under explicitly
+    defined filesystem paths have 'read-only' permissions (for static or seldom
+    changing web served pages). Filesystem paths are provided by a file selected
+    with the optional collector option --webpathlist=/some/file and if not
+    provided (default) data for those checks will not be collected and the
+    report not produced... most users will never use this but I need it
   * cron checks - check all crontab files belong to users that exist on the
     server and that the settings in cron.allow or cron.deny permit the user
     to use cron... also attempt to identify the file permissions of each
@@ -76,6 +93,12 @@ Current status:
     listen only on explicit interfaces. Also alerts on any ports defined in
     the server customisation file that are no longer in use so the config 
     file can be cleaned up.
+  * firewall rule checks - if the server has a firewall in place will check
+    (if the iptables command is on the server) all accepted traffic to ensure
+    any explicit port numbers used match ports expected to be open on the
+    server as defined by the network checks, and also alert if firewall rules
+    accept traffic to ports that are not in use on the server (to identify
+    obsolete firewall rules)
   * customisation files can be configured for servers to allow for known
     exception cases; such as files that must be insecure, network ports for
     applications that just cannot be configured to specific interfaces,
@@ -83,19 +106,28 @@ Current status:
     are mapped to /bin or /sbin which must be owned by root (not by the
     system user such as adm or operator) and must be traversable by other
     users, and quite a few other customisable cases.
+  * optional (but default) backs up /etc
+  * optional (but default) collect hardware info
+  * optional (but default) if 'rpm' is available collect a package list
 
 Files provided:
    collect_server_details.sh   - run on all server to collect details to be processed
    process_server_details.sh   - run on reporting server to process above files
    security-audit-doc.html     - documentation
-   ALL.custom                  - default customisation file example (used if no server.custom)
-   phoenix.custom              - example overriding the default ALL.custom for server 'phoenix'
+   ALL.custom                  - default customisation file example (used if no servername.custom)
+   phoenix.custom              - example overriding the default ALL.custom for Fedora30 Gnome desktop 'phoenix'
+   vosprey3.custom             - example overriding the default ALL.custom for CentOS7 webserver 'vosprey3'
+   RUN                         - examples of the processing run options available, default is full processing
 
-Directories that must exist (at no point in the directory path can a underscore ( _ ) be used
+Directories that must exist for processing are
+   n/a - output files are stored in the current working directory at the time the
+         script is run
+
+Directories that must exist for processing are
+(at no point in the directory path can a underscore ( _ ) be used)
    somedir                     - location of the two scripts
    somedir/custom              - place all custom files in here
    somedir/results             - all reporting results are placed here
- - the collection script output file directory and archive directory are
-   parameter supplied, the sample RUN script expects them to be under
-   the somedir path also.
+ - the directory containing the data to be processed that was collected by the
+   collect_server_details.sh script and any result archive directory are parameter supplied.
 

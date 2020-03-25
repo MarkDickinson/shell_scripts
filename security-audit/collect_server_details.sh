@@ -14,10 +14,11 @@
 #
 # useage: collect_server_details.sh [ optional parameters ] 
 #         optional parameters may be any of the below
-#            --scanlevel=N              default is unlimited full scan
-#            --backup-etc=yes|no        default is yes
-#            --record-packages=yes|no   default is yes
-#            --hwlost=yes|no            default is yes
+#            --scanlevel=N                   default is unlimited full scan
+#            --backup-etc=yes|no             default is yes
+#            --record-packages=yes|no        default is yes
+#            --hwlist=yes|no                 default is yes
+#            --webpathlist=/some/filename    default is no special web path processing
 #
 # Parameters:
 #  The optional --scanlevel=N controls the number of
@@ -69,14 +70,27 @@
 #              listening on a port (fuser could not query all ports
 #              (ie: it doesn't support raw ports, and failed to return
 #              info on some udp ports).
+# 2020/03/22 - changed parm handling to not abort on the first error
+#              but to report on all bad parms beofre aborting.
+#              added capture for --webpathlist processing.
+#              when capturing the system file list now exclude links, as
+#              we still capture the files they point at we don't want links
+#              capture all iptables accept rules
+#              as well as recording capture date in text, save seconds since
+#              epoc also so we can use it for simple tests is a file has
+#              been updated in the processing scriot.
 #
 # ======================================================================
+EXTRACT_VERSION="0.08"    # used to sync between capture and processing, so be correct
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="yes"          # default is to tar up etc
 BACKUP_RPMLIST="yes"      # default is to create a rpm package list
 DO_HWLIST="yes"           # default is to create the hardware listing
+WEBPATHFILE=""            # default is no file of special webserver directories
+WEBPATHEXCLUDE=""         # only set if above parm is used
 
+PARM_ERRORS="no"
 while [[ $# -gt 0 ]];
 do
    parm=$1
@@ -87,12 +101,12 @@ do
                       if [ "${testvar}." != "." ];
                       then
                          echo "*error* the --scanlevel value provided is not numeric"
-                         exit 1
+                         PARM_ERRORS="yes"
                       fi
                       if [ ${value} -lt 3 ];    # any less than 3 and it's not worth even reporting on
                       then
                          echo "*error* the --scanlevel value cannot be less than 3"
-                         exit 1
+                         PARM_ERRORS="yes"
                       fi
                       SCANLEVEL_USED="${value}"
                       MAX_SYSSCAN="-maxdepth ${value}"
@@ -101,7 +115,7 @@ do
       "--backup-etc") if [ "${value}." != "yes." -a "${value}." != "no." ];
                       then
                          echo "*error* the --backup-etc value provided is not yes or no"
-                         exit 1
+                         PARM_ERRORS="yes"
                       fi
                       BACKUP_ETC="${value}"
                       shift
@@ -109,7 +123,7 @@ do
       "--record-packages") if [ "${value}." != "yes." -a "${value}." != "no." ];
                       then
                          echo "*error* the --record-packages value provided is not yes or no"
-                         exit 1
+                         PARM_ERRORS="yes"
                       fi
                       DO_HWLIST="${value}"
                       shift
@@ -117,26 +131,75 @@ do
       "--hwlist")     if [ "${value}." != "yes." -a "${value}." != "no." ];
                       then
                          echo "*error* the --hwlist value provided is not yes or no"
-                         exit 1
+                         PARM_ERRORS="yes"
                       fi
                       DO_HWLIST="${value}"
                       shift
                       ;;
-      *)              echo "Unknown paramater value ${key}"
-                      echo "Syntax:$0 [--scanlevel=<number>] [--backup-etc=yes|no] [--record-packages=yes|no] [--hwlist=yes|no]"
-                      echo "Please read the documentation."
-                      exit 1
+      "--webpathlist") if [ ! -f ${value} ];
+                      then
+                         echo "*error* the filename specified by the --webpathlist parameter does not exist"
+                         PARM_ERRORS="yes"
+                      else
+                         WEBPATHFILE="${value}"
+                      fi
+                      shift
+                      ;;
+      *)              echo "*error* the parameter ${key} is not a valid parameter"
+                      PARM_ERRORS="yes"
+                      shift
                       ;;
    esac
 done
+if [ "${WEBPATHFILE}." != "." ];
+then
+    datacount=`cat ${WEBPATHFILE} | grep -v "^#" | wc -l`
+    if [ ${datacount} -lt 1 ];
+    then
+       echo "*error* the file specified with the --webpathlist option is empty"
+       PARM_ERRORS="yes"
+    else
+       # a lot of messing about, yes we do need to use a file as this is another
+       # case where variables altered inside a do loop are isolated, and their changes
+       # lost as soon as the 'done' is hit, so we need to store the changes in a file
+       # so we can retrieve the changes after the done.
+       tmpname=`basename $0`
+       tmpname="/var/tmp/${tmpname}.wrk"
+       # to insert "\( -path dir1 -o -path dir2 -o -path dir3 \) -prune -o print" into the system directory search
+       # routine to exclude the directories identified as being web directories needing seperate checking.
+       cat ${WEBPATHFILE} | grep -v "^#" | while read fpath
+       do
+          if [ "${fpath}." != "." ];   # skip blank lines
+          then
+             WEBPATHEXCLUDE="${WEBPATHEXCLUDE} -path ${fpath} -o"
+             echo "${WEBPATHEXCLUDE}" > ${tmpname}
+          fi
+       done
+       # drop the extra -o we have on the end
+       WEBPATHEXCLUDE=`cat ${tmpname}`
+       len1=${#WEBPATHEXCLUDE}
+       len2=$((${len1} - 3))
+       WEBPATHEXCLUDE=${WEBPATHEXCLUDE:0:${len2}}
+       WEBPATHEXCLUDE="( ${WEBPATHEXCLUDE} ) -prune -o -print"
+    fi
+fi
+if [ "${PARM_ERRORS}." != "no." ];
+then
+   echo "Data capture aborted due to the above errors"
+   echo "Syntax:$0 [--scanlevel=<number>] [--backup-etc=yes|no] [--record-packages=yes|no] [--hwlist=yes|no] [--webpathlist=/some/filename]"
+   echo "Please read the documentation."
+   exit 1
+fi
 
 myrunner=`whoami`
 if [ "${myrunner}." != "root." ];
 then
-   echo "This script can only be run by the root user."
+   echo "This script can only be run by the root user !."
+   echo "Much of the information being colected is not available to anyone but the root user."
    exit 1
 fi
 
+echo "$0 collector version is ${EXTRACT_VERSION}"
 timenow=`date`
 echo "Start time: ${timenow}"
 
@@ -203,11 +266,14 @@ find_perms_under_dir() {
    key="$1"
    startdir="$2"
    expected_owner="$3"
-   if [ "${expected_owner}." = "." ];
+   if [ "${expected_owner}." == "." ];
    then
       expected_owner="NA"  # can be any owner
    fi
-   find ${startdir} ${MAX_SYSSCAN} -mount -type f -exec ls -la {} \; | grep -v "\/tmp\/" | tr "\=" "-" | while read dataline
+# ----- when using the webpathexclude we get a lot of files not normally detected ----
+#       leave the var in for now, as I explicitly reset it to empty while working on the issue
+# do not capture symbolic links (grep -v the perms), the files they point to will be captured
+   find -P ${startdir} ${MAX_SYSSCAN} -mount -type f ${WEBPATHEXCLUDE} -exec ls -la {} \; | grep -v "^lrwxrwxrwx" | grep -v "\/tmp\/" | tr "\=" "-" | while read dataline
    do
       echo "${key}=${dataline}=${expected_owner}" >> ${LOGFILE}
    done
@@ -525,14 +591,16 @@ identify_network_listening_processes() {
 # ======================================================================
 myhost=`hostname`
 mydate=`date +"%Y/%m/%d %H:%M"`
+mydate2=`date +"%s"`
 osversion=`uname -r`
 ostype=`uname -s`
 echo "TITLE_HOSTNAME=${myhost}" >> ${LOGFILE}
 echo "TITLE_CAPTUREDATE=${mydate}" >> ${LOGFILE}
+echo "TITLE_CAPTURE_EPOC_SECONDS=${mydate2}" >> ${LOGFILE}
 echo "TITLE_OSVERSION=${osversion}" >> ${LOGFILE}
 echo "TITLE_OSTYPE=${ostype}" >> ${LOGFILE}
 echo "TITLE_FileScanLevel=${SCANLEVEL_USED}" >> ${LOGFILE}
-echo "TITLE_ExtractVersion=0.07" >> ${LOGFILE}
+echo "TITLE_ExtractVersion=${EXTRACT_VERSION}" >> ${LOGFILE}
 
 # ======================================================================
 # Collect User Details and key system defaults.
@@ -540,6 +608,7 @@ echo "TITLE_ExtractVersion=0.07" >> ${LOGFILE}
 timestamp_action "collecting security config files"
 record_file PASSWD_FILE /etc/passwd           # user details
 record_file PASSWD_SHADOW_FILE /etc/shadow    # password and expiry details
+record_file ETC_GROUP_FILE /etc/group         # the user groups on the server
 record_file FTPUSERS_FILE /etc/ftpusers       # users that cannot use ftp
 record_file LOGIN_DEFS /etc/login.defs        # passwd maxage, minlen etc
 
@@ -554,7 +623,13 @@ record_file LOGIN_DEFS /etc/login.defs        # passwd maxage, minlen etc
 #                       in /home had violations). So can no longer scan
 #                       from /, so specify all the system file directories.
 # ======================================================================
-timestamp_action "collecting system file details"
+#if [ "${WEBPATHFILE}." != "." ];
+#then
+#   timestamp_action "collecting system file details (excluding specified webserver directories)"
+#else
+   timestamp_action "collecting system file details"
+#fi
+WEBPATHEXCLUDE=""            # DEBUG- removed as it results in multiple entries per file for some reason
 #find_perms_under_system_dir PERM_SYSTEM_FILE /
 find_perms_under_system_dir PERM_SYSTEM_FILE /bin
 find_perms_under_system_dir PERM_SYSTEM_FILE /boot
@@ -566,6 +641,21 @@ find_perms_under_system_dir PERM_SYSTEM_FILE /sbin
 find_perms_under_system_dir PERM_SYSTEM_FILE /sys
 find_perms_under_system_dir PERM_SYSTEM_FILE /usr
 find_perms_under_system_dir PERM_SYSTEM_FILE /var
+#
+# If we excluded directories in the above prcessing as they were
+# defined as webpath directories we must capture them now.
+WEBPATHEXCLUDE=""            # always reset this anyway, not needed anymore
+if [ "${WEBPATHFILE}." != "." ];
+then
+   timestamp_action "collecting specified webserver file details"
+   savescan="${MAX_SYSSCAN}" # webserver path scans are always a full scan
+   MAX_SYSSCAN=""            # so clear the maxdepth the user set
+   cat ${WEBPATHFILE} | grep -v "^#" | while read webpath
+   do
+      find_perms_under_dir "PERM_WEBSERVER_FILE" "${webpath}" "WEBUSER"
+   done
+   MAX_SYSSCAN="${savescan}" # and back to user defined scan level
+fi
 
 # ======================================================================
 # Collect perms of user directories.
@@ -769,6 +859,22 @@ then
    sambaRunning="YES"
 fi
 echo "APPLICATION_SAMBA_RUNNING=${sambaRunning}" >> ${LOGFILE}
+
+# iptables ACCEPT rules
+haveiptables=`which iptables`
+if [ "${haveiptables}." != "." ];
+then
+   timestamp_action "collecting firewall rules"
+   iptables -n -v -L | grep ACCEPT | grep -v "^Chain" | while read dataline
+   do
+      if [ "${dataline}." != "." ];      # ignore blank lines
+      then
+         echo "IPTABLES_ACCEPT=${dataline}" >> ${LOGFILE}
+      fi
+   done
+else
+   timestamp_action "**warning** iptables command not installed, cannot collect firewall rules"
+fi
 
 # ======================================================================
 # motd should contain a auth/business notice.

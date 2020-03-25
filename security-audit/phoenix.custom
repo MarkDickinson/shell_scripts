@@ -7,6 +7,7 @@ TCP_PORTV4_ALLOWED=:22:ssh:WILD
 TCP_PORTV4_ALLOWED=:25:sendmail
 TCP_PORTV4_ALLOWED=:631:cupsd
 TCP_PORTV4_ALLOWED=:5666:NRPE:WILD
+#TCP_PORTV4_ALLOWED=:6010:X11 forwarding port     (only active when used)
 TCP_PORTV4_ALLOWED=:9002:Marks job scheduler
 TCP_PORTV4_ALLOWED=:9102:Bacula FD
 TCP_PORTV4_ALLOWED=:17600:Dropbox 
@@ -134,28 +135,25 @@ ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
 ALLOW_DIRPERM_EXPLICIT=proc dr-xr-xr-x
 ALLOW_DIRPERM_EXPLICIT=gluster drwxrwxr-x
 #
-FORCE_PERM_OK=/var/log/wtmp
-FORCE_OWNER_OK=/etc/dickinson/marks_crontab
-FORCE_PERM_OK=/var/log/lastlog
-FORCE_PERM_OK=/var/log/btmp
-FORCE_PERM_OK=/var/spool/clientmqueue/sm-client.st
-FORCE_PERM_OK=/var/lib/sss/mc/group
-FORCE_PERM_OK=/var/lib/sss/mc/passwd
-FORCE_PERM_OK=/var/lib/sss/mc/initgroups
-# below required by systemd-update-done.service
-FORCE_PERM_OK=/var/.updated
-FORCE_PERM_OK=/etc/.updated
-FORCE_PERM_OK=/opt/dickinson/alert_management/run/monitor_var_log_parent.pid
-# puppet always resets these two to group write
-FORCE_PERM_OK=/var/lib/puppet/state/state.yaml
-FORCE_PERM_OK=/var/lib/puppet/state/transactionstore.yaml
+FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
+FORCE_PERM_OK=/var/log/lastlog:-rw-rw-r--
+FORCE_PERM_OK=/var/log/btmp:-rw-rw----
+#
+# below two required by fedora systemd-update-done.service (see "man systemd-update-done.service -s8")
+FORCE_PERM_OK=/var/.updated:-rw-rw-r--
+FORCE_PERM_OK=/etc/.updated:-rw-rw-r--
+#
+# Puppet always resets the below two back to group write so we must override
+FORCE_PERM_OK=/opt/puppetlabs/puppet/cache/state/transactionstore.yaml:-rw-rw----
+FORCE_PERM_OK=/opt/puppetlabs/puppet/cache/state/state.yaml:-rw-rw----
 # and these are mine
-FORCE_PERM_OK=/etc/dickinson/marks_crontab
-FORCE_PERM_OK=/opt/dickinson/alert_management/evt_buffer.dat
-FORCE_PERM_OK=/opt/dickinson/alert_management/logs/forwarded_alerts.log
+FORCE_PERM_OK=/opt/dickinson/alert_management/evt_buffer.dat:-rw-rw-rw-
+FORCE_PERM_OK=/opt/dickinson/alert_management/logs/forwarded_alerts.log:-rw-rw-rw-
 #
 FORCE_ANYFILE_OK=rescan --w--w----
 FORCE_ANYFILE_OK=remove --w--w----
+#
+FORCE_OWNER_OK=/etc/dickinson/marks_crontab:nrpe
 #
 # Turn off warnings for manual review needed of things
 NOWARN_ON_MANUALLOGCHECK=YES

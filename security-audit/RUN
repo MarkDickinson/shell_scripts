@@ -1,0 +1,34 @@
+# Examples of how to run the processing script
+# The default uncommented command will perform a full processing run.
+# simply 'bash RUN'
+
+#--------------------------------------------------------------------------------
+# Default processing: process all server collection datafiles in the
+# --datadir directory.
+# Results stored in directory 'results'
+# Results archived into directory 'archive'
+#--------------------------------------------------------------------------------
+bash bin/process_server_details.sh --datadir=rawdatafiles --archivedir=archive 
+#bash bin/process_server_details.sh --datadir=rawdatafiles    # or with no archive
+
+#--------------------------------------------------------------------------------
+# Example of processing updates to a single server named phoenix
+#--------------------------------------------------------------------------------
+#bash bin/process_server_details.sh --datadir=rawdatafiles --oneserver=phoenix
+
+#--------------------------------------------------------------------------------
+# 1st line is an example of checking if there are new datafiles to process,
+# 2nd line is checking and processing any found
+#--------------------------------------------------------------------------------
+#bash bin/process_server_details.sh --datadir=rawdatafiles --checkchanged=list
+#bash bin/process_server_details.sh --datadir=rawdatafiles --checkchanged=process
+
+#--------------------------------------------------------------------------------
+# example of just refresing the index page
+# this is indended to be used where you have multiple servers doing processing
+# and have copied the contents of the results directory into this servers
+# results directory (and ideally file files from --datadir also or those results
+# will be deleted on the next full processing run).
+# While the --rawdatafiles is ignored in this case it is still a required parm
+#--------------------------------------------------------------------------------
+#bash bin/process_server_details.sh --datadir=rawdatafiles --indexonly=yes

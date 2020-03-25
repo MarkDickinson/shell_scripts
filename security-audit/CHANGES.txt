@@ -1,3 +1,66 @@
+These are the changes that will be obvious to users. For changes made under the
+covers refer to the change history in the bash script files.
+
+-------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.07 and version 0.08 are
+-------------------------------------------------------------------------------------
+Changes between the two releases are feature enhancements and the obsoleting of 
+old custom file parameters previously retained for backward compatibility.
+NOTE: customisation file parameter changes require you to update customisation
+      files if you use any of the changed parameters in (1) or (2), you should
+      have already made changes needed for (3) as 0.07 reported the need for those.
+
+changes to existing custom file parameters
+(1) The custom file parameter FORCE_PERM_OK=/path/to/file has been changed to be
+    FORCE_PERM_OK=/path/to/file:exactperm where exactperm must be the actual
+    file permission expected
+    Using the old format (without the :exactperm) will result in the custom file
+    entry being ignored so if you used it you will get alerts for the file
+    until you update the custom file
+(2) The custom file parameter FORCE_OWNER_OK=/path/to/file has been changed to be
+    FORCE_OWNER_OK=/path/to/file:userid where userid must be the actual userid
+    that owns the file
+    Using the old format (without the :userid) will result in the custom file
+    entry being ignored so if you used it you will get alerts for the file
+    until you update the custom file
+(3) version 0.07 has been warning users custom file network parms will be obsoleted
+    in 0.08 and users need to update their custom files. The 0.06 and lower parms 
+    are now no longer supported
+
+feature enhancements
+(4) new processing option '--clearlock' is provided. If you ctrl-C or reboot during 
+    processing a logical lockfile will be left behind preventing any further
+    processing, this can be used to remove it, if no running process is using the pid
+(5) MAJOR NEW FEATURE added a seperate appendix for firewall port checking to report on
+    open inbound firewall ports [firewalld and iptables] if iptables is installed on the
+    server which are checked against ports that are actualy in use on the server to 
+    identify obsolete filewall rules (traffic allowed to a port but the server is not
+    using the port). Many servers by default accept everything relying on external
+    firewalls so this new report is not necesarily useful there but if you do use
+    a firewall on the server itself this is very useful
+(6) to fill the gap between all server processing and single server processing a
+    new parameter --checkchanged=list|process can be used to list or process
+    all datafiles captured and placed in the --datadir directory since the
+    server associated with the datafile was last processed. As well as the
+    --checkchanged=list option the main index page highlights servers that need
+    re-processing for this reason (of course only after a server is processed 
+    to refresh the index or a '--indexonly' exection is preformed to rebuild the
+    index)
+(7) primarily for my use, the collector has a new --webpathlist=/some/file which
+    refers to a file containing a list of filesystem paths under which all files
+    can be considered static or seldom changing webserver served files that should
+    all be read-only. If this option is used on a server when collecting info the
+    processing script will automatically process the entries and generate a
+    report page for this. If used the server custom file should contain new
+    entries ADD_WEBSERVER_FILE_OWNER=userid for each user that owns the files,
+    if not provided the default 'apache' will be the only user permitted to own the
+    files
+(8) main index page - when a single server or 'changed' server processing run is
+    done the main index shows the server as 'being processed' insead of the old
+    information (if it had already been processed in the past and had a main index
+    page entry); for full processing instead of no main index.html until processing
+    completes the main index is updated as each server is processed so the user
+    has a page with a growing list of server results instead of a page not found
 
 -------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.06 and version 0.07 are

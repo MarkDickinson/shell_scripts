@@ -188,16 +188,19 @@ ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
 # ---------------------------------------------------------------
 # Overrides for individual files that are expected to be
 # secured more loosely that default checks allow.
+# These overrides are only tested if all other checks have
+# already been processed and an alert condition still exists.
+# Syntax: FORCE_PERM_OK=/path/and/file:exactperm
 # ---------------------------------------------------------------
 # Force explicit files as OK when checked, full path is needed
 # for example /etc/dumpdates is normally also writeable by group disk
 # so would always be group writeable by other than the file owner
 # so raise an alert if not overridden
-FORCE_PERM_OK=/etc/dumpdates
-FORCE_PERM_OK=/var/log/wtmp
-FORCE_PERM_OK=/var/log/btmp
-FORCE_PERM_OK=/var/log/lastlog
-FORCE_PERM_OK=/var/spool/clientmqueue/sm-client.st
+FORCE_PERM_OK=/etc/dumpdates:-rw-rw-r--
+FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
+FORCE_PERM_OK=/var/log/lastlog:-rw-rw-r--
+FORCE_PERM_OK=/var/log/btmp:-rw-rw----
+#
 # below two required by fedora systemd-update-done.service
 # (see "man systemd-update-done.service -s8")
 FORCE_PERM_OK=/var/.updated
@@ -209,6 +212,7 @@ FORCE_PERM_OK=/etc/.updated
 # under the /sys/devices/pciNNNN:NN path as --w--w----. we do not
 # want them generating false alerts.
 # Risk is minimised be specifying the only permitted value.
+# Syntax: FORCE_ANYFILE_OK=file exactperm
 FORCE_ANYFILE_OK=remove --w--w----
 FORCE_ANYFILE_OK=rescan --w--w----
 #

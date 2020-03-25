@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.07 of the processing script<br />
-Version 0.07 of the data collection script<br />
-Last upadted 6 March 2020
+Version 0.08 of the processing script<br />
+Version 0.08 of the data collection script<br />
+Last updated 22 March 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -296,10 +296,14 @@ a single reporting server.
 To process the data and produce the security reports you just
 run the script bin/process_server_details and provide it with
 the directory name of your server data files. The syntax of the
-process_server_details.sh script is
+process_server_details.sh script is one of the below
 
 <pre>
-<span style="background-color: #FFCCFF">process_server_details.sh --datadir=directory [--archivedir=directory] [--oneserver=servername]</span>
+<span style="background-color: #FFCCFF">
+process_server_details.sh --datadir=directory [--archivedir=directory] [--oneserver=servername]
+process_server_details.sh --datadir=directory [--archivedir=directory] [--checkchanged=list|process]
+process_server_details.sh --datadir=directory --clearlock
+</span>
 </pre>
 <ul>
 <li>The <em>--datadir=dirname</em> specified the location of the files to be processed, these
@@ -307,7 +311,12 @@ are the files produced by the collection script</li>
 <li>If the <em>--archivedir=directory</em> is provided then when the report is produced
 a copy of it will be tar'ed and gzip'ed into a datestamped file
 in the archive directory for historical reference.</li>
-<li>The <em>--oneserver=servername</em> option has special considerations discussed further below</li>
+<li>The <em>--oneserver=servername</em> option has will process only the specified individual one server
+which is useful when you are concentrating on resolving issues on one server at a time,
+<em>but has special considerations discussed further below</em></li>
+<li>The <em>--checkchanged</em> option is used to list or process servers that have collected datafiles
+produced after the last processing for the server was run. This fills the gap between processing all
+servers and an individual server</li>
 </ul>
 </p>
 <p>
@@ -378,6 +387,26 @@ the processing script as all other servers were processed under then only
 the single server specified will be reprocessed.
 </p>
 
+<h3>Processing only updated servers</h3>
+<p>
+The ability exists (since version 0.08) to request processing only for changed/updated 
+server datafiles.
+</p>
+<p>
+If you have many servers you may regularly copy new collected datafiles to the processing
+server on an ad-hoc or scheduled basis, but do not want the delay of using a full processing
+run of a lot of single server processing runs to process the updated files.
+</p>
+<p>
+Since version 0.08 it is possible to use the '--checkchanged=list' and '--checkchanged=process'
+options to list or process all servers with collected datafiles that identify themselves as
+being snapshoted after the server was last processed.
+</p>
+<p>
+Unlike the --oneserver option this option assumes all other servers were processed using
+the current version of the processing script and will not force re-processing of servers
+with obsolete results.
+</p>
 
 <H2>Overiding/Customising the default reporting</H2>
 <p>
@@ -678,10 +707,10 @@ the custom file to force the file to be treated as OK.
 </p>
 <p>
 To do so use the FORCE_PERM_OK entry with the filename,
-<b>including the full path</b>, as the value. The game score file
+<b>including the full path</b>, a colon, and the expected permissions as the value. The game score file
 mentioned above is used in this example...<br>
 
-<span style="background-color: #D7FFFF"><b>FORCE_PERM_OK=/usr/games/Maelstrom/Maelstrom-Scores</b></span>
+<span style="background-color: #D7FFFF"><b>FORCE_PERM_OK=/usr/games/Maelstrom/Maelstrom-Scores:-rw-rx-rx-</b></span>
 </p>
 
 <p>
@@ -691,7 +720,7 @@ file I was not willing to add vcsa to the system file owner list so create the
 additional tag (which alas really slows the checking down some more as every badly owned
 file now does a check for the override (actually, doesn't slow much on my system
 as I only have that one file, time to clean up yours :-) ).<br>
-<span style="background-color: #D7FFFF"><b>FORCE_OWNER_OK=/usr/libexec/mc/cons.saver</b></span>
+<span style="background-color: #D7FFFF"><b>FORCE_OWNER_OK=/usr/libexec/mc/cons.saver:vcsa</b></span>
 </p>
 
 
@@ -837,31 +866,6 @@ you servername.custom settings.
 </p>
 
 <table border="1">
-<tr><td>TCP_PORT_ALLOWED=:<em>port</em>:<em>description</em></td><td>
-Used to specify a TCP (v4 or v6) port that is expected to be opened on the server.
-There must be a : before and after the port number, anything after the second : is a
-free form description to describe the use of the port.<br>
-Examples<br>
-TCP_PORT_ALLOWED=:22:ssh server<br />
-TCP_PORT_ALLOWED=:9090:Cockpit
-<br />
-Note that this will stop a port being raised as a critical issue in the report, but
-if the port is listening on all interfaces it will still be raised as a warning.
-<br />
-<b>This option is obsolete and will be removed in version 0.08</b>
-</td></tr>
-<tr><td>UDP_PORT_ALLOWED=:<em>port</em>:<em>description</em></td><td>
-Used to specify a UDP (v4 or v6) port that is expected to be opened on the server.
-There must be a : before and after the port number, anything after the second : is a
-free form description to describe the use of the port.<br>
-Examples<br />
-UDP_PORT_ALLOWED=:111:RPC portmap daemon (portmap)
-<br />
-Note that this will stop a port being raised as a critical issue in the report, but
-if the port is listening on all interfaces it will still be raised as a warning.
-<br />
-<b>This option is obsolete and will be removed in version 0.08</b>
-</td></tr>
 <tr><td>TCP_PORTV4_ALLOWED=:<em>port:description[:WILD]</em></td><td>
 Used to specify a TCPV4 port that is expected to be opened on the server.
 There must be a : before and after the port number, anything after the second : is a
@@ -1055,17 +1059,16 @@ the name so use with caution</b> (ie: if =bin is used then /bin, /usr/bin,
 /home/fred/bin, /rootkit/hacker/bin
 will be accepted as OK if they match the directory permissions specified.<br />
 </td></tr>
-<tr><td>FORCE_PERM_OK=<em>fullpathandfilename</em></td><td>
+<tr><td>FORCE_PERM_OK=<em>fullpathandfilename:expectedperms</em></td><td>
 Ocassionally there will be a file that alerts that does not fit any generic rules,
 this custom file setting can be used to force any checks against the file <b>permissions</b>
 of a file to be considered OK reguardless of what the file permissions actually are.
 Examples<br />
-FORCE_PERM_OK=/usr/libexec/mc/cons.saver<br />
+FORCE_PERM_OK=/usr/libexec/mc/cons.saver:-rw-rw-rw-<br />
 Unlike other overrides this is specific to one file and the full path and filename
-must be specified, it is expected there would be very few of these entries in a
+must be specified, plus the expected permissions seperated by a colon. It is expected there would be very few of these entries in a
 configuration file (I currentrly have zero).
 </td></tr>
-
 <tr><td>FORCE_ANYFILE_OK=<em>filename fileperms</em></td><td>
 Allow a file of this name to be forced OK <em>under any directory</em> if
 it fails initial default checks.
@@ -1081,12 +1084,12 @@ are expected to be explicitly provided. <em>Also</em> this parameter is only
 used if the filename being checked has already failed all previous checks,
 this is the last check in the chain.
 </td></tr>
-<tr><td>FORCE_OWNER_OK=<em>fullpathandfilename</em></td><td>
+<tr><td>FORCE_OWNER_OK=<em>fullpathandfilename:expectedowner</em></td><td>
 Ocassionally there will be a file that alerts that does not fit any generic rules,
 this custom file setting can be used to force any checks against the file <b>owner</b>
-of a file to be considered OK reguardless of who the file owner actually is.<br />
+of a file to be considered OK as long as the owner of the file actually matches the expectedowner provided.<br />
 Examples<br />
-FORCE_OWNER_OK=/usr/libexec/mc/cons.saver<br />
+FORCE_OWNER_OK=/usr/libexec/mc/cons.saver:vcsa<br />
 Unlike other overrides this is specific to one file and the full path and filename
 must be specified, it is expected there would be very few of these entries in a
 configuration file (I currentrly have zero).
@@ -1120,6 +1123,17 @@ ADD_SYSTEM_FILE_OWNER=snort<br />
 ADD_SYSTEM_FILE_OWNER=logcheck<br />
 On the file permissions check page of the report all 'system file owners' are listed
 for the server being checked so you can keep an eye on additional entries.
+</td></tr>
+<tr><td>ADD_WEBSERVER_FILE_OWNER=<em>username</em></td><td>
+This is only used if the server data file was produced using the collector --webpathlist option
+to specifically identify web server directories that must only contain read-only files.
+It allows the specification of users that are expected to be able to own those files.
+<br />
+Examples<br />
+ADD_WEBSERVER_FILE_OWNER=apache<br />
+ADD_WEBSERVER_FILE_OWNER=jetty<br />
+If no entry exists and there are webserver files to be checked a default
+owner of apache will be the default.
 </td></tr>
 <tr><td>ALLOW_SLOPPY_VAR=WARN</td><td>
 Setting this alters the report to
@@ -1223,6 +1237,25 @@ This section does not list all changes, bug-fixes and enhancements.
 This section is specifically for changes that will impact the way you
 use this toolkit and the results that will be produced.
 </p>
+
+<ul>
+<li><b>Major changes between version 0.07 and 0.08</b>
+   <ul>
+   <li>obsolete custom file parameters TCP_PORT_ALLOW and UDP_PORT_ALLOW are no longer supported</li>
+   <li>custom file parameters FORCE_PERM_OK and FORCE_USER_OK have changed syntax, old syntax is no longer supported</li>
+   <li>any firewall rules on the server are checked if present to identify obsolete rules</li>
+   <li>facility to process all <em>updated</em> servers (fills the gap between processing one or all servers)</li>
+   <li>main index/status page. In prior releases during a full processing run there was nothing there until all
+       servers were processed giving users that bookmarked it an error, now an index exists that gets servers added
+       as they are processed. For single server processing rather than leave a stale index link during processing
+       the index page is updated to show that server is being processed</li>
+   <li>new optional facility in the capture script to collect information on files under paths that are required to
+       be read-only; if used the processing script will automatically process them in a new report page.
+       This is primarily for use on my webserver but may be useful to others</li>
+   </ul>
+</li>
+</ul>
+
 
 <ul>
 <li><b>Major changes between version 0.06 and 0.07</b>
