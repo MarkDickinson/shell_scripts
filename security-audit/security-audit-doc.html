@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.08 of the processing script<br />
-Version 0.08 of the data collection script<br />
-Last updated 22 March 2020
+Version 0.09 of the processing script<br />
+Version 0.09 of the data collection script<br />
+Last updated 28 May 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -21,6 +21,7 @@ Last updated 22 March 2020
 		<ul>
 				<li>Capturing data for a server</li>
 				<li>Limiting the data captured</li>
+				<li>All collection parameters explained</li>
 		</ul>
 		</li>
 		<li><a href="#sect3">Processing the data</a>
@@ -251,9 +252,37 @@ file paths as these must be reported on</b>.
 Normal syntax          : <span style="background-color: #FFCCFF">bin/collect_server_details.sh</span>
 Limiting capture syntax: <span style="background-color: #FFCCFF">bin/collect_server_details.sh --scanlevel=<em><b>n</b></em></span>
 Example                : <span style="background-color: #D7FFFF">bin/collect_server_details.sh --scanlevel=5</span>
-
-All options: bin/collect_server_details.sh [--scanlevel=<number>] [--backup-etc=yes|no] [--record-packages=yes|no] [--hwlist=yes|no] [--disable-fuser]
 </pre>
+
+<h2>All collection parameters explained</li>
+<p>
+These are all the parameters available to the collection script.
+</p>
+<pre>
+bin/collect_server_details.sh [--scanlevel=<number>] [--backup-etc=yes|no] [--record-packages=yes|no] [--hwlist=yes|no] [--webpathlist=filename]
+</pre>
+<ul>
+<li>--scanlevel=N<br />
+Limit the number of directory paths depth down which file security information is collected, default is to scan to the max permitted by the OS
+</li>
+<li>--backup-etc=yes|no<br />
+Controls if the script also backs up the contents of /etc, default is no
+</li>
+<li>--record-packages=yes|no<br />
+Controls if the script also creates a listing (if rpm is installed) of all packages installed on the server, default is yes
+</li>
+<li>--hwlist=yes|no<br />
+Controls if a hardware listing of the server is also captured, default is yes
+</li>
+<li>--webpathlist=filename<br />
+If used references a file containing a list of directories that are to be considered webserver served directories
+that are required to have all files secured as read only. The file contains a list of full path directory names
+(with no trailing /), one directory name per line. The # character in column 1 can be used to place comments
+in the file. If this option is used when the processing script processes data collected with this option
+a seperate appendix in the security report is produced to alert on files under these directory paths
+that are not read only. The default is that it is not used
+</li>
+</ul>
 
 <hr>
 <a name="sect3"></a>
@@ -1110,6 +1139,17 @@ must be specified. <em>It should also be noted that the report will alert on any
 entries defined this way where the file does not exist on the server to ensure
 you do not leave stale entries in this list</em>.
 </td></tr>
+<tr><td>SUID_SUPPRESS_DOCKER_OVERLAYS=yes</td><td>
+On servers running docker containers a lot of SUID files used by the containers
+are placed in directories under /var/lib/docker/overlay2/<em>containerid</em>.
+As contaner ids are generated there is no way to hard code allowed filenames using
+the above parameter; so this parameter can be used to suppress all alerts for
+for SUID file if they are under the directory path /var/lib/docker/overlay2.
+If this parameter is used the file security page of the report will list the
+number of alerts suppressed for this reason and provide a link to all the files
+that had alerts suppressed. <b>Yiu</b> are responsible for reviewing this list
+of suppressed files if you suppress the alerts.
+</td></tr>
 <tr><td>ADD_SYSTEM_FILE_OWNER=<em>username</em></td><td>
 You will occasionally install 3rd party packages that you want to run under a user
 other than root, in which case as good practise you would chown all files in that
@@ -1239,6 +1279,16 @@ use this toolkit and the results that will be produced.
 </p>
 
 <ul>
+<li><b>Major changes between version 0.08 and 0.09</b>
+   <ul>
+   <li>collector script defaults for --backup-etc= and --record-packages= has changed from yes to no<br />
+       if you are using the files produced by those adjust any scripts you use that run the collector</li>
+   <li>new server customfile parameter "SUID_SUPPRESS_DOCKER_OVERLAYS=yes". Refer to the documentation above</li>
+   </ul>
+</li>
+</ul>
+
+<ul>
 <li><b>Major changes between version 0.07 and 0.08</b>
    <ul>
    <li>obsolete custom file parameters TCP_PORT_ALLOW and UDP_PORT_ALLOW are no longer supported</li>
@@ -1256,7 +1306,6 @@ use this toolkit and the results that will be produced.
 </li>
 </ul>
 
-
 <ul>
 <li><b>Major changes between version 0.06 and 0.07</b>
    <ul>
@@ -1266,6 +1315,7 @@ use this toolkit and the results that will be produced.
    to be rerun on all servers</em> as the old collector files cannot be sucessfully processed
    by the new version of the processing  script (affects only the network processing section
    which will generate many false alerts if an old format data collection file is used)</li>
+   <li>requirement of fuser installed on server has been removed</li>
    </ul>
 </li>
 </ul>
@@ -1346,16 +1396,21 @@ A customisation file per server is really required if you have multiple OS's.
 CentOS7 still uses /usr/bin and /usr/sbin for files, so SUID file checks must be different
 for each OS, Fedora will have a suid file at /bin/wall and CentOS7 will have it at /usr/bin/wall
 so the ALL.custom file cannot be used for both OSs as files are in different places. This 
-divergence gets even worse with BSD based systems.
+divergence gets even worse with BSD based systems. And CentOS7 and CentOS8 have different
+suid files; just impossible to have a generic custom file for all servers.
 </p>
 <p>
 There are also lots of critical alerts plus lots of warning generated on systems with <em>Docker</em>
-running containers as in the docker overlay2 directory it keeps copies of setuid files; plus with my
+running containers as in the docker overlay2 directory it keeps copies of setuid files for each container; plus with my
 docker containers I keep the userid numbers well away from 'real' users on the host so there are
-'bad ownership' alerts logged for user numbers as they do not exist on the host.<br />
-I have decided not
-to provide a customisation entry flag to suppress those as I believe it is important to know what
-setuid files exist on the system being checked.
+'bad ownership' alerts logged for user numbers as those numbers do not exist as valid users on the docker host.<br />
+A customisation file entry exists to suppress the suid file alerts, it will however still generate a list of all
+suid files that were suppressed from alerting so you can manually review them.<br />
+At this time I have no intent to provide parameters to code paremeters to allow user numbers that do not match
+existing host users to be accepted as OK, simply because while I consider it best practise to ensure all
+userids in containers use user numbers that do not exist on the container host (or some random user with a
+matching uid on the host to one used in a container could kill processes belonging to the container) I am
+probably the only one enforcing such a rule in my environment.
 </p>
 <p>
 <b><em>None of these are issues with the toolkit itself but the effect of different *nix implementations</em></b>,
@@ -1371,8 +1426,15 @@ will perform a permissions check on the cd command as that is considered the com
 so is only usefull if crontab entries run explicit script files 
 (ie: 55 10 * * 0 cd /home/user/dir/runcommand) that can be checked. But it is still
 able to check many entries so better than nothing, plus all entries that could not
-be correctly checked are reported on. Implement site standards that require
-a full script path and no command concatenation and this will cease to be an issue</li>
+be correctly checked are reported on. It also expects the command to be run to be owned
+by the crontasb owner so an alert will be raised by a cron command such as "/bin/php parameters"
+as the crontab owner does not own /bin/php.
+Implement site standards that require scripts to be used,
+a full script path and no command concatenation and this will stop the alerts.<br />
+<em>I do not consider this a bug</em>, implement site standards for cron jobs</li>
+<li><b>Nowhere in the directory path of the processing script can there be an underscore</b> ( _ )
+character used, the underscore character is used by the script for parsing and having it
+in the directory path will cause problems. Not really an issue, just do not do it</li>
 <li>and end of known issues</li>
 </ul>
 <hr>

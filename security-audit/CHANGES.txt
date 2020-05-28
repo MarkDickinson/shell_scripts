@@ -2,6 +2,29 @@ These are the changes that will be obvious to users. For changes made under the
 covers refer to the change history in the bash script files.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.08 and version 0.09 are
+-------------------------------------------------------------------------------------
+collection script changes
+(1) the collection script parameters --backup-etc and --record-packages have had
+    the defaults changed from yes to no. A personal preference as I was not yet
+    doing anything with that data collected. If you want the data any scripts
+    you run from cron (or other schedulers) will have to be updated to now
+    provide these options.
+
+new custom file parameters
+(2) SUID_SUPPRESS_DOCKER_OVERLAYS=yes
+    Yes I got sick of them generating alerts in the reports. If this parameter is
+    added to the customisation file for a server alerts will no longer be raised
+    for SUID files under the /var/lib/docker/overlay2 filesystem path which contains
+    SUID files created for docker containers in directories named for the
+    running container id (or more simply, random so always raised unexpected suid
+    file alerts. Instead the report will now just say nnn alerts for docker suid files
+    suppressed and provide a link to a new page listing all the files that were
+    suppressed from the report.
+    It only suppressed alerts for files under /var/lib/docker/overlay2, if used
+    it has no effect on the reporting for other files.
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.07 and version 0.08 are
 -------------------------------------------------------------------------------------
 Changes between the two releases are feature enhancements and the obsoleting of 

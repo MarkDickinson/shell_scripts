@@ -21,7 +21,7 @@
 #      --datadir         is where the collected snapshots are
 #      --archivedir      can be used to take an archive of the results
 #      --customfiledir   can be used to override the default location of ./custom
-#      --clearlock       if a previous run was aborted *vtrl-c or server reboot) the
+#      --clearlock       if a previous run was aborted *ctrl-c or server reboot) the
 #                        lockfile can be cleared with this option, it will check to
 #                        make sure the pid of the process that created the lock is 
 #                        no longer running before doing so
@@ -195,6 +195,15 @@
 #                   (7) Altered custom file parm FORCE_OWNER_OK=/path/and/file
 #                       to require FORCE_OWNER_OK=/path/and/file:exactowner
 #                   (8) implement --checkchanged=list|process
+# MID: 2020/03/28 - Version 0.09
+#                   (1) fixed a false warning in the tcp appendix that said 
+#                       fuser was not available on the colleted server; as we
+#                       obsoleted the use of fuser in an earlier version
+#                   (2) added handling for new customfile parameter
+#                       "SUID_SUPPRESS_DOCKER_OVERLAYS=yes", will not
+#                       alert on docker suid files in overlay directories
+#                       but will produce a list of all alerts that were
+#                       suppressed.
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -244,7 +253,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.08"
+PROCESSING_VERSION="0.09"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -540,7 +549,7 @@ update_system_file_owner_list() {
       done
       SYSTEM_FILE_OWNERS=`cat ${WORKDIR}/delme`
       rm -f ${WORKDIR}/delme
-      echo "Note: System file owners updated to be ${SYSTEM_FILE_OWNERS} by config file"
+      log_message "Note: System file owners updated to be ${SYSTEM_FILE_OWNERS} by config file"
    fi
 } # end of update_system_file_owner_list
 
@@ -570,7 +579,7 @@ update_webserver_file_owner_list() {
       then
          WEBSERVER_FILE_OWNERS=`cat ${WORKDIR}/delme`
          /bin/rm -f ${WORKDIR}/delme
-         echo "Note: Webserver file owners updated to be ${WEBSERVER_FILE_OWNERS} by config file"
+         log_message "Note: Webserver file owners updated to be ${WEBSERVER_FILE_OWNERS} by config file"
       fi
    fi
 } # end of update_webserver_file_owner_list
@@ -1965,18 +1974,6 @@ build_appendix_c() {
    echo "The first is obviously insecure, the second is insecure as processes using random ports are inherently insecure" >> ${htmlfile}
    echo "and any process using them should be confined to localhost.</p>" >> ${htmlfile}
 
-   hadfuser=`grep "^FUSER_INSTALLED" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
-   if [ "${hadfuser}." != "YES." ];
-   then
-      if [ "${hadfuser}." == "DISABLED." ];
-      then
-         echo "<p><b>'fuser' processing was explicitly disabled during data collection</b> for this server." >> ${htmlfile}
-      else  # else not installed or an older version of the collection script that did not use it
-         echo "<p>The 'fuser' utility was not available on this server at the time of data collection." >> ${htmlfile}
-      fi
-      echo "This means the Process fields of this report can only be propulated with truncated details from netstat." >> ${htmlfile}
-      echo "This may generate alerts for process match rules that require full details.</p>" >> ${htmlfile}
-   fi
    echo "<table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"4\"><center>TCP Ports open on the server</center></td></tr>" >> ${htmlfile}
    echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td><td>Process</td></tr>" >> ${htmlfile}
    cat ${WORKDIR}/active_tcp_services.wrk2 | while read dataline
@@ -2468,7 +2465,8 @@ build_appendix_d() {
 build_appendix_e() {
    hostid="$1"
    htmlfile="${RESULTS_DIR}/${hostid}/appendix_E.html"
-   log_message ".     Building Appendix E - system file security checks, go get a coffee"
+   tempcount=`grep "^PERM_SYSTEM_FILE" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   log_message ".     Building Appendix E - system file security checks, ${tempcount} files to process (plus later suid checks), go get a coffee"
 
    clean_prev_work_files
    mkdir ${WORKDIR}
@@ -2511,13 +2509,6 @@ build_appendix_e() {
       else
          allowvargroupwrite="YES"
       fi
-      # save the allowed suid files now as well 
-      grep "^SUID_ALLOW" ${CUSTOMFILE} | awk -F\= '{print $2}' | while read dataline
-      do
-         # note we add the space-X to force exact matches on filenames, to prevent
-         # paths being used in the custom file.
-         echo "${dataline} X" >> ${WORKDIR}/suid_allow_list
-      done
    fi   # if overridefile exists
    cat << EOF > ${htmlfile}
 <html><head><title>System file security checks for ${hostid}</title></head><body>
@@ -2670,7 +2661,6 @@ EOF
          else
             echo "Due to an error in the processing script a listing of suppressed files is not available/</p>" >> ${htmlfile}
          fi
-         echo "A list of those files is available here.</p>" >> ${htmlfile}
       fi
    fi
    # Display the list of files under /var that were changes to warnings rather than
@@ -2707,6 +2697,23 @@ EOF
    # ---------------------------------------------------------------------------
    # now the suid file checks
    # ---------------------------------------------------------------------------
+   suppress_docker="no"
+   if [ "${CUSTOMFILE}." != "." ];
+   then
+      # save the allowed suid files now as well
+      grep "^SUID_ALLOW" ${CUSTOMFILE} | awk -F\= '{print $2}' | while read dataline
+      do
+         # note we add the space-X to force exact matches on filenames, to prevent
+         # paths being used in the custom file.
+         echo "${dataline} X" >> ${WORKDIR}/suid_allow_list
+      done
+      testparm=`grep -i "^SUID_SUPPRESS_DOCKER_OVERLAYS=yes" ${CUSTOMFILE}`
+      if [ "${testparm}." != "." ];
+      then
+         suppress_docker="yes"
+      fi
+   fi
+
    echo "<h2>E.2 Checks for files with SUID set</h2>" >> ${htmlfile}
    echo "<p>Files with the SUID bits set can be a possible security risk." >> ${htmlfile}
    echo "All the files listed here should be checked to ensure they are still" >> ${htmlfile}
@@ -2720,17 +2727,40 @@ EOF
    done
    if [ -f ${WORKDIR}/suid_allow_list ];
    then
-      cat ${WORKDIR}/suid_file_list | while read dataline
-      do
-         fname=`echo "${dataline}" | awk '{print $9}'`
-         # check for override
-         testvar=`grep "${fname} X" ${WORKDIR}/suid_allow_list`
-         if [ "${testvar}." == "." ];   # no override for this file
-         then
-            inc_counter ${hostid} alert_count
-            echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
-         fi
-      done
+      # if not suppressing docker overlay files then process all files
+      if [ "${suppress_docker}." != "yes." ];
+      then
+         cat ${WORKDIR}/suid_file_list | while read dataline
+         do
+            fname=`echo "${dataline}" | awk '{print $9}'`
+            # check for override
+            testvar=`grep "${fname} X" ${WORKDIR}/suid_allow_list`
+            if [ "${testvar}." == "." ];   # no override for this file
+            then
+               inc_counter ${hostid} alert_count
+               echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+            fi
+         done
+      else
+         # same as above, but omitting docker overlay entries
+         cat ${WORKDIR}/suid_file_list | grep -v "\/var\/lib\/docker\/overlay2\/" | while read dataline
+         do
+            fname=`echo "${dataline}" | awk '{print $9}'`
+            # check for override
+            testvar=`grep "${fname} X" ${WORKDIR}/suid_allow_list`
+            if [ "${testvar}." == "." ];   # no override for this file
+            then
+               inc_counter ${hostid} alert_count
+               echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+            fi
+         done
+         # record the suppressed docker overlay files
+         cat ${WORKDIR}/suid_file_list | grep "\/var\/lib\/docker\/overlay2\/" | while read dataline
+         do
+            inc_counter ${hostid} docker_alert_count
+            echo "${dataline}" >> ${WORKDIR}/appendix_e_dockersuppresslist.txt
+         done
+      fi
    else    # no overrides, all are alerts
       cat ${WORKDIR}/suid_file_list | while read dataline
       do
@@ -2747,6 +2777,16 @@ EOF
       echo "</pre></td></tr></table>" >> ${htmlfile}
    else
       echo "<table bgcolor=\"${colour_OK}\"><tr><td>No unexpected SUID files found. No action required.</td></tr></table>" >> ${htmlfile}
+   fi
+
+   # Did we suppress any docker SUID file alerts ?
+   if [ -f ${WORKDIR}/appendix_e_dockersuppresslist.txt ];
+   then
+      dockersuppress=`cat ${RESULTS_DIR}/${hostid}/docker_alert_count`
+      echo "<p><b>The customisation file requested docker overlay SUID files be suppressed from the report</b>," >> ${htmlfile}
+      echo "${dockersuppress} SUID files were suppressed from being reported on for this reason." >> ${htmlfile}
+      /bin/mv ${WORKDIR}/appendix_e_dockersuppresslist.txt ${RESULTS_DIR}/${hostid}/appendix_e_dockersuppresslist.txt
+      echo "A list of those files is <a href="appendix_e_dockersuppresslist.txt">available here</a>.</p>" >> ${htmlfile}
    fi
 
    # and then check for stray entries in the customisation file (entries
@@ -3275,7 +3315,8 @@ build_appendix_i() {
       WEBSERVER_FILE_OWNERS="apache"
    fi
    htmlfile="${RESULTS_DIR}/${hostid}/appendix_I.html"
-   log_message ".     Building Appendix I - webserver file security checks, go get a coffee"
+   tempcount=`grep "^PERM_WEBSERVER_FILE" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   log_message ".     Building Appendix I - webserver file security checks, ${tempcount} files to process, go get a coffee"
 
    clean_prev_work_files
    mkdir ${WORKDIR}
@@ -3542,6 +3583,15 @@ perform_single_server_processing() {
    update_system_file_owner_list "${hostname}"
    update_webserver_file_owner_list "${hostname}"
 
+   # added here so the Note: message is at the start of the log along with notes
+   # for system file and webserver owners. Obviously the check is done again
+   # in the suid checks themselved to use the value :-)
+   testparm=`grep -i "^SUID_SUPPRESS_DOCKER_OVERLAYS=yes" ${CUSTOMFILE}`
+   if [ "${testparm}." != "." ];
+   then
+      log_message "Note: docker suid file alert suppression configured in custom file"
+   fi
+
    server_index_start ${hostname}
 
    build_appendix_a ${hostname}               # user checks
@@ -3698,6 +3748,7 @@ single_server_sanity_checks() {
       if [ "${testvar}." != "y." -a "${testvar}." != "Y." ];
       then
          echo "Aborting processing at user request."
+         /bin/rm ${LOGICAL_LOCK}
          exit 1
       fi
    fi

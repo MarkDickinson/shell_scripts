@@ -15,8 +15,8 @@
 # useage: collect_server_details.sh [ optional parameters ] 
 #         optional parameters may be any of the below
 #            --scanlevel=N                   default is unlimited full scan
-#            --backup-etc=yes|no             default is yes
-#            --record-packages=yes|no        default is yes
+#            --backup-etc=yes|no             default is no
+#            --record-packages=yes|no        default is no
 #            --hwlist=yes|no                 default is yes
 #            --webpathlist=/some/filename    default is no special web path processing
 #
@@ -78,14 +78,17 @@
 #              capture all iptables accept rules
 #              as well as recording capture date in text, save seconds since
 #              epoc also so we can use it for simple tests is a file has
-#              been updated in the processing scriot.
+#              been updated in the processing script.
+# 2020/05/28 - changed defaults for backing up /etc and creating a rpm
+#              package list from yes to no, as I do not use that collected
+#              info anywhere yet.
 #
 # ======================================================================
-EXTRACT_VERSION="0.08"    # used to sync between capture and processing, so be correct
+EXTRACT_VERSION="0.09"    # used to sync between capture and processing, so be correct
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
-BACKUP_ETC="yes"          # default is to tar up etc
-BACKUP_RPMLIST="yes"      # default is to create a rpm package list
+BACKUP_ETC="no"           # default is NOT to tar up etc
+BACKUP_RPMLIST="no"       # default is NOT to create a rpm package list
 DO_HWLIST="yes"           # default is to create the hardware listing
 WEBPATHFILE=""            # default is no file of special webserver directories
 WEBPATHEXCLUDE=""         # only set if above parm is used

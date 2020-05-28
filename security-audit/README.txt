@@ -6,11 +6,20 @@ Purpose: check for common security issues on multiple Linux servers
 Upgrade Notes: whenever upgrading between versions of this toolkit the
                new version of the data collection script should be
                run on all servers and a full processing run be performed
-               on the reporting server. This is required to ensure any
+               on the reporting server. This should be done to ensure any
                new data fields required by the new version of the processing 
                script are present, not using the latest collection script
                results may generate false alerts and have missing needed
                information.
+               With every version upgrade of the processing script all
+               servers that were processed under earlier versions must
+               be processed again (although old version collected data
+               files can be used). This is enforced by the processing
+               script, even if you try to run it with a single server
+               option it will detect all servers processed by an earlier
+               processing version and re-process them to ensure their
+               index entries are updated to match any changes in the new
+               processing script.
 
 Redistribution: as long as it is never packaged for commercial use you
                 can copy and modify.
@@ -106,9 +115,9 @@ Current status:
     are mapped to /bin or /sbin which must be owned by root (not by the
     system user such as adm or operator) and must be traversable by other
     users, and quite a few other customisable cases.
-  * optional (but default) backs up /etc
+  * optional, backs up /etc
   * optional (but default) collect hardware info
-  * optional (but default) if 'rpm' is available collect a package list
+  * optional, if 'rpm' is available collect a installed package list
 
 Files provided:
    collect_server_details.sh   - run on all server to collect details to be processed
@@ -125,7 +134,7 @@ Directories that must exist for processing are
 
 Directories that must exist for processing are
 (at no point in the directory path can a underscore ( _ ) be used)
-   somedir                     - location of the two scripts
+   somedir/bin                 - location of the processing script (expected by example RUN file)
    somedir/custom              - place all custom files in here
    somedir/results             - all reporting results are placed here
  - the directory containing the data to be processed that was collected by the
