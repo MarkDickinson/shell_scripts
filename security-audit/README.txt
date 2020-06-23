@@ -1,7 +1,8 @@
 Security Audit Toolkit - FOR LINUX SERVERS
 
 Purpose: check for common security issues on multiple Linux servers 
-         and produce a 'global' report of security status
+         and produce a 'global' drill-down report of security status
+         for all the servers processed.
 
 Upgrade Notes: whenever upgrading between versions of this toolkit the
                new version of the data collection script should be
@@ -50,6 +51,9 @@ Requirements: (1) only runs on Linux servers [tested on Fedora/CentOS/Kali]
               (3) the 'iptables' command should be available on all servers
                   [optional but if not installed no checking of firewall rules
                   can be performed]
+                  Update:Jun 23 2020 - now rhel based systems running firewalld
+                  use netfilter instead of iptables (f32+/rhel8+/centos8+) 'nft'
+                  is also required but is installed by default on those servers.
               (4) 'dmidecode' and 'lshw' commands need to be installed on each
                   server if you intent to also capture hardware information
                   [optional but if not installed the hardware details page
@@ -103,8 +107,8 @@ Current status:
     the server customisation file that are no longer in use so the config 
     file can be cleaned up.
   * firewall rule checks - if the server has a firewall in place will check
-    (if the iptables command is on the server) all accepted traffic to ensure
-    any explicit port numbers used match ports expected to be open on the
+    (if the iptables command (or nft for netfilter servers) is on the server)
+    all explicit port numbers used match ports expected to be open on the
     server as defined by the network checks, and also alert if firewall rules
     accept traffic to ports that are not in use on the server (to identify
     obsolete firewall rules)
@@ -129,14 +133,14 @@ Files provided:
    RUN                         - examples of the processing run options available, default is full processing
 
 Directories that must exist for processing are
-   n/a - output files are stored in the current working directory at the time the
-         script is run
-
-Directories that must exist for processing are
 (at no point in the directory path can a underscore ( _ ) be used)
+   sommedir                    - the root of where you install the toolkit
    somedir/bin                 - location of the processing script (expected by example RUN file)
    somedir/custom              - place all custom files in here
    somedir/results             - all reporting results are placed here
  - the directory containing the data to be processed that was collected by the
-   collect_server_details.sh script and any result archive directory are parameter supplied.
+   collect_server_details.sh script must be supplied by parameter
+   (I prefer somedir/rawdatafiles)
+- any result archive directory must be parameter supplied
+   (I prefer somedir/archive)
 

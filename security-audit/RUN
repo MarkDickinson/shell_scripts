@@ -32,3 +32,6 @@ bash bin/process_server_details.sh --datadir=rawdatafiles --archivedir=archive
 # While the --rawdatafiles is ignored in this case it is still a required parm
 #--------------------------------------------------------------------------------
 #bash bin/process_server_details.sh --datadir=rawdatafiles --indexonly=yes
+#
+# The below will also include the kernel version of each OS in the index page
+#bash bin/process_server_details.sh --datadir=rawdatafiles --indexonly=yes --indexkernel=yes

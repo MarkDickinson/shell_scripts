@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.09 of the processing script<br />
-Version 0.09 of the data collection script<br />
-Last updated 28 May 2020
+Version 0.10 of the processing script<br />
+Version 0.10 of the data collection script<br />
+Last updated 23 Jun 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -82,7 +82,10 @@ page will be that they are not installed</li>
 <h3>1.2 Requirements, environment needed</h3>
 <ul>
 <li>a large bunch of Linux servers. These scripts are tested primarily Fedora30/31 and CentOS7
- (although I also run them on a 'kali' server which I believe is debian based</li>
+ (although I also run them on a 'kali' server which I believe is debian based.
+ <em>BETA testing done for Fedora31 and CentOS8 due to major change in firewalld using netfilter
+ instead of iptables now</em>, will be some time before the firewall appendix netfilter
+ checks can be considered as accurate as the iptables report</li>
 <li>server names must be unique until the first '.' (dot) in a server name</li>
 <li>server names cannot contain the '_' underscore character (used for parsing)</li>
 <li>the scripts cannot be installed in a directory where any part of the directoty path contains the '_' underscore character (used for parsing)</li>
@@ -131,7 +134,7 @@ It checks for
 <li>unexpected open tcp ports</li>
 <li>unexpected open udp ports</li>
 <li>ftp allowed users</li>
-<li>cron script file securities (including anacron jobs)</li>
+<li>cron script file securities (excluding anacron jobs)</li>
 </ul>
 The checklist above is vastly simplified, for example the
 ftp allowed users not only warns which users are allowed
@@ -332,6 +335,7 @@ process_server_details.sh script is one of the below
 process_server_details.sh --datadir=directory [--archivedir=directory] [--oneserver=servername]
 process_server_details.sh --datadir=directory [--archivedir=directory] [--checkchanged=list|process]
 process_server_details.sh --datadir=directory --clearlock
+process_server_details.sh --datadir=directory --indexonly [--indexkernel=yes|no]
 </span>
 </pre>
 <ul>
@@ -346,6 +350,9 @@ which is useful when you are concentrating on resolving issues on one server at 
 <li>The <em>--checkchanged</em> option is used to list or process servers that have collected datafiles
 produced after the last processing for the server was run. This fills the gap between processing all
 servers and an individual server</li>
+<li>The <em>--indexkernel=yes|no</em> can be used on any processing option including the --indexonly option,
+if used the main index page will also display the kernel version running on each server processed. The
+default is 'no'</li>
 </ul>
 </p>
 <p>
@@ -1279,6 +1286,16 @@ use this toolkit and the results that will be produced.
 </p>
 
 <ul>
+<li><b>Major changes between version 0.09 and 0.10</b>
+   <ul>
+   <li>Machines running F23/CentOS8/RHEL8 and above now use netfilter as a backend
+       to firewalld instead of iptables, so BETA implementation of firewall checks
+       for netfilter rules now reported on in the firewall check appendix if appropriate</li>
+   </ul>
+</li>
+</ul>
+
+<ul>
 <li><b>Major changes between version 0.08 and 0.09</b>
    <ul>
    <li>collector script defaults for --backup-etc= and --record-packages= has changed from yes to no<br />
@@ -1435,6 +1452,22 @@ a full script path and no command concatenation and this will stop the alerts.<b
 <li><b>Nowhere in the directory path of the processing script can there be an underscore</b> ( _ )
 character used, the underscore character is used by the script for parsing and having it
 in the directory path will cause problems. Not really an issue, just do not do it</li>
+<li>
+If the processing script is broken out of (with ctrl-c or a kill command) while the
+--clearlock can be used to allow reruns it does not alter the status of the 
+server in the index from 'being processed' state, and obviously the server that
+was being processed will have incomplete results. The only solution is to re-process the
+server which had its processing interrupted. <em>I do not consider this an issue as if 
+you deliberately interrupt processing, expect it to be interrupted</em> and 
+after using --clearlock to re-enable processing restart the
+processing to correct the issue.
+</li>
+<li>On Ubuntu servers the /etc/shadow file is normally secured to root:shadow and -rw-r-----
+however this toolkit is designed for RHEL/CentOS/Fedora based systems and requires the
+/etc/shadow file to be either -r-------- or ---------- and owned by root:root and
+has no shadow group. As I only have two Debian based servers, a standard kali OS and a single
+Ubuntu server I don't intend
+to adjust the scripts to handle Debian based OS's like Unbuntu at this time</li>
 <li>and end of known issues</li>
 </ul>
 <hr>

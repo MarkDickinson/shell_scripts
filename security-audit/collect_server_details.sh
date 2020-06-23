@@ -82,9 +82,21 @@
 # 2020/05/28 - changed defaults for backing up /etc and creating a rpm
 #              package list from yes to no, as I do not use that collected
 #              info anywhere yet.
+# 2020/06/23 - Bugfix: changed grep -v "\-c" in crontab file permission
+#              checks to grep -v "\ \-c\ " do it only matches if spaces
+#              on either side if the -c parm in commands such as
+#              'sh -c command', as it was hitting files with -c in the
+#              command filename which was not intended. Also test only
+#              on first few fields of the crontab command to try to
+#              avoid matching on any commands that also use -c.
+#              New: now collect a full 'ps -ef' list that the processing
+#              script can use.
+#              F23/CentOS8/RHEL8 onwards that run firewalld use netfilter
+#              rules as a backend instead of iptables, so we now try
+#              and collect netfilter rules if nft is installed as well.
 #
 # ======================================================================
-EXTRACT_VERSION="0.09"    # used to sync between capture and processing, so be correct
+EXTRACT_VERSION="0.10"    # used to sync between capture and processing, so be correct
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -599,11 +611,12 @@ osversion=`uname -r`
 ostype=`uname -s`
 echo "TITLE_HOSTNAME=${myhost}" >> ${LOGFILE}
 echo "TITLE_CAPTUREDATE=${mydate}" >> ${LOGFILE}
-echo "TITLE_CAPTURE_EPOC_SECONDS=${mydate2}" >> ${LOGFILE}
 echo "TITLE_OSVERSION=${osversion}" >> ${LOGFILE}
 echo "TITLE_OSTYPE=${ostype}" >> ${LOGFILE}
 echo "TITLE_FileScanLevel=${SCANLEVEL_USED}" >> ${LOGFILE}
 echo "TITLE_ExtractVersion=${EXTRACT_VERSION}" >> ${LOGFILE}
+# not TITLE_ as averything title_ is used in server header listings
+echo "DATA_CAPTURE_EPOC_SECONDS=${mydate2}" >> ${LOGFILE}
 
 # ======================================================================
 # Collect User Details and key system defaults.
@@ -735,7 +748,8 @@ do
       if [ ${#crontabline} -gt 10 ]; # try and ignore blank lines
       then
          # allow for * * * * * file, and * * * * * sh -c "file"
-         testvar=`echo "${crontabline}" | grep "\-c"`
+         testvar=`echo "${crontabline}" | awk {'print $6" "$7" "$8'}`
+         testvar=`echo "${testvar}" | grep "\ \-c\ "`
          if [ "${testvar}." = "." ];
          then
             fname=`echo "${crontabline}" | awk {'print $6'}`
@@ -867,16 +881,24 @@ echo "APPLICATION_SAMBA_RUNNING=${sambaRunning}" >> ${LOGFILE}
 haveiptables=`which iptables`
 if [ "${haveiptables}." != "." ];
 then
-   timestamp_action "collecting firewall rules"
-   iptables -n -v -L | grep ACCEPT | grep -v "^Chain" | while read dataline
+   timestamp_action "collecting firewall rules from iptables"
+   iptables -n -v -L | while read dataline
    do
-      if [ "${dataline}." != "." ];      # ignore blank lines
-      then
-         echo "IPTABLES_ACCEPT=${dataline}" >> ${LOGFILE}
-      fi
+      echo "IPTABLES_FULLDATA=${dataline}" >> ${LOGFILE}
    done
 else
-   timestamp_action "**warning** iptables command not installed, cannot collect firewall rules"
+   timestamp_action "**warning** iptables command not installed, cannot collect firewall rules using iptables"
+fi
+# F32/CentOS8/RHEL8 if using firewalld now use nftables instead of iptables
+havenft=`which nft`
+if [ "${havenft}." != "." ];
+then
+   timestamp_action "collecting firewall rules from netfilter"
+   nft list ruleset | while read dataline
+   do
+      echo "NFTABLES_FULLDATA=${dataline}" >> ${LOGFILE}
+   done
+# else no issue, netfilter is not on servers prior to F23/C8/RH8 by default
 fi
 
 # ======================================================================
@@ -907,6 +929,15 @@ fi
 timestamp_action "collecting info on files that must be retained"
 require_file /var/log/auth.log 60 ".gz"
 require_file /var/log/wtmp 60 ".gz"
+
+# ======================================================================
+# Record all processes that are running at the time the snapshot ran.
+# ======================================================================
+timestamp_action "recording running process list"
+ps -ef | while read dataline
+do
+   echo "PROCESS_RUNNING=${dataline}" >> ${LOGFILE}
+done
 
 # ======================================================================
 #

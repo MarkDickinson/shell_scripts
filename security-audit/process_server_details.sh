@@ -9,12 +9,12 @@
 # usage: one of the below four
 #
 #         process_server_details.sh --datadir=<directory> [--archivedir] \
-#              [--oneserver=<servername>] [--customfiledir=<directory>] 
+#              [--oneserver=<servername>] [--customfiledir=<directory>]  [--indexkernel=yes|no]
 #
 #         process_server_details.sh --datadir=<directory> [--archivedir] \
-#              [--customfiledir=<directory>] --checkchanged=list|process
+#              [--customfiledir=<directory>] --checkchanged=list|process [--indexkernel=yes|no]
 #
-#         process_server_details.sh --datadir=<directory> --indexonly=yes
+#         process_server_details.sh --datadir=<directory> --indexonly=yes [--indexkernel=yes|no]
 #
 #         process_server_details.sh --clearlock
 #
@@ -39,6 +39,8 @@
 #                        results ensure the data is also copied; risking a full reprocess
 #                        on that central server when processing versions are updated) and warn on
 #                        servers with capture files more recent than the last processing date
+#      --indexkernel     if yes will include the kernel version of each server on the main
+#                        index page, the default is not to include it
 #   *  << parameters marked with this are intended to cut down on processing time
 #      when only a few servers need to be reprocessed and you do not want a full
 #      processing run against the 100's of servers you may have. The --oneserver is particularly
@@ -82,7 +84,7 @@
 #   G. Report on custom file used (if any)
 #   H. Firewall rule checks to determine if open ports in the firewall
 #      rules match ports actualy in use on the server
-#   I. Webserver file security checks if webserver file
+#   W. Webserver file security checks if webserver file
 #      information was collected
 #   Z. Record /etc file settings for the server
 #
@@ -180,7 +182,7 @@
 #                       to perform firewall rule checks, ensure ports
 #                       open on the firewall have matching custom file
 #                       entries for ip listening parms to spot obsolete
-#                       firewall ports etc.
+#                       firewall ports etc. (note: obsoleted in v0.10)
 #                   (3) use a logical lock file to prevent two copies of
 #                       the processing script running at the same time,
 #                       and a --clearlock option to recover from user
@@ -204,6 +206,28 @@
 #                       alert on docker suid files in overlay directories
 #                       but will produce a list of all alerts that were
 #                       suppressed.
+# MID: 2020/06/23 - Version 0.10 
+#                   (1) altered main index page to optionally show kernel version 
+#                       field so I can see upgrade/patch status overview on that
+#                       one page without having to look at each individual
+#                       server. An optional flag --indexkernel added to permit that.
+#                       The default is to use the orional format.
+#                   (2) moved appenix I to appedix W, this is the webserver
+#                       file check appendix that is only displayed if processing
+#                       data from a webserver so rather than have appendix J follow
+#                       H with no I on non-webservers I have moved it out.
+#                   (3) New appendix I recording processes running at the time
+#                       the snapshow was taken. I may do something with that
+#                       one day.
+#                   (4) F23/C8/rhel8 firewalld uses netfitler instead of iptables.
+#                       Initial processing of those rules (in BETA) added.
+#                       Also now expect all iptables/netfilter rules to be
+#                       provided by collector instead of just iptables accept rules
+#                       and provide links on the firewall appendix to view the
+#                       'raw' firewall rules we parse against for both.
+#                       For this handle new capture values IPTABLES_FULLDATA and
+#                       NFTABLES_FULLDATA. The old IPTABLES_ACCEPT has been obsoleted
+#                       (backwards compatability for only accept rules still supported)
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -211,6 +235,7 @@ SRCDIR=""           # where are the raw datafiles to process (required)
 ARCHIVEDIR=""       # if populated archive the reports to here also (optional)
 SINGLESERVER=""     # process all servers by default if this is not populated (optional)
 INDEXONLY="no"      # default is to actually process something
+INDEXKERNEL="no"    # default is to not include kernel versions on main index page
 CHECKCHANGE=""      # default nothing, depending on parms may be list or process
 ONLYCLEARLOCK="no"  # default is normal processing
 while [[ $# -gt 0 ]];
@@ -229,6 +254,9 @@ do
                    shift
                    ;;
       "--indexonly") INDEXONLY="${value}"
+                   shift
+                   ;;
+      "--indexkernel") INDEXKERNEL="${value}"
                    shift
                    ;;
       "--oneserver") SINGLESERVER="${value}"
@@ -253,7 +281,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.09"
+PROCESSING_VERSION="0.10"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -873,7 +901,7 @@ check_file_perms() {
 # ------------------------------------------------------------------------
 hwprof_line() {
    hostid="$1"
-   echo "<br><br><center><a href=\"hwprof.html\">[ SERVER HARDWARE DETAILS ]</a></center><br><br>" >> ${RESULTS_DIR}/${hostid}/index.html
+   echo "<br><br><center><a href=\"hwprof.html\">[ SERVER HARDWARE DETAILS ]</a></center><br />" >> ${RESULTS_DIR}/${hostid}/index.html
 } # hwprof_line
 
 hwprof_build() {
@@ -916,7 +944,7 @@ server_index_end() {
    hwprof_line "${hostid}"
 
    # Links back to the main index page
-   echo "<br><center><a href=\"../index.html\">[ Back to main index ]</a></center><br><br>" >> ${RESULTS_DIR}/${hostid}/index.html
+   echo "<br /><center><a href=\"../index.html\">[ Back to main index ]</a></center><br /><br />" >> ${RESULTS_DIR}/${hostid}/index.html
 
    # 2020/02/27 added processing time fields 
    echo "<table width=\"100%\"><tr><td align=\"center\">" >> ${RESULTS_DIR}/${hostid}/index.html
@@ -958,7 +986,9 @@ write_key_server_info() {
    hostid="$1"
    targetfile="${RESULTS_DIR}/${hostid}/index.html"
    echo "<center><table border=\"2\" bgcolor=\"${colour_banner}\">" >> ${targetfile}
-   grep "^TITLE_" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
+   # remove grep -v in a later version, it is a fix for epoc seconds being incorrectly
+   # set as a title_ instead of data_, we do not want it in the title banner.
+   grep "^TITLE_" ${SRCDIR}/secaudit_${hostid}.txt | grep -v "TITLE_CAPTURE_EPOC_SECONDS" | while read dataline
    do
       titlekey=`echo "${dataline}" | cut -d_ -f2`
       titledata=`echo "${titlekey}" | cut -d\= -f2`
@@ -2783,7 +2813,7 @@ EOF
    if [ -f ${WORKDIR}/appendix_e_dockersuppresslist.txt ];
    then
       dockersuppress=`cat ${RESULTS_DIR}/${hostid}/docker_alert_count`
-      echo "<p><b>The customisation file requested docker overlay SUID files be suppressed from the report</b>," >> ${htmlfile}
+      echo "<p><b>The customisation file requested docker overlay SUID files be suppressed from raising alerts in the report</b>," >> ${htmlfile}
       echo "${dockersuppress} SUID files were suppressed from being reported on for this reason." >> ${htmlfile}
       /bin/mv ${WORKDIR}/appendix_e_dockersuppresslist.txt ${RESULTS_DIR}/${hostid}/appendix_e_dockersuppresslist.txt
       echo "A list of those files is <a href="appendix_e_dockersuppresslist.txt">available here</a>.</p>" >> ${htmlfile}
@@ -2819,7 +2849,7 @@ EOF
    # and the full suid list for admins to review
    echo "<p>This is a list of all the SUID files found on the server, you should review" >> ${htmlfile}
    echo "the list periodically to ensure they are all required.</p>" >> ${htmlfile}
-   echo "<table border=\"1\" bgcolor=\"${colour_warn}\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
+   echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
    echo "<center>SUID files found on the server, are they still required ?</center></td></tr><tr><td><pre>" >> ${htmlfile}
    cat ${WORKDIR}/suid_file_list >> ${htmlfile}
    echo "</pre></td></tr></table>" >> ${htmlfile}
@@ -3133,6 +3163,8 @@ build_appendix_h() {
    clean_prev_work_files
    mkdir ${WORKDIR}
    htmlfile="${RESULTS_DIR}/${hostid}/appendix_H.html"
+   iptables_file="${RESULTS_DIR}/${hostid}/appendix_H_iptables.txt"
+   nftables_file="${RESULTS_DIR}/${hostid}/appendix_H_nftables.txt"
    log_message ".     Building Appendix H - firewall accept rules"
    cat << EOF > ${htmlfile}
 <html><head><title>Firewall accept rules for ${hostid}</title></head><body>
@@ -3167,25 +3199,34 @@ as soon as it is done so in 99% of checks this port will not be in use, but dele
 firewall rule for port and puppet breaks... basically know your applications.
 </p>
 EOF
+   # explain colour mappings used
+   echo "<table border=\"1\">" >> ${htmlfile}
+   echo "<tr><td bgcolor=\"${colour_banner}\" colspan=\"4\">Colours codes used in this report</td></tr><tr>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_alert}\">alert count bumped<br />A firewall rule for the port but either the matching port is not listening on the server or is not in custom file port entry or matching process match allow entry</td>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_override_insecure}\">no counters changed<br />A firewall rule exists, port is listening on the server, custom allow rules use unsafe process rule match for the port</td>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_OK}\">no counters changed<br />This firewall rule matches a port listening on the server and the port is permitted by customfile rules</td>" >> ${htmlfile}
+   echo "<td bgcolor=\"white\">no counters changed<br />This entry is not checked by the processing script as it has no explicit port number</td>" >> ${htmlfile}
+   echo "</tr></table><br />" >> ${htmlfile}
+
    totalcount=0
    echo "${totalcount}" > ${WORKDIR}/iptables_totals_count
-   countlines=`grep "^IPTABLES_ACCEPT=" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
-   if [ ${countlines} -gt 0 ];
+   countlines1=`grep "^IPTABLES_FULLDATA=" ${SRCDIR}/secaudit_${hostid}.txt | grep ACCEPT | grep -v "=Chain" | wc -l`   # V0.10 and above
+   countlines2=`grep "^IPTABLES_ACCEPT=" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`                                      # V0.09 and below
+   countlines3=`grep "^NFTABLES_FULLDATA=" ${SRCDIR}/secaudit_${hostid}.txt | grep -i accept | wc -l`                   # V0.10 and above
+   if [ ${countlines1} -gt 0 -o ${countlines2} -gt 0 ];
    then
-      # explain colour mappings used
-      echo "<table border=\"1\">" >> ${htmlfile}
-      echo "<tr><td bgcolor=\"${colour_banner}\" colspan=\"4\">Colours codes used in this report</td></tr><tr>" >> ${htmlfile}
-      echo "<td bgcolor=\"${colour_alert}\">alert count bumped<br />A firewall rule for the port but either the matching port is not listening on the server or is not in custom file port entry or matching process match allow entry</td>" >> ${htmlfile}
-      echo "<td bgcolor=\"${colour_override_insecure}\">no counters changed<br />A firewall rule exists, port is listening on the server, custom allow rules use unsafe process rule match for the port</td>" >> ${htmlfile}
-      echo "<td bgcolor=\"${colour_OK}\">no counters changed<br />This firewall rule matches a port listening on the server and the port is permitted by customfile rules</td>" >> ${htmlfile}
-      echo "<td bgcolor=\"white\">no counters changed<br />This entry is not checked by the processing script as it has no explicit port number</td>" >> ${htmlfile}
-      echo "</tr></table><br />" >> ${htmlfile}
-
       echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
-      echo "<tr><td colspan=\"8\"><center>Firewall port accept information</center></td></tr>" >> ${htmlfile}
+      echo "<tr><td colspan=\"8\"><center>Firewall port accept information <b>managed by iptables</b></center></td></tr>" >> ${htmlfile}
       echo "<tr><td>Type</td><td>input<br />interface</td><td>output<br />interface</td><td>source</td>" >> ${htmlfile}
       echo "<td>destination</td><td>rule details</td><td>port</td><td>Process</td></tr>" >> ${htmlfile}
-      grep "^IPTABLES_ACCEPT=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read dataline
+      if [ ${countlines1} -gt 0 ];
+      then
+         cmdtorun="grep '^IPTABLES_FULLDATA=' ${SRCDIR}/secaudit_${hostid}.txt | grep ACCEPT | grep -v '=Chain' | awk -F\= {'print $2'}"
+      else
+         cmdtorun="grep '^IPTABLES_ACCEPT=' ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}"
+      fi
+      # below needs eval to work
+      eval ${cmdtorun} | while read dataline
       do
          totalcount=$((${totalcount} + 1))
          echo "${totalcount}" > ${WORKDIR}/iptables_totals_count
@@ -3256,7 +3297,6 @@ EOF
                      else
                         bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
                         # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-                        #procallow=`grep "^NETWORK_${searchtype}V${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
                         procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | head -1 | awk -F\= {'print $2'}`
                         if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
                         then
@@ -3288,11 +3328,149 @@ EOF
          fi
       done
       echo "</table>" >> ${htmlfile}
+      countlines4=`grep "^IPTABLES_FULLDATA=" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`   # V0.10 and above
+      if [ ${countlines4} -gt 0 ];
+      then
+         grep "^IPTABLES_FULLDATA=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read dataline
+         do
+            echo "${dataline}" >> ${iptables_file}
+         done
+         echo "<a href=\"${iptables_file}\">[show full iptables rules for this server]</a>" >> ${htmlfile}
+      fi
    else
-      echo "<table bgcolor=\"${colour_alert}\"><tr><td>Either the iptables command did not exist on the server or the data capture" >> ${htmlfile}
-      echo "was performed with an older version of the data capture script.</td></tr></table>" >> ${htmlfile}
+      if [ ${countlines3} -gt 0 ];
+      then
+         echo "<table border=\"1\" bgcolor=\"${colour_warn}\"><tr><td>No iptables rules were recorded in the data capture." >> ${htmlfile}
+         echo "This is acceptable if you are running firewalld on an OS Fedora32/CentOS8/RHEL8 or later which no longer use iptables as a back-end for firewalld." >> ${htmlfile}
+         echo "BETA nftables reports for this ocurrence are implemented in the below table.</td></tr></table><br /><br />" >> ${htmlfile}
+         inc_counter ${hostid} warn_count
+      else
+         echo "<table bgcolor=\"${colour_alert}\"><tr><td>Either the iptables command did not exist on the server or the data capture" >> ${htmlfile}
+         echo "was performed with an older version of the data capture script." >> ${htmlfile}
+         echo "<b>Also no netfilter rules were recored for the server firewalld</b>." >> ${htmlfile}
+         echo "This means that there are no manually created firewall rules and that firewalld is also not running. <b>This server is not using a firewall !</b></td></tr></table><br /><br />" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      fi
+   fi
+ 
+   # --------------------------------------------------------------------------
+   # using netfilter tables instead of, or as well as iptables
+   # --------------------------------------------------------------------------
+   if [ ${countlines3} -gt 0 ];
+   then
+
+      get_daddr() {
+         while [[ $# -gt 0 ]];
+         do
+            testval="$1"
+            if [ "${testval}." == "daddr." ];
+            then
+               echo "$2"
+               return
+            fi
+            shift
+         done
+      } # end get_daddr
+
+      get_dport() {
+         while [[ $# -gt 0 ]];
+         do
+            testval="$1"
+            if [ "${testval}." == "dport." ];
+            then
+               echo "$2"
+               return
+            fi
+            shift
+         done
+      } # end get_dport
+
+      echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
+      echo "<tr><td colspan=\"8\"><center>Firewall port accept information <b>managed by netfilter tables</b></center></td></tr>" >> ${htmlfile}
+      echo "<tr><td>Type</td><td>destination</td><td>rule details</td><td>port</td><td>Process</td></tr>" >> ${htmlfile}
+
+      grep "^NFTABLES_FULLDATA=" ${SRCDIR}/secaudit_${hostid}.txt | grep -i accept | awk -F\= {'print $2'} | while read dataline
+      do
+         usecolour="white"
+         process=""
+         hasdport=`echo "${dataline}" | grep -i "dport"`
+         if [ "${hasdport}." == "." ];
+         then
+            echo "<tr bgcolor=\"${usecolour}\"><td></td><td></td><td>${dataline}</td><td></td><td></td></tr>" >> ${htmlfile}
+         else
+            iptype=`echo "${dataline}" | awk {'print $1'}`
+            destaddr=`get_daddr ${dataline}`
+            destport=`get_dport ${dataline}`
+
+            if [ "${iptype}." == "ip6." -o "${iptype}." == "tcp" ];
+            then
+               searchtype="TCP"
+            elif [ "${iptype}." == "udp." ];
+            then
+               searchtype="UDP"
+            else
+               searchtype="TCP"    # default
+            fi
+            if [ "${destport}." != "." ];
+            then
+               # use head as some entries such as ntpd will have multiple entries as they listen on multiple addresses
+               # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just tcp/ip6//udp so do not use ipversion in test here
+               process=`grep "NETWORK_${searchtype}V._PORT_${destport}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+               process=`echo "${process}" | sed 's/ *$//g'`                  # remove trailing spaces
+               # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just ip6/tcp/udp so do not use ipversion in test here
+               # isallowed=`grep "${searchtype}_PORTV${ipversion}_ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
+               isallowed=`grep "${searchtype}_PORTV._ALLOWED=:${destport}:" ${CUSTOMFILE}`
+               if [ "${isallowed}." == "." ];
+               then
+                  if [ "${process}." == "." ];     # not allowed and no process using the port
+                  then
+                     usecolour="${colour_alert}"
+                     inc_counter ${hostid} alert_count
+                  else
+                     bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
+                     # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
+                     procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | head -1 | awk -F\= {'print $2'}`
+                     if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
+                     then
+                        usecolour="${colour_override_insecure}"
+                     else
+                        usecolour="${colour_alert}"
+                        inc_counter ${hostid} alert_count
+                     fi
+                  fi
+               else   # else an allow was matched on the port
+                  if [ "${process}." != "." ];   # isallowed, and a process is using it
+                  then
+                     usecolour="${colour_OK}"
+                  else                           # isallowed but no process is using it
+                     usecolour="${colour_alert}"
+                     inc_counter ${hostid} alert_count
+                  fi
+               fi
+            fi   # if destport not empty
+            echo "<tr bgcolor=\"${usecolour}\"><td>${iptype}</td><td>${destaddr}</td><td>${dataline}</td><td>${destport}</td><td>${process}</td></tr>" >> ${htmlfile}
+         fi
+      done
+      echo "</table>" >> ${htmlfile}
+      unset get_daddr
+      unset get_dport
+      grep "^NFTABLES_FULLDATA=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read dataline
+      do
+         echo "${dataline}" >> ${nftables_file}
+      done
+      echo "<a href=\"${nftables_file}\">[show full netfilter rules for this server]</a>" >> ${htmlfile}
+   fi
+
+   # If both iptables and netfilter have rules this is an issue
+   countlines1=$((${countlines1} + ${countlines2}))
+   if [ ${countlines1} -gt 0 -a ${countlines3} -gt 0 ];
+   then
+      echo "<table bgcolor=\"${colour_alert}\"><tr><td><b>Both iptables and netfilter rules are in use on this server</b>." >> ${htmlfile}
+      echo "This is known to cause unexpected firewall behaviour, disable one of them !." >> ${htmlfile}
+      echo "(note: If you run docker or docker-ce you must use iptables (and not run firewalld and netfilter).</td></tr></table>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
    fi
+
 
    # Close the appendix page
    write_details_page_exit "${hostid}" "${htmlfile}"
@@ -3303,26 +3481,83 @@ EOF
 
 # ----------------------------------------------------------
 #                      Appendix I.
-#   I. Webserver file security
+#   I. Processes that were running
+# ----------------------------------------------------------
+build_appendix_i() {
+   hostid="$1"
+
+   tempcount=`grep "^PROCESS_RUNNING" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   if [ ${tempcount} -gt 0 ];
+   then
+      htmlfile="${RESULTS_DIR}/${hostid}/appendix_I.html"
+      log_message ".     Building Appendix I - process snapshot at capture time, ${tempcount} processes"
+
+      clean_prev_work_files
+      mkdir ${WORKDIR}
+      clear_counter "${hostid}" alert_count
+      clear_counter "${hostid}" warning_count
+
+      cat << EOF > ${htmlfile}
+<html><head><title>Processes that were running at snapshot time on ${hostid}</title></head><body>
+<h1>Appendix I - Processes running at snapshot time on ${hostid}</h1>
+<p>
+These are the processes that were running on the server at the time the snapshot was taken.
+</p>
+<p>
+At some point checks may be added to alert on processes that should not be running,
+or processes that should be running but are not. <b>However</b> you should be using
+something like nagios/nrpe to monitor and if needed stop/start processes in psudo-real-time rather than
+a toolkit that only runs occasionally.
+</p>
+<p>
+Currently this appendix is just a list of what was running at the time the snapshot was taken
+as it has almost zero overhead to capture and process. If anyone can think of a use for it
+let me know... the next release <em><b>may</b></em> report on processes that are not part
+of a package to record 3rd party manually installed products, but then again that would
+alert on all user scripts so maybe not.
+</p>
+EOF
+      echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
+      echo "Processes running at snapshot time on ${hostid}</td></tr>" >> ${htmlfile}
+      echo "<tr><td><pre>" >> ${htmlfile}
+      grep "^PROCESS_RUNNING" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= '{print $2}' | while read dataline
+      do
+         echo "${dataline}" >> ${htmlfile}
+      done
+      echo "</pre></td></tr></table>" >> ${htmlfile}
+
+      # Close the appendix page
+      write_details_page_exit "${hostid}" "${htmlfile}"
+
+      # Add a summary of the section to the server index, and total alert & warning counts
+      server_index_addline "${hostid}" "Appendix I - Processes running" "${htmlfile}"
+   else
+      log_message ".     Skipped Appendix I - capture file was for a version prior to 0.10 so no data"
+   fi
+} # build_appendix_i
+
+# ----------------------------------------------------------
+#                      Appendix W.
+#   W. Webserver file security
 #      all specifically identified webserver files must
 #      be read only
 # ----------------------------------------------------------
-build_appendix_i() {
+build_appendix_w() {
    hostid="$1"
    if [ "${WEBSERVER_FILE_OWNERS}." == "." ];
    then
       log_message "**warning** no ADD_WEBSERVER_FILE_OWNER entries in custom file but webserver data collected, defaulting to apache"
       WEBSERVER_FILE_OWNERS="apache"
    fi
-   htmlfile="${RESULTS_DIR}/${hostid}/appendix_I.html"
+   htmlfile="${RESULTS_DIR}/${hostid}/appendix_W.html"
    tempcount=`grep "^PERM_WEBSERVER_FILE" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
-   log_message ".     Building Appendix I - webserver file security checks, ${tempcount} files to process, go get a coffee"
+   log_message ".     Building Appendix W - webserver file security checks, ${tempcount} files to process, go get a coffee"
 
    clean_prev_work_files
    mkdir ${WORKDIR}
    cat << EOF > ${htmlfile}
 <html><head><title>Webserver file security checks for ${hostid}</title></head><body>
-<h1>Appendix I - Webserver File Security Checks for ${hostid}</h1>
+<h1>Appendix W - Webserver File Security Checks for ${hostid}</h1>
 <p>On publically accessable webservers for additional security all files in the
 webserver path should be read only. This section reports on the files under paths
 specificaly identified as requiring read-only files.
@@ -3348,17 +3583,17 @@ EOF
             if [ "${match}." == "." ];   # not an allowed file
             then
                inc_counter ${hostid} alert_count
-               echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_i_list
+               echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_w_list
             fi
          fi
       fi # if permcheckresult != OK
    done
-   if [ -f ${WORKDIR}/appendix_i_list ];
+   if [ -f ${WORKDIR}/appendix_w_list ];
    then
       echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
       echo "<center>Webserver file security alerts</center></td></tr>" >> ${htmlfile}
       echo "<tr><td><pre>" >> ${htmlfile}
-      cat ${WORKDIR}/appendix_i_list >> ${htmlfile}
+      cat ${WORKDIR}/appendix_w_list >> ${htmlfile}
       echo "</pre></td></tr></table>" >> ${htmlfile}
    else
       echo "<table bgcolor=\"${colour_OK}\"><tr><td>No alerts for webserver files. No action required.</td></tr></table>" >> ${htmlfile}
@@ -3377,8 +3612,8 @@ EOF
    write_details_page_exit "${hostid}" "${htmlfile}"
 
    # Add a summary of the section to the server index, and total alert & warning counts
-   server_index_addline "${hostid}" "Appendix I - Webserver File Security Checks" "${htmlfile}"
-} # build_appendix_i
+   server_index_addline "${hostid}" "Appendix W - Webserver File Security Checks" "${htmlfile}"
+} # build_appendix_w
 
 # ----------------------------------------------------------
 #              build_main_index_page
@@ -3401,7 +3636,12 @@ build_main_index_page() {
    echo "<p>Any alerts or warnings should be reviewed.</p>" >> ${htmlfile}
    echo "<table border=\"1\" cellpadding=\"5\">" >> ${htmlfile}
    echo "<tr bgcolor=\"${colour_banner}\"><td>Server Name</td><td>" >> ${htmlfile}
-   echo "Alerts</td><td>Warnings</td><td>Snapshot Date</td><td>Last Date<br />Processed</td><td>File<br />ScanLevel</td><td>Versions</td></tr>" >> ${htmlfile}
+   if [ "${INDEXKERNEL}." == "yes." ];
+   then
+      echo "Alerts</td><td>Warnings</td><td>Snapshot Date</td><td>Last Date<br />Processed</td><td>File<br />ScanLevel</td><td>Collector<br />Version</td><td>OS Kernel<br />Version</td></tr>" >> ${htmlfile}
+   else
+      echo "Alerts</td><td>Warnings</td><td>Snapshot Date</td><td>Last Date<br />Processed</td><td>File<br />ScanLevel</td><td>Collector Version</td></tr>" >> ${htmlfile}
+   fi
    # NOTE: dataline here is the directory name found, we create a index entry for each server directory
    find ${RESULTS_DIR}/* -type d | while read dataline    # /* avoids getting root directory
    do
@@ -3430,11 +3670,16 @@ build_main_index_page() {
             scanlevel=`grep "TITLE_FileScanLevel" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
             extractversion=`grep "TITLE_ExtractVersion" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
             captdate=`grep "TITLE_CAPTUREDATE" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
-            captepoc=`grep "TITLE_CAPTURE_EPOC_SECONDS" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
-            if [ "${captepoc}." == "." ];   # older collector versions did not capture this
+            captepoc=`grep "DATA_CAPTURE_EPOC_SECONDS" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+            if [ "${captepoc}." == "." ];   # really old collector versions did not capture this
             then
-               captepoc=0
+               captepoc=`grep "TITLE_CAPTURE_EPOC_SECONDS" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+               if [ "${captepoc}." == "." ];   # last collector version used title_ instead of data_
+               then
+                  captepoc=0
+               fi
             fi
+            kernelversion=`grep "TITLE_OSVERSION" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
          fi
          if [ -f ${RESULTS_DIR}/${dataline}/last_processing_date ];
          then
@@ -3463,7 +3708,12 @@ build_main_index_page() {
                echo "<td>${captdate}</td>" >> ${htmlfile}
             fi
          fi
-         echo "<td>${lastprocdate}</td><td>${scanlevel}</td><td>Collector V${extractversion}</td></tr>" >> ${htmlfile}
+         if [ "${INDEXKERNEL}." == "yes." ];
+         then
+            echo "<td>${lastprocdate}</td><td>${scanlevel}</td><td>V${extractversion}</td><td>${kernelversion}</td></tr>" >> ${htmlfile}
+         else
+            echo "<td>${lastprocdate}</td><td>${scanlevel}</td><td>Collector V${extractversion}</td></tr>" >> ${htmlfile}
+         fi
 
          # update global totals for report summary
          update_globals "${warns}" "global_warn_totals"
@@ -3478,7 +3728,13 @@ build_main_index_page() {
    alerts=`cat ${RESULTS_DIR}/global_alert_totals`
    warns=`cat ${RESULTS_DIR}/global_warn_totals`
    echo "<tr bgcolor=\"${colour_banner}\"><td>TOTALS:</td><td>${alerts}</td><td>${warns}</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2020</small></td><td colspan=\"2\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}
+   echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2020</small></td>" >> ${htmlfile}
+   if [ "${INDEXKERNEL}." == "yes." ];
+   then
+      echo "<td colspan=\"3\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}
+   else
+      echo "<td colspan=\"2\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}
+   fi
    echo "</table></center><br><br>" >> ${htmlfile}
 
    echo "</body></html>" >> ${htmlfile}
@@ -3507,7 +3763,11 @@ check_for_new_files() {
       then
          echo "* No capture data files available for server ${dataline}, results will be deleted at next full processing run"
       else
-         captepoc=`grep "TITLE_CAPTURE_EPOC_SECONDS" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+         captepoc=`grep "DATA_CAPTURE_EPOC_SECONDS" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+         if [ "${captepoc}." == "." ];   # older collector versions did not capture this
+         then                            # although previous version incorrectly used title
+            captepoc=`grep "TITLE_CAPTURE_EPOC_SECONDS" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+         fi
          if [ "${captepoc}." == "." ];   # older collector versions did not capture this
          then
             captepoc=0
@@ -3602,13 +3862,14 @@ perform_single_server_processing() {
    build_appendix_f ${hostname}               # server environmant checks
    build_appendix_g ${hostname}               # customisations used
    build_appendix_h ${hostname}               # iptables checks
+   build_appendix_i ${hostname}               # iptables checks
 
    # only create appendix H if the data collection used the option to explicity
    # isoloate secure web directories from normal system directories
    webcount=`grep "^PERM_WEBSERVER_FILE" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
    if [ ${webcount} -gt 0 ];
    then
-      build_appendix_i ${hostname}               # webserver files
+      build_appendix_w ${hostname}               # webserver files
    fi
 
    # 2010/09/22 Added the hardware profile page

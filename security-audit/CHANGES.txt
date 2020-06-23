@@ -2,6 +2,36 @@ These are the changes that will be obvious to users. For changes made under the
 covers refer to the change history in the bash script files.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.09 and version 0.10 are
+-------------------------------------------------------------------------------------
+collection script changes
+(1) Bugfix: the test by grep for "\-c" on a crontab line (testing for syntax such
+    as 'sh -c "command"' has been changed to "\ \-c\ " to ensure there is a space
+    on either side of the -c. It was unfortunately matching on script names with
+    -c (such as /home/mark/cron_jobs/list-changes). Also made that test on the
+    first few fields of the command instead of the entire crintab line to avoid
+    it matching if any commands had a aparemetr of -c.
+
+feature enhancements
+(2) new processing option --indexkernel=yes|no added for my use; default is 'no' to
+    ensure users notice no difference by default. If it is used then on the main
+    index page the kernel version running on each server is also displayed. Added
+    for my use so I could see at a glance what servers were not running the 
+    latest kernel. (Tip: I use it in conjunction with the --indexonly option to
+    quickly switch between the two index displays as needed, as I prefer the default
+    of not displaying it in most cases).
+
+>>>BETA<<< feature enhancements
+(3) Fedora32/CentOS8/RHEL8 have all changed the way firewalld behaves in that on those
+    (and presumably any future releases) firewalld has changed from using iptables to netfilter
+    rules as a backend to firewalld. This means that on systems using firewalld the
+    existing firewall checks that expect iptables no longer work as iptables will
+    always show 'accept' on everything.
+    Initial BETA changes have been made to try to accomodate that change and at least
+    provide some checking to provide initial reporting in a format that matches
+    the existing iptables checks.
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.08 and version 0.09 are
 -------------------------------------------------------------------------------------
 collection script changes
