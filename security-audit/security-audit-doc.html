@@ -1044,6 +1044,28 @@ an critical alert, but if it listens on a specific interface the report will hig
 in a different color to indicate that it is considered insecure.
 <em>If the port listens on all interfaces it will still raise a warning alert</em>.
 </td></tr>
+<tr><td>TCP_OUTBOUND_SUPPRESS=:port:description</td><td>
+<em>This is used only in the firewall rule checking section and only if there
+is no matching port open on the server</em>. Depending on how
+paranoid your server firewall rules are there will be accept rules for
+outbount traffic (where no port is open on the local server as the target
+is a remote server or network). This parameter is used to suppress an
+alert for a firewall accept rule for a TCP port that is not open on the local
+server.<br />
+Example<br />
+TCP_OUTBOUND_SUPPRESS=:123:local network ntp servers
+</td></tr>
+<tr><td>UDP_OUTBOUND_SUPPRESS=:port:description</td><td>
+<em>This is used only in the firewall rule checking section and only if there
+is no matching port open on the server</em>. Depending on how
+paranoid your server firewall rules are there will be accept rules for
+outbount traffic (where no port is open on the local server as the target
+is a remote server or network). This parameter is used to suppress an
+alert for a firewall accept rule for a UDP port that is not open on the local
+server.<br />
+Example<br />
+UDP_OUTBOUND_SUPPRESS=:123:local network ntp servers
+</td></tr>
 <tr><td>ALLOW_OWNER_ROOT=<em>directoryname</em></td><td>
 Allows a directory that is expected to be owned by a user other than root to
 be accepted as OK for reporting if the directory is owned by the root user.

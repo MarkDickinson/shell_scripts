@@ -228,6 +228,14 @@
 #                       For this handle new capture values IPTABLES_FULLDATA and
 #                       NFTABLES_FULLDATA. The old IPTABLES_ACCEPT has been obsoleted
 #                       (backwards compatability for only accept rules still supported)
+#                   (5) Handle new customfile parm TCP_OUTBOUND_SUPPRESS and
+#                       UDP_OUTBOUND_SUPPRESS for ports configured in outbound firewall
+#                       rules which would otherwise alert as a firewall rule with
+#                       no matching open port on the local server. Added for my
+#                       needs as I have iptables managed servers that block all
+#                       outbound traffic by default so have accept rules for outbound
+#                       traffic initiation I now want to suppress instead of just
+#                       remember what they are in the firewall rule report.
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -350,6 +358,7 @@ colour_warn="#FDFFCC"
 colour_alert="#FF8040"
 colour_banner="#C0C0C0"
 colour_override_insecure="lightpink"
+colour_note="lightblue"
 
 # ------------------------------------------------------------
 # Lets sanity check the user input
@@ -1960,6 +1969,7 @@ appendix_c_check_unused_custom() {
 } # end of appendix_c_check_unused_custom
 
 # ----------------------------------------------------------
+# Appendix C - network connectivity checks
 # ----------------------------------------------------------
 build_appendix_c() {
    hostid="$1"
@@ -3156,7 +3166,7 @@ build_appendix_g() {
 
 # ----------------------------------------------------------
 #                      Appendix H.
-#   H. iptables information
+#   H. iptables and netfilter information
 # ----------------------------------------------------------
 build_appendix_h() {
    hostid="$1"
@@ -3198,6 +3208,20 @@ a periodic check for the server when the agent opens it to recieve data but clos
 as soon as it is done so in 99% of checks this port will not be in use, but delete the
 firewall rule for port and puppet breaks... basically know your applications.
 </p>
+<p>
+It is also important to note for this report that all 'accept' rules are checked against
+ports open on the server. Depending on how paranoid your firewall settings are you may
+have ports defined in accept rules for outbound traffic that will alert, unless you have
+explicitly defined them in the custom file as outbound rules to suppress an alert.
+</p>
+<p>
+As seen by the above paragraph this report section does not attempt to decode the firewall
+chains to determine traffic flow. For desktop users using firewalld and most simple server
+configuraions this is not an issue as there are normally only inbound rules used.
+If your server firewall is more complex this report should be treated with caution,
+and you should review the entire firewall ruleset (available as a link after each table)
+to see what is actually happening.
+</p>
 EOF
    # explain colour mappings used
    echo "<table border=\"1\">" >> ${htmlfile}
@@ -3206,6 +3230,7 @@ EOF
    echo "<td bgcolor=\"${colour_override_insecure}\">no counters changed<br />A firewall rule exists, port is listening on the server, custom allow rules use unsafe process rule match for the port</td>" >> ${htmlfile}
    echo "<td bgcolor=\"${colour_OK}\">no counters changed<br />This firewall rule matches a port listening on the server and the port is permitted by customfile rules</td>" >> ${htmlfile}
    echo "<td bgcolor=\"white\">no counters changed<br />This entry is not checked by the processing script as it has no explicit port number</td>" >> ${htmlfile}
+   echo "<td bgcolor=\"${colour_note}\">no counters changed<br />This entry is documented as a outbound firewall rule, port does not need to be open on local server</td>" >> ${htmlfile}
    echo "</tr></table><br />" >> ${htmlfile}
 
    totalcount=0
@@ -3292,8 +3317,15 @@ EOF
                   then
                      if [ "${process}." == "." ];     # not allowed and no process using the port
                      then
-                        usecolour="${colour_alert}"
-                        inc_counter ${hostid} alert_count
+                        isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${ipportmin}:" ${CUSTOMFILE}`
+                        if [ "${isoutbound}." == "." ];
+                        then
+                           usecolour="${colour_alert}"
+                           inc_counter ${hostid} alert_count
+                        else
+                           process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
+                           usecolour="${colour_note}"
+                        fi
                      else
                         bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
                         # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
@@ -3302,8 +3334,15 @@ EOF
                         then
                            usecolour="${colour_override_insecure}"
                         else
-                           usecolour="${colour_alert}"
-                           inc_counter ${hostid} alert_count
+                           isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${ipportmin}:" ${CUSTOMFILE}`
+                           if [ "${isoutbound}." == "." ];
+                           then
+                              usecolour="${colour_alert}"
+                              inc_counter ${hostid} alert_count
+                           else
+                              process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
+                              usecolour="${colour_note}"
+                           fi
                         fi
                      fi
                   else
@@ -3424,8 +3463,15 @@ EOF
                then
                   if [ "${process}." == "." ];     # not allowed and no process using the port
                   then
-                     usecolour="${colour_alert}"
-                     inc_counter ${hostid} alert_count
+                     isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${destport}:" ${CUSTOMFILE}`
+                     if [ "${isoutbound}." == "." ];
+                     then
+                        usecolour="${colour_alert}"
+                        inc_counter ${hostid} alert_count
+                     else
+                        process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
+                        usecolour="${colour_note}"
+                     fi
                   else
                      bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
                      # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
