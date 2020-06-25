@@ -3225,7 +3225,7 @@ to see what is actually happening.
 EOF
    # explain colour mappings used
    echo "<table border=\"1\">" >> ${htmlfile}
-   echo "<tr><td bgcolor=\"${colour_banner}\" colspan=\"4\">Colours codes used in this report</td></tr><tr>" >> ${htmlfile}
+   echo "<tr><td bgcolor=\"${colour_banner}\" colspan=\"5\">Colour codes used in this report</td></tr><tr>" >> ${htmlfile}
    echo "<td bgcolor=\"${colour_alert}\">alert count bumped<br />A firewall rule for the port but either the matching port is not listening on the server or is not in custom file port entry or matching process match allow entry</td>" >> ${htmlfile}
    echo "<td bgcolor=\"${colour_override_insecure}\">no counters changed<br />A firewall rule exists, port is listening on the server, custom allow rules use unsafe process rule match for the port</td>" >> ${htmlfile}
    echo "<td bgcolor=\"${colour_OK}\">no counters changed<br />This firewall rule matches a port listening on the server and the port is permitted by customfile rules</td>" >> ${htmlfile}
