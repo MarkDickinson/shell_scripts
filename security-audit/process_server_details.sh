@@ -236,6 +236,14 @@
 #                       outbound traffic by default so have accept rules for outbound
 #                       traffic initiation I now want to suppress instead of just
 #                       remember what they are in the firewall rule report.
+# MID: 2020/07/02 - Version 0.10 (yes same version, no changes to checking logic)
+#                   (6) Changed main index display (which already highlighted
+#                       servers with new data waiting to be processed) with a 
+#                       new highlight for servers that have data not refreshed
+#                       in the last two weeks. Another addition for my personal
+#                       use as I now run checks/collection/processing from a
+#                       schedule and need to see in a glance if a server(s) is
+#                       not being checked frequently enough.
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -3742,6 +3750,9 @@ build_main_index_page() {
          scanlevel=`grep "TITLE_FileScanLevel" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
          # in multiple lines, makes it easier to read that we change the capture date colour field if
          # a newer cpature file has been put in place since the last processing date.
+         # If a newer capture file exists but has not been processed show capture date in warning colour
+         # If a capture file has not been refreshed in over two weeks show capture date in alert colour
+         # If no capture file exists show capture data field as 'no datafile' in alert colour
          echo "<tr><td><a href=\"${dataline}/index.html\">${dataline}</a></td><td>${alerts}</td><td>${warns}</td>" >> ${htmlfile}
          if [ "${captdate}." == "NO DATAFILE." ];
          then
@@ -3749,9 +3760,16 @@ build_main_index_page() {
          else
             if [ ${lastprocepoc} -lt ${captepoc} ];
             then
-               echo "<td bgcolor=\"${colour_warn}\">${captdate}</td>" >> ${htmlfile}
+               echo "<td bgcolor=\"${colour_warn}\">${captdate}<br />New data ready</td>" >> ${htmlfile}
             else
-               echo "<td>${captdate}</td>" >> ${htmlfile}
+               twoweeksago=`date +"%s"`                   # secs since epoc currently
+               twoweeksago=$((${twoweeksago} - 1209600))   # minus 60secs * 60mins * 24hrs * 14days
+               if [ ${captepoc} -lt ${twoweeksago} ];
+               then
+                  echo "<td bgcolor=\"${colour_alert}\">${captdate}<br />Over 14 days old</td>" >> ${htmlfile}
+               else
+                  echo "<td>${captdate}</td>" >> ${htmlfile}
+               fi
             fi
          fi
          if [ "${INDEXKERNEL}." == "yes." ];

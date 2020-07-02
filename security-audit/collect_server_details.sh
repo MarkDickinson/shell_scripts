@@ -94,8 +94,14 @@
 #              F23/CentOS8/RHEL8 onwards that run firewalld use netfilter
 #              rules as a backend instead of iptables, so we now try
 #              and collect netfilter rules if nft is installed as well.
+# 2020/06/27 - Added /usr/sbin to the PATH as when running this script
+#              from cron it was unable to find files under /usr/sbin
 #
 # ======================================================================
+# Added the below PATH as when run bu cron no files under /usr/sbin were
+# being found (like iptables and nft).
+export PATH=$PATH:/usr/sbin
+
 EXTRACT_VERSION="0.10"    # used to sync between capture and processing, so be correct
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
