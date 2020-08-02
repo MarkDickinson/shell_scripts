@@ -91,6 +91,7 @@ clean_files() {
 ten_bytes() {
    tempsize="$1"
    # NOT IN A LOOP, bash won't preserve the changes
+   # note: we are checking the variable length, not its value
    if [ ${#tempsize} -lt 10 ];
    then
       tempsize=0${tempsize}

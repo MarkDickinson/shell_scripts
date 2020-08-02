@@ -2,6 +2,24 @@ These are the changes that will be obvious to users. For changes made under the
 covers refer to the change history in the bash script files.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.10 and version 0.11 are
+-------------------------------------------------------------------------------------
+main change
+(1) netfilter checks now match iptables checks for configured open port checks,
+    no longer a beta 'fix' for f32/rhel8 firewalld changes but a working solution
+
+other visible changes
+(2) main index now highlights any servers with collected data files ober 14 days old
+(3) not a change but a note: on servers with both iptables and netfilter in use
+    different ports may be opened on each. Normally with firewalld since F32/RHEL8
+    using netfilter instead of iptabled there would be an empty iptables ruleset
+    but some applications (such as docker-ce) will populate both iptables and
+    netfilter rules so the reports produced by the script can show more ports
+    open in netfilter than iptables in that case. That is normal but highlighted
+    here as it will show up in the reports. Also an alert will be raised if both
+    iptables and netfilter are installed.
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.09 and version 0.10 are
 -------------------------------------------------------------------------------------
 collection script changes
@@ -20,9 +38,12 @@ feature enhancements
     latest kernel. (Tip: I use it in conjunction with the --indexonly option to
     quickly switch between the two index displays as needed, as I prefer the default
     of not displaying it in most cases).
+(3) new custom file parameter to identify a firewall port as an outbound port rule,
+    so a firewall rule for the port does not alert if no local listening process
+    has the port open
 
 >>>BETA<<< feature enhancements
-(3) Fedora32/CentOS8/RHEL8 have all changed the way firewalld behaves in that on those
+(4) Fedora32/CentOS8/RHEL8 have all changed the way firewalld behaves in that on those
     (and presumably any future releases) firewalld has changed from using iptables to netfilter
     rules as a backend to firewalld. This means that on systems using firewalld the
     existing firewall checks that expect iptables no longer work as iptables will

@@ -96,13 +96,18 @@
 #              and collect netfilter rules if nft is installed as well.
 # 2020/06/27 - Added /usr/sbin to the PATH as when running this script
 #              from cron it was unable to find files under /usr/sbin
+# 2020/07/05 - Added >2/dev/null to the which iptables and which nft  
+#              checks as when nft was not installed on the server (C7)
+#              the not found error was written to the output (cosmetic change)
+# 2020/07/06 - Altered version from 0.10 to 0.11 to match the processing
+#              script version change.
 #
 # ======================================================================
 # Added the below PATH as when run bu cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.10"    # used to sync between capture and processing, so be correct
+EXTRACT_VERSION="0.11"    # used to sync between capture and processing, so be correct
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -884,7 +889,7 @@ fi
 echo "APPLICATION_SAMBA_RUNNING=${sambaRunning}" >> ${LOGFILE}
 
 # iptables ACCEPT rules
-haveiptables=`which iptables`
+haveiptables=`which iptables 2>/dev/null`
 if [ "${haveiptables}." != "." ];
 then
    timestamp_action "collecting firewall rules from iptables"
@@ -896,7 +901,7 @@ else
    timestamp_action "**warning** iptables command not installed, cannot collect firewall rules using iptables"
 fi
 # F32/CentOS8/RHEL8 if using firewalld now use nftables instead of iptables
-havenft=`which nft`
+havenft=`which nft 2>/dev/null`
 if [ "${havenft}." != "." ];
 then
    timestamp_action "collecting firewall rules from netfilter"

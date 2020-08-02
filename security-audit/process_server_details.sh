@@ -244,6 +244,11 @@
 #                       use as I now run checks/collection/processing from a
 #                       schedule and need to see in a glance if a server(s) is
 #                       not being checked frequently enough.
+# MID: 2020/07/06 - Version 0.11 
+#                   (1) Updated nftables checks to handle a port range in min-max
+#                       format (iptables checks already handles that but it was 
+#                       not implemeted in the hurredly rushed in nftable checks
+#                       I needed for F32 and CentOS8).
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -297,7 +302,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.10"
+PROCESSING_VERSION="0.11"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -486,6 +491,19 @@ get_num_only() {
 	numval=$1
 	NUM_VALUE=${numval}
 } # get_num_only
+
+# Ensure the value passed only contains numeric values, if OK return
+# the number, else return 0
+must_be_number() {
+   dataval="$1"
+   testval=`echo "${dataval}" | sed 's/[0-9]//g'`   # remove numerics, if nothing left was only numeric data
+   if [ "${testval}." == "." ];
+   then
+      echo "${dataval}"        # was numeric, return the number passed
+   else
+      echo "0"                 # was not numeric, return 0
+   fi
+} # must_be_number
 
 # ---------------------------------------------------------------
 # Routines to update counter files in server specific directories
@@ -1931,7 +1949,8 @@ appendix_c_check_unused_custom() {
    echo "your customisation file clean. It will report on any allowed" >> ${htmlfile}
    echo "ports in the customisation file that were not in use at the" >> ${htmlfile}
    echo "time the snapshot was taken. This allows you to review your" >> ${htmlfile}
-   echo "customisation file and adjust it if needed.</p>" >> ${htmlfile}
+   echo "customisation file and adjust it if needed. Having allowed ports not in use" >> ${htmlfile}
+   echo "does not always indicate an obsolete entry, the application may just be shut down.</p>" >> ${htmlfile}
    delete_file "${WORKDIR}/port_sanitation"
    delete_file "${WORKDIR}/network_sanitation.wrk"
 
@@ -3448,7 +3467,6 @@ EOF
             iptype=`echo "${dataline}" | awk {'print $1'}`
             destaddr=`get_daddr ${dataline}`
             destport=`get_dport ${dataline}`
-
             if [ "${iptype}." == "ip6." -o "${iptype}." == "tcp" ];
             then
                searchtype="TCP"
@@ -3460,49 +3478,72 @@ EOF
             fi
             if [ "${destport}." != "." ];
             then
-               # use head as some entries such as ntpd will have multiple entries as they listen on multiple addresses
-               # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just tcp/ip6//udp so do not use ipversion in test here
-               process=`grep "NETWORK_${searchtype}V._PORT_${destport}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
-               process=`echo "${process}" | sed 's/ *$//g'`                  # remove trailing spaces
-               # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just ip6/tcp/udp so do not use ipversion in test here
-               # isallowed=`grep "${searchtype}_PORTV${ipversion}_ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
-               isallowed=`grep "${searchtype}_PORTV._ALLOWED=:${destport}:" ${CUSTOMFILE}`
-               if [ "${isallowed}." == "." ];
+               # allow for "dport NUM" and a range "dport NUM-NUM"
+               destportmax=`echo "${destport}" | awk -F\- {'print $2'}`
+               if [ "${destportmax}." != "." ];
                then
-                  if [ "${process}." == "." ];     # not allowed and no process using the port
-                  then
-                     isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${destport}:" ${CUSTOMFILE}`
-                     if [ "${isoutbound}." == "." ];
-                     then
-                        usecolour="${colour_alert}"
-                        inc_counter ${hostid} alert_count
-                     else
-                        process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
-                        usecolour="${colour_note}"
-                     fi
-                  else
-                     bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
-                     # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-                     procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | head -1 | awk -F\= {'print $2'}`
-                     if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
-                     then
-                        usecolour="${colour_override_insecure}"
-                     else
-                        usecolour="${colour_alert}"
-                        inc_counter ${hostid} alert_count
-                     fi
-                  fi
-               else   # else an allow was matched on the port
-                  if [ "${process}." != "." ];   # isallowed, and a process is using it
-                  then
-                     usecolour="${colour_OK}"
-                  else                           # isallowed but no process is using it
-                     usecolour="${colour_alert}"
-                     inc_counter ${hostid} alert_count
-                  fi
+                  destport=`echo "${destport}" | awk -F\- {'print $1'}`
+               else
+                  destportmax=${destport}
                fi
+               destport=`must_be_number ${destport}`
+               destportmax=`must_be_number ${destportmax}`
+               if [ "${destport}." != "0." ];
+               then
+                  if [ "${destportmax}." == "0." ];
+                  then
+                     destportmax=${destport}
+                  fi
+                  while [ ${destport} -le ${destportmax} ];
+                  do
+                     # use head as some entries such as ntpd will have multiple entries as they listen on multiple addresses
+                     # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just tcp/ip6//udp so do not use ipversion in test here
+                     process=`grep "NETWORK_${searchtype}V._PORT_${destport}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+                     process=`echo "${process}" | sed 's/ *$//g'`                  # remove trailing spaces
+                     # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just ip6/tcp/udp so do not use ipversion in test here
+                     # isallowed=`grep "${searchtype}_PORTV${ipversion}_ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
+                     isallowed=`grep "${searchtype}_PORTV._ALLOWED=:${destport}:" ${CUSTOMFILE}`
+                     if [ "${isallowed}." == "." ];
+                     then
+                        if [ "${process}." == "." ];     # not allowed and no process using the port
+                        then
+                           isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${destport}:" ${CUSTOMFILE}`
+                           if [ "${isoutbound}." == "." ];
+                           then
+                              usecolour="${colour_alert}"
+                              inc_counter ${hostid} alert_count
+                           else
+                              process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
+                              usecolour="${colour_note}"
+                           fi
+                        else
+                           bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
+                           # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
+                           procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | head -1 | awk -F\= {'print $2'}`
+                           if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
+                           then
+                              usecolour="${colour_override_insecure}"
+                           else
+                              usecolour="${colour_alert}"
+                              inc_counter ${hostid} alert_count
+                           fi
+                        fi
+                     else   # else an allow was matched on the port
+                        if [ "${process}." != "." ];   # isallowed, and a process is using it
+                        then
+                           usecolour="${colour_OK}"
+                        else                           # isallowed but no process is using it
+                           usecolour="${colour_alert}"
+                           inc_counter ${hostid} alert_count
+                        fi
+                     fi
+                     echo "<tr bgcolor=\"${usecolour}\"><td>${iptype}</td><td>${destaddr}</td><td>${dataline}</td><td>${destport}</td><td>${process}</td></tr>" >> ${htmlfile}
+                     destport=$((${destport} + 1))
+                  done
+               fi
+            else   # if destport not empty
+               echo "<tr bgcolor=\"${usecolour}\"><td>${iptype}</td><td>${destaddr}</td><td>${dataline}</td><td>${destport}</td><td>${process}</td></tr>" >> ${htmlfile}
             fi   # if destport not empty
-            echo "<tr bgcolor=\"${usecolour}\"><td>${iptype}</td><td>${destaddr}</td><td>${dataline}</td><td>${destport}</td><td>${process}</td></tr>" >> ${htmlfile}
          fi
       done
       echo "</table>" >> ${htmlfile}
@@ -3519,9 +3560,9 @@ EOF
    countlines1=$((${countlines1} + ${countlines2}))
    if [ ${countlines1} -gt 0 -a ${countlines3} -gt 0 ];
    then
-      echo "<table bgcolor=\"${colour_alert}\"><tr><td><b>Both iptables and netfilter rules are in use on this server</b>." >> ${htmlfile}
-      echo "This is known to cause unexpected firewall behaviour, disable one of them !." >> ${htmlfile}
-      echo "(note: If you run docker or docker-ce you must use iptables (and not run firewalld and netfilter).</td></tr></table>" >> ${htmlfile}
+      echo "<br /><br /><table bgcolor=\"${colour_alert}\"><tr><td>Additional alert raised: <b>Both iptables and netfilter rules are in use on this server</b>." >> ${htmlfile}
+      echo "This is known to cause unexpected firewall behaviour !." >> ${htmlfile}
+      echo "(example: If you run docker or docker-ce on a firewalld (netfilter only) server you will see both netfilter and iptables rules added to both as it cannot guess what you use; making iptables a partial ruleset).</td></tr></table>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
    fi
 

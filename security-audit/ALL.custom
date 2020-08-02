@@ -148,6 +148,8 @@ ALLOW_OWNER_ROOT=root
 ALLOW_OWNER_ROOT=usage
 ALLOW_OWNER_ROOT=unbound
 ALLOW_OWNER_ROOT=ntp
+# home dir of multiple users (ie:rtkit)
+ALLOW_OWNER_ROOT=proc
 #
 # Directory permission overrides for home directories that can
 # be considered to be shared system directories
