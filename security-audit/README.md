@@ -11,10 +11,12 @@ For known exceptions customisations can be done to the checks performed on a per
 Detailed documentation on all the customisation parameters available is in the file file security-audit-doc.html.
 
 Be warned, the fisrt run against a server will most likely find hundreds of issues to be resolved.
-But it is possible to get them down to only a few.
+But it is possible to get them down to only a few warnings (there will probably always be warnings) and
+I even have a few servers with zero alerts now.
 
 ## Table of contents
 * [Requirements](#requirements)
+* [Security issues](#security-issues)
 * [Current checks performed](#current-checks-performed)
 * [Processing control features](#processing-control-features)
 * [Directories that must exist for processing](#directories-that-must-exist-for-processing)
@@ -44,6 +46,23 @@ But it is possible to get them down to only a few.
   by using the --scanlevel on data collection scans instead of
   the default of full scans).
 
+## Security issues
+
+The data collection script collects a lot of information from each server,
+including such things as the contents of /etc/passwd and firewall port
+information.
+
+As such when copying
+the collected datafile to the processing server ensure you use an encrypted
+protocol such as scp or sftp and not something like rsync.
+
+The processing server should also be tightly controlled, with a minimum
+of users permitted to view the data files.
+
+Also access to view the output should be controlled as the report is
+designed to highlight issues that could be exploited.
+
+
 ## Current checks performed
 * filesystem checks - checks the permissions of all 'system files' to ensure
   they are only writeable by the file owner, and that all are owned by a 
@@ -51,7 +70,8 @@ But it is possible to get them down to only a few.
   under directories /bin /boot /dev /etc /lib /opt /sbin /sys /usr /var,
   easy to add others (search in collection script on the string
   find_perms_under_system_dir and copy/paste and existing line to
-  add a new directory if needed).
+  add a new directory if needed). The default list of users that can own
+  system files can be expanded using custom file parameters
 * read only files checks (additional for my use) - checks all files under explicitly
   defined filesystem paths have 'read-only' permissions (for static or seldom
   changing web served pages). Filesystem paths are provided by a file selected
@@ -66,7 +86,7 @@ But it is possible to get them down to only a few.
   can update) but that does require cron is used to run scripts, crontab
   commands that are 'stacked' with a ; and start with system utilites
   such as "cd /somedir;./somecommand" will always alert as obviously
-  users do not own 'cd'.
+  users do not own 'cd'
 * checks for common things such as a valid motd and ssh banner existing,
   permitrootlogin set to no in the sshd config etc.
 * user checks - uuids are all unique, all users have a password or
@@ -74,20 +94,21 @@ But it is possible to get them down to only a few.
   report on all users that can use ftp (not in ftpusers file) and on all
   users in the ftpusers file that no longer exist on the server, check
   security of /etc/shadow, and of course checks the system default settings
-  for password length and expiry.
+  for password length and expiry
 * network connectivity checks - ensures every open port on the server is
   documented in the customisation file for the server, alerts on undocumeted
   ports. For documented ports raises warnings if the application is 
   listening on all interfaces instead of being securely configured to 
   listen only on explicit interfaces. Also alerts on any ports defined in
   the server customisation file that are no longer in use so the config 
-  file can be cleaned up.
+  file can be cleaned up
 * firewall rule checks - if the server has a firewall in place will check
   (if the iptables command (or nft for netfilter servers) is on the server)
   all explicit port numbers used match ports expected to be open on the
   server as defined by the network checks, and also alert if firewall rules
   accept traffic to ports that are not in use on the server (to identify
   obsolete server firewall rules)
+* reports on all orphaned files and directories
 * optional, backs up /etc
 * optional (but default) collect hardware info
 * optional, if 'rpm' is available collect a installed package list
@@ -186,6 +207,11 @@ Most fields are self explainatory, requiring a mention are the points below
   which in turn have links to details on each check performed for the server
 
 ## Known issues with the current release
+* Nowhere in the directory path of the processing script can there be an underscore</b> ( _ )
+  character used, the underscore character is used by the script for parsing and having it
+  in the directory path will cause problems. Not really an issue, just do not do it
+* if you ^C or kill a running processing scriot the lockfile remains, you must use the
+  processing script --clearlock option to remove it
 * cron job checks - only cron jobs are checked, not anacron files or any 'at' jobs
 * cron job checks - where a cron job uses a system command (echo, cd, php) rather than
   a discrete script an alert will always be raised as system commands are normally owned
@@ -194,29 +220,51 @@ Most fields are self explainatory, requiring a mention are the points below
   obtained from /etc/login.defs; I need to update this to also check the PAM settings
 * server firewall rule checks - no attempt is made to follow firewall chains or determine zones,
   any rule to open a port is considered an open port
+* servers running NetworkManager will have firewall ports opened that users may not expect,
+  _This is not an issue with this toolkit_ but
+  with a lack of control over what NetworkManager decides to open; prior to version 0.12 any
+  firewall accept rule for a port not in use alerted as an obsolete firewall rule, from
+  0.12 onward a custom file rule can be used to identify and downgrade alerts to warnings for ports opened
+  by NetworkManager rather than ports you explicitly configured.
+  Examples: 'firewall-cmd --list-ervices' shows 'cockpit dhcpv6-client dns http ntp ssh' and
+  'firewall-cmd --list-ports' does not show the following ports,
+  but the following ports have firewall rules opening the ports, udp 67(/usr/lib/firewalld/services/dhcp.xml),
+  udp 68(/usr/lib/firewalld/services/RH-Satellite-6.xml),udp 69(/usr/lib/firewalld/services/tftp.xml);
+  _and worse_ some processes that use dynamic ports will occasionally use those ports so unexpected apps are exposed
+* _an issue with ubuntu 20.04 not the toolkit_, suid checks for Unbuntu 20.04  will always generate lots of alerts 
+  as it creates lots of suid files under /snap/core/nnnn and /snap/core18/nnnn where nnnn is a random
+  number that changes on every server reboot so impossible to create 'expected suid file' rules for.
+  May be an issue with other versions of Ubuntu but I don't have any other versions. Specific to Ubuntu
+  as other Debian based OSs such as Kali and OSs such as centos/fedora do not install snap and snap applications
+  by default (and this was a 'server' install, no desktop packages, so they are snap'ing too much)
+* BUG: when processing a capture with a large number of files _SOMETIMES_ an error is thrown
+  "bin/process_server_details.sh: line 4422: ----------------------------------: command not found"
+  which is not the contents of line 4422. A rerun with no changes does not have the same issue.
+  Ocurrence is completely random so hard to track down. Does not affect any results produced
+* Does not handle complex firewall rules such as the iptables entries below
 
+```
+multiport dports 8773,8774,8775,8778 /* 001 nova api
+multiport dports 5900:5999 /* 001 nova compute
+multiport dports 16509,49152:49215 /* 001 nova qemu
+```
 
 ## Planned enhancements
 
-These are the planned upcoming enhancements for version 0.12
+These are the planned upcoming enhancements later versions, no specific versions tagged
 
-* on the main index display of out-of-date collected data files make the number
-  of days before alerting on old snapshots configurarable on a per server basis
-  as I have some VMs only started on an as-needed basis
 * check PAM password rules to see if they are different to login.defs rules
 * add last logged on checks for non-privaliged accounts that are not locked
   and do not have a shell of nologin, also check users with a shell of nologin
   for last login time (as we all know having a default shell of nologin does
   not stop anyone logging in as the default shell can be overridden on commands such as 'su')
-* On servers running NetworkManager on startup NetworkManager adds firewall 'accept' rules
-  for ports 67 and 68 (both udp and tcp) for vibr0 even if you intend to never run
-  applications on those ports (67 is dnsmasq) so these will always alert as firewall ports
-  open but not in use. The planned enhancement is for the collector to record if NetworkManager
-  is running and add a custom file entry to allow suppression of alerts for those two ports
-  if the user wished to do so
-* for cron job checks have a list of programs that are permitted to be owned by root
-  rather than by the crontab owner (such as /usr/bin/php, /usr/bin/echo etc.) for
-  those occasions you want one-liner cron jobs and do not want cron to run a script
-  owned by the correct user for those cases. These will be custom file entries as
-  every site will be different
-* anything else I think of before then
+  (collection script now collects the info since 0.12, LAST_LOG tag)
+* add checks of all 'NETWORK_xxxVx_PROCESS_ALLOW=processline' entries to
+  ensure that a matching process is actually running at snapshot time
+* 'ip a' is used from 0.12 to get network interface info (unused at present).
+  Intention is to use that to xref across all servers to build a map of user activity
+  across servers by matching ipaddr info against ipaddrs for remote logins
+  available from the 'last -i' info collected since 0.12.
+* enhance cron checks to handle lines with multiple stacked commands, and
+  may include system execs such as 'php filenmame' (check filename security
+  rather than php security), and more (skel begun in beta_scripts).

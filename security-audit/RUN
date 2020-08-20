@@ -35,3 +35,11 @@ bash bin/process_server_details.sh --datadir=rawdatafiles --archivedir=archive
 #
 # The below will also include the kernel version of each OS in the index page
 #bash bin/process_server_details.sh --datadir=rawdatafiles --indexonly=yes --indexkernel=yes
+
+#--------------------------------------------------------------------------------
+# You should never need this, debug processing
+# If used process a max of one server or the output debug.log file will be
+# huge.
+#--------------------------------------------------------------------------------
+#echo "To see what is going on 'tail -f debug.log' while I am debugging"
+#bash -x bin/process_server_details.sh --datadir=rawdatafiles > debug.log 2>&1

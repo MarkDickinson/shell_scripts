@@ -1,5 +1,6 @@
 #!/bin/bash
 # !!! WILL ONLY WORK WITH BASH !!! - needs bash substring facility
+
 # ======================================================================
 #
 # process_server_details.sh
@@ -75,8 +76,9 @@
 #      D.3 - list all cron job files/commands not able to be automatically checked by D.2
 #      D.4 - list all cron job entries for all users on the server for manual review
 #   E. System file security
-#      E.1 - all system files must be secured tightly
-#      E.2 - check files with suid bits set (2007/08/23)
+#      E.1 - system userid list must be valid
+#      E.2 - all system files must be secured tightly
+#      E.3 - check files with suid bits set (2007/08/23)
 #   F. Server environment
 #      F.1 - motd must exist and contain reqd keywords
 #      F.2 - security log retention checks
@@ -249,6 +251,32 @@
 #                       format (iptables checks already handles that but it was 
 #                       not implemeted in the hurredly rushed in nftable checks
 #                       I needed for F32 and CentOS8).
+# MID: 2020/08/16 - Version 0.12 
+#                   (1) Allow for customfile parm xxx_NETWORKMANAGER_FIREWALL_DOWNGRADE
+#                       where xxx is TCP or UDP, to downgrade alerts to 
+#                       warnings for firewall ports opened by NetworkManager as it
+#                       sees fit (ports not manually opened by the server admin
+#                       firewall config)
+#                   (2) Allow for customfile parm REFRESH_INTERVAL_EXPECTED=nn
+#                       to override the highlighting for individual servers on the
+#                       main index page if the server collected data is over
+#                       nn (default 14) days old. Days permitted also now
+#                       displayed on the main index page.
+#                   (3) NETWORK_PORT_NOLISTENER_TCPV6_OK=portnum: and TCPV4,
+#                       UDPV4, UDPV6 custom file entries handled. Used to
+#                       suppress alerts where a port expected to be listening
+#                       but is not (such as virtual consoles to vms that
+#                       are expected to be shutdown or on different hosts;
+#                       or X11 forwarding ports that are only in use when 
+#                       users are running remote X sessions). Used in both
+#                       checks of the config file for possibly obsolete entries
+#                       plus in the firewall rule checks to suppress alerts on
+#                       ports opened in the firewall but no target apps running.
+#                   (4) HOMEDIR_MISSING_OK=userid: custom file parameter
+#                       handles to suppress alerts for users with a non-existing
+#                       home directory
+#                   (5) Added extra checks for verifying data in custom file
+#                       against what is actually on the server
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -302,7 +330,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.11"
+PROCESSING_VERSION="0.12"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -327,6 +355,7 @@ PERM_CHECK_RESULT="OK"
 NUM_VALUE=0      # used a lot
 CUSTOMFILE=""                        # set on a per server being processed basis
 LOGICAL_LOCK="${RESULTS_DIR}/logical_lock.dat"
+DEFAULT_DAYS_BEFORE_SNAPSHOT_WARN=14    # default number of days a snapshot is considered valid
 
 # First see if the request was to clear the lockfile, if so we need to
 # do nothing else.
@@ -342,8 +371,13 @@ then
       stillrunning=`ps -ef | awk {'print $2'} | grep "${pidlock}"`
       if [ "${stillrunning}." != "." ];
       then
-         echo "Process pid ${pidlock} is still running, a processing run is still in progress"
+         echo "Lock file owned by pid ${pidlock}, a process with a pid of ${pidlock} is still running"
+         pidfulldata=`cat ${LOGICAL_LOCK}`
+         echo "${pidfulldata}"
+         echo "Refusing to remove the lock."
       else
+         pidfulldata=`cat ${LOGICAL_LOCK}`
+         echo "Lockfile was owned by: ${pidfulldata}"
          /bin/rm ${LOGICAL_LOCK}
       fi
    fi
@@ -450,6 +484,7 @@ if [ -f ${LOGICAL_LOCK} ];
 then
    lastlock=`cat ${LOGICAL_LOCK}`
    echo "A processing run is already in progress !. Started at ${lastlock}"
+   echo "If that is from an aborted/killed process refer to the --clearlock option"
    exit 1
 fi
 # indicate we are the process holding the lock
@@ -566,6 +601,7 @@ update_globals() {
 # ---------------------------------------------------------------
 locate_custom_file() {
    serverid="$1"
+   suppressmsg="$2"
    CUSTOMFILE=""     # default is no custom file for a server
    if [ -f ${OVERRIDES_DIR}/ALL.custom ];
    then
@@ -575,11 +611,14 @@ locate_custom_file() {
    then
       CUSTOMFILE="${OVERRIDES_DIR}/${serverid}.custom"
    fi
-   if [ "${CUSTOMFILE}." == "." ];
+   if [ "${suppressmsg}." == "." ];
    then
-      log_message "No customisation file is being used for server ${serverid}"
-   else
-      log_message "Using customisation file ${CUSTOMFILE}"
+      if [ "${CUSTOMFILE}." == "." ];
+      then
+         log_message "No customisation file is being used for server ${serverid}"
+      else
+         log_message "Using customisation file ${CUSTOMFILE}"
+      fi
    fi
 } # end of locate_custom_file
 
@@ -601,7 +640,7 @@ update_system_file_owner_list() {
    # Space seperated list of users that can own files of class SYSTEM.
    # Additional users can be added on a per server basis from the server
    # customisation file with ADD_SYSTEM_FILE_OWNER=xx
-   SYSTEM_FILE_OWNERS="root bin lp abrt chrony ntp apache snort puppet mysql"
+   SYSTEM_FILE_OWNERS="root bin lp tss"
    if [ "${CUSTOMFILE}." != "." ];
    then
       echo "${SYSTEM_FILE_OWNERS}" > ${WORKDIR}/delme
@@ -1275,7 +1314,7 @@ build_appendix_a() {
    echo "the server customisation files as required.</p>" >> ${htmlfile}
    echo "<p>This section also reports on user entries that are configured with home directories that do not exist." >> ${htmlfile}
    echo "That does not necessarily indicate a problem as some system accounts are setup that way" >> ${htmlfile}
-   echo "so missing home directories are logged as warnings, but you should check them.</p>" >> ${htmlfile}
+   echo "so missing home directories for users are logged as warnings (unless overridden by the custom file), but you should check them.</p>" >> ${htmlfile}
    touch ${WORKDIR}/${hostid}_all_ok
    echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>User Name</td><td>Problem identified</td></tr>" >> ${htmlfile}
    cat ${WORKDIR}/home_dir_perms | while read dataline
@@ -1294,8 +1333,14 @@ build_appendix_a() {
       if [ "${permdata}." == "MISSING." ];
       then
          # home directory does not exist
-         echo "<tr bgcolor=\"${colour_warn}\"><td>${username2}</td><td>The home directory for <b>${username2}</b> does not exist (${dirname2})</td></tr>" >> ${htmlfile}
-         inc_counter ${hostid} warning_count
+         issuppressed=`grep "^HOMEDIR_MISSING_OK=${username2}:" ${CUSTOMFILE}`
+         if [ "${issuppressed}." != "." ];
+         then
+            echo "<tr><td>${username2}</td><td>home directory for <b>${username2}</b> does not exist (${dirname2}), permitted by custom file</td></tr>" >> ${htmlfile}
+         else
+            echo "<tr bgcolor=\"${colour_warn}\"><td>${username2}</td><td>home directory for <b>${username2}</b> does not exist (${dirname2})</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} warning_count
+         fi
       else
          check_homedir_perms "${dataline}" "drXx------" "${hostid}"
          if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not empty has error text
@@ -1313,6 +1358,49 @@ build_appendix_a() {
    fi
    echo "</table>" >> ${htmlfile}
 
+   # Sanity check custom file entries for this section
+   # Check the missing homedir values match valid users on the system,
+   grep "^HOMEDIR_MISSING_OK=" ${CUSTOMFILE} | awk -F\= {'print $2'} | awk -F: {'print $1'} | while read username2
+   do
+      # if a missing_homedir_ok entry for a user not on the system alert on it as an obsolete customfile entry.
+      testvar=`grep "^${username2}:" ${WORKDIR}/passwd`
+      if [ "${testvar}." == "." ];
+      then
+         echo "HOMEDIR_MISSING_OK=${username2}:" >> ${WORKDIR}/homedirmiss_user_missing
+      fi
+      # if a missing_homedir_ok entry for a user but hone directory exists alert as an obsolete customfile entry
+      # data parsed example is "PERM_HOME_DIR=drwx------.  3 logcheck   logcheck   4096 Dec 30  2019 logcheck=logcheck logcheck"
+      testvar=`grep "^PERM_HOME_DIR=" ${SRCDIR}/secaudit_${hostid}.txt | grep -v "MISSING" | awk {'print $9" "$10'} | awk -F\= {'print $2'} | grep "${username2} ${username2}"`
+      if [ "${testvar}." != "." ];
+      then
+         echo "HOMEDIR_MISSING_OK=${username2}:" >> ${WORKDIR}/homedirmiss_userdir_exists
+      fi
+   done
+   if [ -f ${WORKDIR}/homedirmiss_user_missing ];
+   then
+      echo "<p>The following users are configured in the custom file ${CUSTOMFILE} are being" >> ${htmlfile}
+      echo "permitted to have missing home directories, but these users do not exist on the server being checked." >> ${htmlfile}
+      echo "These entries should be removed from ${CUSTOMFILE}.</p>" >> ${htmlfile}
+      echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\">" >> ${htmlfile}
+      echo "<td>Obsolete custom file entries</td></tr><tr><td><b><pre>" >> ${htmlfile}
+      cat ${WORKDIR}/homedirmiss_user_missing >> ${htmlfile}
+      echo "</pre></b></td></tr></table>" >> ${htmlfile}
+      rm -f ${WORKDIR}/homedirmiss_user_missing
+      inc_counter ${hostid} alert_count
+   fi
+   if [ -f ${WORKDIR}/homedirmiss_userdir_exists ];
+   then
+      echo "<p>The following users are configured in the custom file ${CUSTOMFILE} are being" >> ${htmlfile}
+      echo "permitted to have missing home directories, but these users do actually have existing home directories." >> ${htmlfile}
+      echo "These entries should be removed from ${CUSTOMFILE}.</p>" >> ${htmlfile}
+      echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\">" >> ${htmlfile}
+      echo "<td>Incorrect and ignored custom file entries</td></tr><tr><td><b><pre>" >> ${htmlfile}
+      cat ${WORKDIR}/homedirmiss_userdir_exists >> ${htmlfile}
+      echo "</pre></b></td></tr></table>" >> ${htmlfile}
+      rm -f ${WORKDIR}/${WORKDIR}/homedirmiss_userdir_exists
+      inc_counter ${hostid} alert_count
+   fi
+
    # 4. Check the ftpusers deny file against the passwd file
    echo "<h2>A.4 FTP User Access Checks</h2>" >> ${htmlfile}
    echo "<h3>A.4.1 Who can use ftp</h3>" >> ${htmlfile}
@@ -1325,11 +1413,10 @@ build_appendix_a() {
    if [ ! -f ${WORKDIR}/ftpusers ];
    then
       echo "<table bgcolor=\"${colour_alert}\" width=\"100%\"><tr><td>" >> ${htmlfile}
-	  echo "<p>No <b>/etc/ftpusers</b> file exists on the server. This means" >> ${htmlfile}
-	  echo "all users are able to use <b>ftp</b></p>." >> ${htmlfile}
-	  echo "<p><b>Remedial action:</b> create a <b>/etc/ftpusers</b> file and" >> ${htmlfile}
-	  echo "add an entry for every system user (ie: uucp, news etc) as they" >> ${htmlfile}
-	  echo "should not be permitted to use ftp.</p>" >> ${htmlfile}
+      echo "<p>No <b>/etc/ftpusers</b> file exists on the server. This means" >> ${htmlfile}
+      echo "all users are able to use <b>ftp</b></p>." >> ${htmlfile}
+      echo "<p><b>Remedial action:</b> create a <b>/etc/ftpusers</b> file and" >> ${htmlfile}
+      echo "add an entry for every user that should not be using ftp.</p>" >> ${htmlfile}
       echo "</td></tr></table>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
    else
@@ -1359,6 +1446,7 @@ build_appendix_a() {
 		 echo "<p>No problems found. The /etc/ftpusers file blocks all users from ftp.</p>" >> ${htmlfile}
          echo "</td></tr></table>" >> ${htmlfile}
       fi
+
 
       # Step 2, scan the ftpusers file, report any entries NOT in passwd file
       echo "<h3>A.4.2 Check for inconsistencies in ftpusers</h3>" >> ${htmlfile}
@@ -1394,22 +1482,18 @@ build_appendix_a() {
       fi
    fi  # if ftpusers file exists
 
-   # Need to write a happy message ?
-#   if [ -f ${WORKDIR}/${hostid}_all_ok ];
-#   then
-#      echo "<p>No problems were found with FTP access checks</p>" >> ${htmlfile}
-#   fi
-
    # 5 - /etc/shadow must be tightly secured
    echo "<h3>A.5 Shadow file security</h3>" >> ${htmlfile}
-   echo "<p>The /etc/shadow file mist be tightle secured. This file" >> ${htmlfile}
+   echo "<p>The /etc/shadow file mist be tightly secured. This file" >> ${htmlfile}
    echo "should only ever be updated by system utilities.</p>" >> ${htmlfile}
    testvar=`grep "^PERM_SHADOW_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
    shadowperms=`echo "${testvar}" | awk '{print $1'}`
-   if [ "${shadowperms}." != "----------.." -a "${shadowperms}." != "-r--------.." ];
+   # 0.12 for Debian add test for -rw-r----- (debian has no trailing . either)
+   if [ "${shadowperms}." != "----------.." -a "${shadowperms}." != "-r--------.." -a "${shadowperms}." != "-rw-r-----." ];
    then
       echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>" >> ${htmlfile}
-      echo "<p>The /etc/shadow file is badly secured. <b>It should be -r-------- or ---------- and owned by root</b>.<br>" >> ${htmlfile}
+      echo "<p>The /etc/shadow file is badly secured.<br /><b>It should be -r-------- or ---------- and owned by root:root for RHEL systems</b>.<br />" >> ${htmlfile}
+      echo "Debian based systems such as Ubuntu and Kali expect -rw-r----- and owned by root:shadow<br />" >> ${htmlfile}
       echo "Actual: ${testvar}<br>" >> ${htmlfile}
       echo "${PERM_CHECK_RESULT}." >> ${htmlfile}
       echo "Log up to root and resecure this file correctly <b>immediately</b>.</p>" >> ${htmlfile}
@@ -1780,6 +1864,7 @@ extract_appendix_c_files() {
 # For the new parameters introduced in version 0.06 checks that all custom
 # parameters using a port number actually have the port open, to detect
 # obsolete entries.
+#  "tcp" 4 "TCP"
 # ----------------------------------------------------------
 appendix_c_check_unused_number_port() {
    datatype="$1"
@@ -1793,8 +1878,17 @@ appendix_c_check_unused_number_port() {
          exists=`grep "${datatype2}${dataversion}-${portnum}:" ${WORKDIR}/network_sanitation.wrk`
          if [ "${exists}." == "." ];
          then
-            echo "<tr bgcolor=\"${colour_alert}\"><td>${datatype2}V${dataversion}</td><td>${portnum}</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
-            inc_counter ${hostid} alert_count
+            if [ "${CUSTOMFILE}." != "." ];
+            then
+               exists=`grep "^NETWORK_PORT_NOLISTENER_${datatype2}V${dataversion}_OK=${portnum}:" ${CUSTOMFILE}`
+            fi
+            if [ "${exists}." == "." ];
+            then
+               echo "<tr bgcolor=\"${colour_alert}\"><td>${datatype2}V${dataversion}</td><td>${portnum}</td><td>${dataline}</td></tr>" >> ${WORKDIR}/port_sanitation
+               inc_counter ${hostid} alert_count
+            else
+               echo "<tr><td>${datatype2}V${dataversion}</td><td>${portnum}</td><td>${dataline}, Custom file permits this port to be unused</td></tr>" >> ${WORKDIR}/port_sanitation
+            fi
          fi
       done
    fi
@@ -1988,10 +2082,35 @@ appendix_c_check_unused_custom() {
       echo "<td>Port<br>Type</td><td>Port<br>Number</td><td>Customisation file entry</td></tr>" >> ${htmlfile}
       cat ${WORKDIR}/port_sanitation >> ${htmlfile}
       echo "</table>" >> ${htmlfile}
+      rm -f ${WORKDIR}/port_sanitation
    else
       echo "<table bgcolor=\"${colour_OK}\"><tr><td>No problems found." >> ${htmlfile}
       echo "All customisation entries have a matching active port number." >> ${htmlfile}
       echo "No action required to the customisation files.</td></tr></table>" >> ${htmlfile}
+   fi
+
+   # New in version 0.12 - now we have running process info check that process_allow
+   # entries actually have a matching process running
+   grep "^NETWORK_...V._PROCESS_ALLOW=" ${CUSTOMFILE} | while read dataline
+   do
+      psline=`echo "${dataline}" | awk -F\= {'print $2'}`
+      psline=`echo "${psline}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
+      isrunning=`grep "${psline}" ${SRCDIR}/secaudit_${hostid}.txt  | grep "PROCESS_RUNNING"`
+      if [ "${isrunning}." == "." ];
+      then
+         echo "${dataline}" >> ${WORKDIR}/port_sanitation
+      fi
+   done
+   if [ -f ${WORKDIR}/port_sanitation ];
+   then
+      echo "<p>The below processes were not running on the server, but are configured as processes allowed to listen on random ports." >> ${htmlfile}
+      echo "If they are no longer being used you should remove these entries.</p>" >> ${htmlfile}
+      echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\">" >> ${htmlfile}
+      echo "<td>Possibly obsolete custom file entries</td></tr><tr><td bgcolor=\"${colour_alert}\"><pre>" >> ${htmlfile}
+      cat ${WORKDIR}/port_sanitation >> ${htmlfile}
+      echo "</pre></td></tr></table>" >> ${htmlfile}
+      rm -f ${WORKDIR}/port_sanitation
+      inc_counter ${hostid} alert_count
    fi
 } # end of appendix_c_check_unused_custom
 
@@ -2384,7 +2503,7 @@ build_appendix_d() {
              echo "<br />${denied}" >> ${htmlfile}
          done
          echo "</td></tr>" >> ${htmlfile}
-         inc_counter ${hostid} warn_count
+         inc_counter ${hostid} warning_count
       else
          echo "<tr bgcolor=\"${colour_alert}\"><td>No cron.allow file exists and the cron.deny file has zero users, all users can run cron jobs</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
@@ -2526,9 +2645,27 @@ build_appendix_d() {
 # ----------------------------------------------------------
 #                      Appendix E.
 #   E. System file security
-#      E.1 - all system files must be secured tightly
-#      E.2 - check files with suid bits set
+#      E.1 - system userid list must be valid
+#      E.2 - all system files must be secured tightly
+#      E.3 - check files with suid bits set
 # ----------------------------------------------------------
+
+# loop thru the list of users passed and write any that do not
+# exist in the servers passwd file.
+appendix_e_check_system_users() {
+   hostfile="$1"
+   shift
+   while [[ $# -gt 0 ]];
+   do
+      userexists=`grep "^PASSWD_FILE=$1:" ${SRCDIR}/secaudit_${hostfile}.txt`
+      if [ "${userexists}." == "." ];
+      then
+         echo "$1"
+      fi
+      shift
+   done
+} # end of appendix_e_check_system_users
+
 build_appendix_e() {
    hostid="$1"
    htmlfile="${RESULTS_DIR}/${hostid}/appendix_E.html"
@@ -2537,6 +2674,25 @@ build_appendix_e() {
 
    clean_prev_work_files
    mkdir ${WORKDIR}
+
+   echo "<html><head><title>System file security checks for ${hostid}</title></head><body>" > ${htmlfile}
+   echo "<h1>Appendix E - System File Security Checks for ${hostid}</h1>" >> ${htmlfile}
+
+   echo "<h2>E.1 - system userid list must be valid</h2>" >> ${htmlfile}
+   echo "<p>The list of users allowed to own files classed as SYSTEM are <em>${SYSTEM_FILE_OWNERS}</em>.</p>" >> ${htmlfile}
+   bad_user_list=`appendix_e_check_system_users ${hostid} ${SYSTEM_FILE_OWNERS}`
+   if [ "${bad_user_list}." != "." ];
+   then
+      inc_counter ${hostid} alert_count
+      echo "<p>There are errors in the system file owners list. The following users do not exist on the server !</p>" >> ${htmlfile}
+      echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
+      echo "<center>System users in the custom file that do not exist on the server</center></td></tr>" >> ${htmlfile}
+      echo "<tr><td><pre>" >> ${htmlfile}
+      echo "${bad_user_list}" >> ${htmlfile}
+      echo "</pre></td></tr></table>" >> ${htmlfile}
+   else
+      echo "<p>All users identified as system files owners do exist on this server.</p>" >> ${htmlfile}
+   fi
 
    # Var is a bit of a special case as user files may be
    # stored under /var. In the customisation files you may
@@ -2577,16 +2733,14 @@ build_appendix_e() {
          allowvargroupwrite="YES"
       fi
    fi   # if overridefile exists
-   cat << EOF > ${htmlfile}
-<html><head><title>System file security checks for ${hostid}</title></head><body>
-<h1>Appendix E - System File Security Checks for ${hostid}</h1>
-<h2>E.1 System File security checks</h2>
+
+   cat << EOF >> ${htmlfile}
+<h2>E.2 System File security checks</h2>
 <p>An important security consideration is that all system files are
 only able to be updated by a valid system userid. This section reports
 on unsafe file permissions or file ownership problems.
 Basically any file updateable by other than the owner is reported here,
 along with files in system directories owned by non-system users.</p>
-<p>The list of users allowed to own files classed as SYSTEM are <em>${SYSTEM_FILE_OWNERS}</em>.</p>
 EOF
    totalcount=0
    echo "${totalcount}" > ${WORKDIR}/system_totals_count
@@ -2781,7 +2935,7 @@ EOF
       fi
    fi
 
-   echo "<h2>E.2 Checks for files with SUID set</h2>" >> ${htmlfile}
+   echo "<h2>E.3 Checks for files with SUID set</h2>" >> ${htmlfile}
    echo "<p>Files with the SUID bits set can be a possible security risk." >> ${htmlfile}
    echo "All the files listed here should be checked to ensure they are still" >> ${htmlfile}
    echo "required. Any alerts raised here are for files with SUID bits set that" >> ${htmlfile}
@@ -2824,7 +2978,6 @@ EOF
          # record the suppressed docker overlay files
          cat ${WORKDIR}/suid_file_list | grep "\/var\/lib\/docker\/overlay2\/" | while read dataline
          do
-            inc_counter ${hostid} docker_alert_count
             echo "${dataline}" >> ${WORKDIR}/appendix_e_dockersuppresslist.txt
          done
       fi
@@ -2849,7 +3002,7 @@ EOF
    # Did we suppress any docker SUID file alerts ?
    if [ -f ${WORKDIR}/appendix_e_dockersuppresslist.txt ];
    then
-      dockersuppress=`cat ${RESULTS_DIR}/${hostid}/docker_alert_count`
+      dockersuppress=`cat ${WORKDIR}/appendix_e_dockersuppresslist.txt | wc -l`
       echo "<p><b>The customisation file requested docker overlay SUID files be suppressed from raising alerts in the report</b>," >> ${htmlfile}
       echo "${dockersuppress} SUID files were suppressed from being reported on for this reason." >> ${htmlfile}
       /bin/mv ${WORKDIR}/appendix_e_dockersuppresslist.txt ${RESULTS_DIR}/${hostid}/appendix_e_dockersuppresslist.txt
@@ -3080,7 +3233,7 @@ build_appendix_f() {
    echo "<h3>F.3.1 - SSHD Banner file</h3>" >> ${htmlfile}
    echo "<p>SSH should be configured to display a site banner at the login prompt." >> ${htmlfile}
    echo "It should also contain an authorised users only notice.</p>" >> ${htmlfile}
-   if [ -f ${WORKDIR}/motd ];
+   if [ -f ${WORKDIR}/sshd_banner ];
    then
        numentries=`cat ${WORKDIR}/sshd_banner | wc -l | awk {'print $1}'`
    else
@@ -3213,8 +3366,6 @@ but should be a good indication of what network traffic is accepted by this serv
 It should also be noted that at this time as iptables does not distinguish between rules
 targetting ipv4 and ipv6 ports the checking is a little sloppy as if a custom file entry for
 either ip type matches we must just assume it is the correct one.
-</p>
-<p>
 Also it should be noted that unlike the network check section we do not currently
 warn if the destination is any interface.
 </p>
@@ -3238,28 +3389,49 @@ firewall rule for port and puppet breaks... basically know your applications.
 <p>
 It is also important to note for this report that all 'accept' rules are checked against
 ports open on the server. Depending on how paranoid your firewall settings are you may
-have ports defined in accept rules for outbound traffic that will alert, unless you have
-explicitly defined them in the custom file as outbound rules to suppress an alert.
+have ports defined in accept rules for outbound traffic that will alert (by default treated as inbound rules),
+unless you have explicitly defined them in the custom file as outbound rules to suppress an alert.
 </p>
 <p>
-As seen by the above paragraph this report section does not attempt to decode the firewall
+As the processing does not follow firewall chains nor test for traffic seperation based on source
+or destination it is possible to get multiple entries for a port in the report below. Especially if
+you have specific rules for outbound traffic as an outbound accept rule will potentionally falsely
+match an inbound port check.
+</p>
+<p>
+As seen by the above paragraphs this report section does not attempt to decode the firewall
 chains to determine traffic flow. For desktop users using firewalld and most simple server
 configuraions this is not an issue as there are normally only inbound rules used.
-If your server firewall is more complex this report should be treated with caution,
+<em>If your server firewall is more complex this report should be treated with caution,
 and you should review the entire firewall ruleset (available as a link after each table)
-to see what is actually happening.
+to see what is actually happening</em>.
 </p>
 EOF
    # explain colour mappings used
-   echo "<table border=\"1\">" >> ${htmlfile}
-   echo "<tr><td bgcolor=\"${colour_banner}\" colspan=\"5\">Colour codes used in this report</td></tr><tr>" >> ${htmlfile}
-   echo "<td bgcolor=\"${colour_alert}\">alert count bumped<br />A firewall rule for the port but either the matching port is not listening on the server or is not in custom file port entry or matching process match allow entry</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"${colour_override_insecure}\">no counters changed<br />A firewall rule exists, port is listening on the server, custom allow rules use unsafe process rule match for the port</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"${colour_OK}\">no counters changed<br />This firewall rule matches a port listening on the server and the port is permitted by customfile rules</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"white\">no counters changed<br />This entry is not checked by the processing script as it has no explicit port number</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"${colour_note}\">no counters changed<br />This entry is documented as a outbound firewall rule, port does not need to be open on local server</td>" >> ${htmlfile}
-   echo "</tr></table><br />" >> ${htmlfile}
+   cat << EOF >> ${htmlfile}
+<table border="1">
+<tr><td bgcolor="${colour_banner}" colspan="3">Colour codes used in this report</td></tr><tr>
+<td bgcolor="${colour_alert}">alert count bumped<br />A firewall rule for the port but either the matching port
+is not listening on the server or is not in custom file port entry or matching process match allow entry</td>
+<td bgcolor="${colour_override_insecure}">no counters changed<br />A firewall rule exists, port is listening on the server,
+custom allow rules use unsafe process rule match for the port</td>
+<td bgcolor="${colour_OK}">no counters changed<br />This firewall rule matches a port listening on the server and
+the port is permitted by customfile rules</td>
+</tr><tr>
+<td bgcolor="white">no counters changed<br />This entry is not checked by the processing script as it has no explicit port number</td>
+<td bgcolor="${colour_note}">no counters changed<br />This entry is documented as a outbound firewall rule
+in the custom file, port does not need to be open on local server</td>
+<td bgcolor="${colour_warn}">warning count incremented<br />
+(a) port open in firewall but no app listening; permitted/expected by custom file, but as any (unexpected) app could start up
+listening on this port and use the path through the firewall it is still a warning
+<br />
+(b)Documented as a not-in-use port that NetworkManager or Firewalld created an accept firewall rule for that the server admin cannot
+determine how to close yet</td>
+</tr></table><br />
+EOF
 
+   serverrunsnetmanager=`grep "^NETWORKMANAGER=YES" ${SRCDIR}/secaudit_${hostid}.txt`  # used in a couple of places, set outside loop
+   serverrunsfirewalld=`grep "^FIREWALLD=YES" ${SRCDIR}/secaudit_${hostid}.txt`  # used in a couple of places, set outside loop
    totalcount=0
    echo "${totalcount}" > ${WORKDIR}/iptables_totals_count
    countlines1=`grep "^IPTABLES_FULLDATA=" ${SRCDIR}/secaudit_${hostid}.txt | grep ACCEPT | grep -v "=Chain" | wc -l`   # V0.10 and above
@@ -3347,13 +3519,30 @@ EOF
                         isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${ipportmin}:" ${CUSTOMFILE}`
                         if [ "${isoutbound}." == "." ];
                         then
-                           usecolour="${colour_alert}"
-                           inc_counter ${hostid} alert_count
+                           # 0.012 inserted test for downgrading ports added by networkmanager or firewalld to warnings; only if
+                           #       networkmanager or firewalld are running on the server
+                           # Do we have a networkmanager/firewalld downgrade parm for it ?
+                           isdowngrade=`grep "^${searchtype}_NETWORKMANAGER_FIREWALL_DOWNGRADE=:${ipportmin}:" ${CUSTOMFILE}`
+                           if [ "${isdowngrade}." != "." ];
+                           then
+                              if [ "${serverrunsnetmanager}." != "." -o "${serverrunsfirewalld}." != "." ];
+                              then
+                                 process="Documented as Firewalld or NetworkManager generated"
+                                 usecolour="${colour_warn}"
+                                 inc_counter ${hostid} warning_count
+                              else
+                                 usecolour="${colour_alert}"
+                                 inc_counter ${hostid} alert_count
+                              fi
+                           else
+                              usecolour="${colour_alert}"
+                              inc_counter ${hostid} alert_count
+                           fi
                         else
                            process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
                            usecolour="${colour_note}"
                         fi
-                     else
+                     else    # else process was not .
                         bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
                         # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
                         procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | head -1 | awk -F\= {'print $2'}`
@@ -3371,14 +3560,25 @@ EOF
                               usecolour="${colour_note}"
                            fi
                         fi
-                     fi
+                     fi   # process was != .
                   else
                      if [ "${process}." != "." ];   # isallowed, and a process is using it
                      then
                         usecolour="${colour_OK}"
                      else                           # isallowed but no process is using it
-                        usecolour="${colour_alert}"
-                        inc_counter ${hostid} alert_count
+                        # permitted to be not in use by customfile entry ?
+                        isallowed=`grep "^NETWORK_PORT_NOLISTENER_${searchtype}V._OK=${ipportmin}:" ${CUSTOMFILE}`
+                        if [ "${isallowed}." == "." ];
+                        then
+                           # must have a port allowed entry to reach here, use that description 
+                           ovdesc=`grep "${searchtype}_PORTV._ALLOWED=:${ipportmin}:" ${CUSTOMFILE} | awk -F: {'print $3'}`
+                           process="Not listening, permitted by customfile : ${ovdesc}"  # re-use empty process field as description 
+                           usecolour="${colour_warn}"
+                           inc_counter ${hostid} warning_count
+                        else
+                           usecolour="${colour_alert}"
+                           inc_counter ${hostid} alert_count
+                        fi
                      fi
                   fi
                   echo "<tr bgcolor=\"${usecolour}\">${linedata}<td>${ipportmin}</td><td>${process}</td></tr>" >> ${htmlfile}
@@ -3406,10 +3606,9 @@ EOF
    else
       if [ ${countlines3} -gt 0 ];
       then
-         echo "<table border=\"1\" bgcolor=\"${colour_warn}\"><tr><td>No iptables rules were recorded in the data capture." >> ${htmlfile}
+         echo "<table border=\"1\"><tr><td>No iptables rules were recorded in the data capture." >> ${htmlfile}
          echo "This is acceptable if you are running firewalld on an OS Fedora32/CentOS8/RHEL8 or later which no longer use iptables as a back-end for firewalld." >> ${htmlfile}
-         echo "BETA nftables reports for this ocurrence are implemented in the below table.</td></tr></table><br /><br />" >> ${htmlfile}
-         inc_counter ${hostid} warn_count
+         echo "</td></tr></table><br /><br />" >> ${htmlfile}
       else
          echo "<table bgcolor=\"${colour_alert}\"><tr><td>Either the iptables command did not exist on the server or the data capture" >> ${htmlfile}
          echo "was performed with an older version of the data capture script." >> ${htmlfile}
@@ -3510,8 +3709,23 @@ EOF
                            isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${destport}:" ${CUSTOMFILE}`
                            if [ "${isoutbound}." == "." ];
                            then
-                              usecolour="${colour_alert}"
-                              inc_counter ${hostid} alert_count
+                              # 0.012 inserted test for downgrading ports added by networkmanager to warnings
+                              isdowngrade=`grep "^${searchtype}_NETWORKMANAGER_FIREWALL_DOWNGRADE=:${destport}:" ${CUSTOMFILE}`
+                              if [ "${isdowngrade}." != "." ];
+                              then
+                                 if [ "${serverrunsfirewalld}." != "." -o "${serverrunsnetmanager}." != "." ];
+                                 then
+                                    process="Documented as Firewalld or NetworkManager generated"
+                                    usecolour="${colour_warn}"
+                                    inc_counter ${hostid} warning_count
+                                 else
+                                    usecolour="${colour_alert}"
+                                    inc_counter ${hostid} alert_count
+                                 fi
+                              else
+                                 usecolour="${colour_alert}"
+                                 inc_counter ${hostid} alert_count
+                              fi
                            else
                               process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
                               usecolour="${colour_note}"
@@ -3533,8 +3747,19 @@ EOF
                         then
                            usecolour="${colour_OK}"
                         else                           # isallowed but no process is using it
-                           usecolour="${colour_alert}"
-                           inc_counter ${hostid} alert_count
+                           # permitted to be not in use by customfile entry ?
+                           isallowed=`grep "^NETWORK_PORT_NOLISTENER_${searchtype}V._OK=${destport}:" ${CUSTOMFILE}`
+                           if [ "${isallowed}." != "." ];   # data found
+                           then
+                              # must have a port allowed entry to reach here, use that description 
+                              ovdesc=`grep "${searchtype}_PORTV._ALLOWED=:${destport}:" ${CUSTOMFILE} | awk -F: {'print $3'}`
+                              process="Not listening, permitted by customfile : ${ovdesc}"  # re-use empty process field as description
+                              usecolour="${colour_warn}"
+                              inc_counter ${hostid} warning_count
+                           else
+                              usecolour="${colour_alert}"
+                              inc_counter ${hostid} alert_count
+                           fi
                         fi
                      fi
                      echo "<tr bgcolor=\"${usecolour}\"><td>${iptype}</td><td>${destaddr}</td><td>${dataline}</td><td>${destport}</td><td>${process}</td></tr>" >> ${htmlfile}
@@ -3560,10 +3785,10 @@ EOF
    countlines1=$((${countlines1} + ${countlines2}))
    if [ ${countlines1} -gt 0 -a ${countlines3} -gt 0 ];
    then
-      echo "<br /><br /><table bgcolor=\"${colour_alert}\"><tr><td>Additional alert raised: <b>Both iptables and netfilter rules are in use on this server</b>." >> ${htmlfile}
+      echo "<br /><br /><table bgcolor=\"${colour_warn}\"><tr><td>Additional alert raised: <b>Both iptables and netfilter rules are in use on this server</b>." >> ${htmlfile}
       echo "This is known to cause unexpected firewall behaviour !." >> ${htmlfile}
       echo "(example: If you run docker or docker-ce on a firewalld (netfilter only) server you will see both netfilter and iptables rules added to both as it cannot guess what you use; making iptables a partial ruleset).</td></tr></table>" >> ${htmlfile}
-      inc_counter ${hostid} alert_count
+      inc_counter ${hostid} warning_count
    fi
 
 
@@ -3630,6 +3855,79 @@ EOF
       log_message ".     Skipped Appendix I - capture file was for a version prior to 0.10 so no data"
    fi
 } # build_appendix_i
+
+# ----------------------------------------------------------
+#                      Appendix J.
+#   J. Orphan directory and file report
+# ----------------------------------------------------------
+build_appendix_j() {
+   hostid="$1"
+   orphancount=`grep "^ORPHAN_" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
+   if [ ${orphancount} -gt 0 ];
+   then
+      htmlfile="${RESULTS_DIR}/${hostid}/appendix_I.html"
+      log_message ".     Building Appendix I - process snapshot at capture time, ${tempcount} processes"
+
+      clean_prev_work_files
+      mkdir ${WORKDIR}
+      clear_counter "${hostid}" alert_count
+      clear_counter "${hostid}" warning_count
+
+      cat << EOF > ${htmlfile}
+<html><head><title>Webserver file security checks for ${hostid}</title></head><body>
+<h1>Appendix J - Orphan directories and files for ${hostid}</h1>
+<p>
+Orphaned files occur when a user is deleted from the system but the files they
+own are not given to another valid user.
+</p>
+<p>
+This is a security risk in that when a new user is added they may be given the same
+uid number and end up owning files they should not have access to.
+</p>
+<h2>Orphaned directories</h2>
+EOF
+      orphancount=`grep "^ORPHAN_DIR=" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
+      if [ ${orphancount} -gt 0 ];
+      then
+         echo "<p>The below are a list of directories that do not belong to a valid user.</p>" >> ${htmlfile}
+         echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
+         echo "<center>Orphaned directories</center></td></tr>" >> ${htmlfile}
+         echo "<tr><td><pre>" >> ${htmlfile}
+         grep "^ORPHAN_DIR=" ${SRCDIR}/secaudit_${hostname}.txt | awk -F\= {'print $2'} | while read dataline
+         do
+            echo "${dataline}" >> ${htmlfile}
+            inc_counter ${hostid} alert_count
+         done
+         echo "</pre></td></tr></table>" >> ${htmlfile}
+      else
+         echo "<p>There are no orphaned directories in the fiesystems searched on the server.</p>" >> ${htmlfile}
+      fi
+
+      orphancount=`grep "^ORPHAN_FILE=" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
+      if [ ${orphancount} -gt 0 ];
+      then
+         echo "<p>The below are a list of files that do not belong to a valid user.</p>" >> ${htmlfile}
+         echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
+         echo "<center>Orphaned files</center></td></tr>" >> ${htmlfile}
+         echo "<tr><td><pre>" >> ${htmlfile}
+         grep "^ORPHAN_FILE=" ${SRCDIR}/secaudit_${hostname}.txt | awk -F\= {'print $2'} | while read dataline
+         do
+            echo "${dataline}" >> ${htmlfile}
+            inc_counter ${hostid} alert_count
+         done
+         echo "</pre></td></tr></table>" >> ${htmlfile}
+      else
+         echo "<p>There are no orphaned files in the fiesystems searched on the server.</p>" >> ${htmlfile}
+      fi
+
+      # Close the appendix page
+      write_details_page_exit "${hostid}" "${htmlfile}"
+      # Add a summary of the section to the server index, and total alert & warning counts
+      server_index_addline "${hostid}" "Appendix J - Orphan directories and files" "${htmlfile}"
+   else
+      log_message ".     Skipped Appendix J - No orphan entries in searched filesystems on this server"
+   fi
+} # end build_appendix_j
 
 # ----------------------------------------------------------
 #                      Appendix W.
@@ -3733,9 +4031,9 @@ build_main_index_page() {
    echo "<tr bgcolor=\"${colour_banner}\"><td>Server Name</td><td>" >> ${htmlfile}
    if [ "${INDEXKERNEL}." == "yes." ];
    then
-      echo "Alerts</td><td>Warnings</td><td>Snapshot Date</td><td>Last Date<br />Processed</td><td>File<br />ScanLevel</td><td>Collector<br />Version</td><td>OS Kernel<br />Version</td></tr>" >> ${htmlfile}
+      echo "Alerts</td><td>Warnings</td><td>Snapshot Date<br />(valid for N days)</td><td>Last Date<br />Processed</td><td>File<br />ScanLevel</td><td>Collector<br />Version</td><td>OS Kernel<br />Version</td></tr>" >> ${htmlfile}
    else
-      echo "Alerts</td><td>Warnings</td><td>Snapshot Date</td><td>Last Date<br />Processed</td><td>File<br />ScanLevel</td><td>Collector Version</td></tr>" >> ${htmlfile}
+      echo "Alerts</td><td>Warnings</td><td>Snapshot Date<br />(valid for N days)</td><td>Last Date<br />Processed</td><td>File<br />ScanLevel</td><td>Collector Version</td></tr>" >> ${htmlfile}
    fi
    # NOTE: dataline here is the directory name found, we create a index entry for each server directory
    find ${RESULTS_DIR}/* -type d | while read dataline    # /* avoids getting root directory
@@ -3803,13 +4101,26 @@ build_main_index_page() {
             then
                echo "<td bgcolor=\"${colour_warn}\">${captdate}<br />New data ready</td>" >> ${htmlfile}
             else
-               twoweeksago=`date +"%s"`                   # secs since epoc currently
-               twoweeksago=$((${twoweeksago} - 1209600))   # minus 60secs * 60mins * 24hrs * 14days
-               if [ ${captepoc} -lt ${twoweeksago} ];
+               locate_custom_file "${dataline}" "suppress"
+               if [ "${CUSTOMFILE}." != "." ];
                then
-                  echo "<td bgcolor=\"${colour_alert}\">${captdate}<br />Over 14 days old</td>" >> ${htmlfile}
+                  daysbeforewarn=`grep "^REFRESH_INTERVAL_EXPECTED=" ${CUSTOMFILE} | awk -F\= {'print $2'}`
                else
-                  echo "<td>${captdate}</td>" >> ${htmlfile}
+                  daysbeforewarn=${DEFAULT_DAYS_BEFORE_SNAPSHOT_WARN}
+               fi
+               daysbeforewarn=`must_be_number "${daysbeforewarn}"`
+               if [ "${daysbeforewarn}." == "0." -o "${daysbeforewarn}." == "." ];  # non-numeric or not in custom file
+               then
+                  daysbeforewarn=14
+               fi
+               epocsecsnow=`date +"%s"`                   # secs since epoc currently
+               onedaysecs=$((60 * 60 * 24))               # 60secs * 60mins * 24hrs
+               warndate=$(( ${epocsecsnow} - (${onedaysecs} * ${daysbeforewarn}) ))   # one days secs * daysbeforewarn days
+               if [ ${captepoc} -lt ${warndate} ];
+               then
+                  echo "<td bgcolor=\"${colour_alert}\">${captdate} (${daysbeforewarn})<br />Over ${daysbeforewarn} old</td>" >> ${htmlfile}
+               else
+                  echo "<td>${captdate} (${daysbeforewarn})</td>" >> ${htmlfile}
                fi
             fi
          fi
@@ -3968,6 +4279,7 @@ perform_single_server_processing() {
    build_appendix_g ${hostname}               # customisations used
    build_appendix_h ${hostname}               # iptables checks
    build_appendix_i ${hostname}               # iptables checks
+   build_appendix_j ${hostname}               # orphans, if any found
 
    # only create appendix H if the data collection used the option to explicity
    # isoloate secure web directories from normal system directories

@@ -1,6 +1,8 @@
 # DEFAULT customisation file for all servers that do not have their
 # own personalised configuration file.
 #
+# This can be used as a starting point for a Fedora/CentOS/RHEL system
+#
 # Comments are any line beginning with a #, if a # is part of
 # any line not beginning with a # it is treated as part of the
 # data and not as a comment.
@@ -50,6 +52,7 @@ TCP_PORTV4_ALLOWED=:22:ssh:WILD
 TCP_PORTV4_ALLOWED=:25:sendmail
 TCP_PORTV4_ALLOWED=:111:portmapper
 TCP_PORTV4_ALLOWED=:5666:NRPE
+TCP_PORTV4_ALLOWED=:6010:X11 ssh forwarding
 TCP_PORTV4_ALLOWED=:9102:Bacula FD
 TCP_PORTV6_ALLOWED=:111:portmapper
 TCP_PORTV6_ALLOWED=:5666:NRPE
@@ -93,13 +96,63 @@ RAW_PORTV6_ALLOWED=:58:NetworkManager
 #         NETWORK_RAWV4_PROCESS_ALLOW=/the/full/programname and parms
 #         NETWORK_RAWV6_PROCESS_ALLOW=/the/full/programname and parms
 #
-# Coomon values required for Fedora systems
+# Common values required for Fedora systems
 NETWORK_UDPV4_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
 NETWORK_UDPV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
 # The below are server specific so cannot be used in ALL.custom,
 # needed for desktop machines so set for your environment
 #NETWORK_UDPV4_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]
 #NETWORK_UDPV6_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]
+#
+# ------- Customising for ports expected to be open, that may not be --------
+#
+# If there is a firewall rule for the port, or it is configured in the custom
+# file as being permitted to be open, but nothing has the port open there
+# would normally be an alert.
+#
+# There will be occasions when you expect a port not to be listening,
+# for example X11 forwarding session ports are only in use when a user is
+# actually running remote X sessions. Ports that need to be opened in
+# the firewall but will seldom be in use.
+# These options prevent those ports alerting as obsolete (not being used)
+# firewall rules and obsolete cuestom file entries.
+#
+# Syntax: NETWORK_PORT_NOLISTENER_TCPV4_OK=portnum:optional comment 
+#         NETWORK_PORT_NOLISTENER_TCPV6_OK=portnum:optional comment 
+#         NETWORK_PORT_NOLISTENER_UDPV4_OK=portnum:optional comment
+#         NETWORK_PORT_NOLISTENER_UDPV6_OK=portnum:optional comment 
+#         NETWORK_PORT_NOLISTENER_RAWV4_OK=portnum:optional comment 
+#         NETWORK_PORT_NOLISTENER_RAWV6_OK=portnum:optional comment 
+# The trailing : is required to permit explicit port matching.
+#
+# A desription/comment can be used after the : to comment for this file however
+# the processing script will ignore the comment  and use the decsription from the
+# xxx_PORTVx_ALLOWED custom file entry, as if we fall through the checks to reach
+# the nolistener_ok checks we have already determined a port_allowed entry existed.
+#
+NETWORK_PORT_NOLISTENER_TCPV4_OK=6010:any description that will be ignored by processing
+#
+# Fedora32 - be default opens firewall ports for below if service dhcpv6-client
+#            is enabled (the default) in firewalld. Can be closed with
+#            'firewall-cmd --remove dhcpv6-client && firewall-cmd --remove dhcpv6-client --permanant'
+#            if you don't need them (which you probably do not)
+TCP_PORTV6_ALLOWED=:546:dhcpv6-client
+UDP_PORTV4_ALLOWED=:547:dhcpv6-server
+NETWORK_PORT_NOLISTENER_TCPV6_OK=546:dhcpv6-client
+NETWORK_PORT_NOLISTENER_UDPV4_OK=547:dhcpv6-server
+#
+# Ports that get opened in the firewall on Fedora systems
+# (seen on servers with NetworkManager enabled and iptables used instead of firewalld, plus
+# on servers with NetworkManager disabled and Firewalld running); basically I cannot
+# figure out what opens these ports in the firewall to stop them doing so)
+# these entries downgrade the alert to a warning and add a comment to the warning
+# identifying them as probably networkmanager or firewalld generated rather than
+# ports configurable by a system admin.
+TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
+TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:69:
 #
 #
 # ===============================================================
@@ -112,9 +165,43 @@ NETWORK_UDPV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
 # Fedora systems. These are additional users that are permitted
 # to be owners of what are considered 'system' files.
 # ---------------------------------------------------------------
-ADD_SYSTEM_FILE_OWNER=tss
+ADD_SYSTEM_FILE_OWNER=setroubleshoot
+ADD_SYSTEM_FILE_OWNER=chrony
+ADD_SYSTEM_FILE_OWNER=pcpqa
+ADD_SYSTEM_FILE_OWNER=pcp
+ADD_SYSTEM_FILE_OWNER=sssd
+ADD_SYSTEM_FILE_OWNER=pesign
 ADD_SYSTEM_FILE_OWNER=unbound
 ADD_SYSTEM_FILE_OWNER=setroubleshoot
+#
+# These are examples for optional products you may install
+#ADD_SYSTEM_FILE_OWNER=apache
+#ADD_SYSTEM_FILE_OWNER=mysql
+#ADD_SYSTEM_FILE_OWNER=puppet
+#ADD_SYSTEM_FILE_OWNER=bacula
+#ADD_SYSTEM_FILE_OWNER=clamupdate
+#ADD_SYSTEM_FILE_OWNER=pcp
+#ADD_SYSTEM_FILE_OWNER=jetty
+#ADD_SYSTEM_FILE_OWNER=logcheck
+#ADD_SYSTEM_FILE_OWNER=snort
+#
+# Uncomment as needed for openstack hosts
+#   compute nodes
+#ADD_SYSTEM_FILE_OWNER=openvswitch
+#ADD_SYSTEM_FILE_OWNER=ceilometer
+#ADD_SYSTEM_FILE_OWNER=nova
+#ADD_SYSTEM_FILE_OWNER=neutron
+#   additional for control/network nodes
+#ADD_SYSTEM_FILE_OWNER=keystone
+#ADD_SYSTEM_FILE_OWNER=redis
+#ADD_SYSTEM_FILE_OWNER=swift
+#ADD_SYSTEM_FILE_OWNER=aodh
+#ADD_SYSTEM_FILE_OWNER=heat
+#ADD_SYSTEM_FILE_OWNER=cinder
+#ADD_SYSTEM_FILE_OWNER=rabbitmq
+#ADD_SYSTEM_FILE_OWNER=gnocchi
+#ADD_SYSTEM_FILE_OWNER=glance
+#ADD_SYSTEM_FILE_OWNER=magnum
 #
 # ---------------------------------------------------------------
 # Overrides affecting home directory checks
@@ -187,6 +274,23 @@ ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
 ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
 ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
 #
+# The below are examples of suppressing warning alerts for users
+# that have home directories defined that simply do not exist, for
+# example the cockpit* users have /nonexisting
+# these are required for Fedora32
+HOMEDIR_MISSING_OK=cockpit-ws:
+HOMEDIR_MISSING_OK=cockpit-wsinstance:
+HOMEDIR_MISSING_OK=tss:
+HOMEDIR_MISSING_OK=rpc:
+HOMEDIR_MISSING_OK=pulse:
+HOMEDIR_MISSING_OK=saslauth:
+HOMEDIR_MISSING_OK=pipewire:
+HOMEDIR_MISSING_OK=gnome-initial-setup:
+HOMEDIR_MISSING_OK=clevis:
+HOMEDIR_MISSING_OK=sphinx:
+HOMEDIR_MISSING_OK=vboxadd:
+# You can add additional here
+#
 # ---------------------------------------------------------------
 # Overrides for individual files that are expected to be
 # secured more loosely that default checks allow.
@@ -202,11 +306,6 @@ FORCE_PERM_OK=/etc/dumpdates:-rw-rw-r--
 FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
 FORCE_PERM_OK=/var/log/lastlog:-rw-rw-r--
 FORCE_PERM_OK=/var/log/btmp:-rw-rw----
-#
-# below two required by fedora systemd-update-done.service
-# (see "man systemd-update-done.service -s8")
-FORCE_PERM_OK=/var/.updated
-FORCE_PERM_OK=/etc/.updated
 #
 # Allow a file of this name to be forced OK under any directory if
 # it fails initial default checks.
@@ -271,8 +370,13 @@ SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
 # Special alert suppression parameters
 # ===============================================================
 # Do not raise a warning to remind manual log retention checks
-# are needed.
+# are needed. Default NO
 NOWARN_ON_MANUALLOGCHECK=YES
 # Do not raise a warning when a customisation file is used for a
-# server.
+# server. Default NO
 NOWARN_ON_CUSTOMFILE=YES
+# The number of days old the data capture file for this server can
+# be before the main report index shows a highlighted error that
+# the server report is out of date. Default 14
+REFRESH_INTERVAL_EXPECTED=14
+

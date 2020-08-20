@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.10 of the processing script<br />
-Version 0.10 of the data collection script<br />
-Last updated 23 Jun 2020
+Version 0.12 of the processing script<br />
+Version 0.12 of the data collection script<br />
+Last updated 16 August 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -58,8 +58,7 @@ Last updated 23 Jun 2020
 		</ul>
 		<li><a href="#sect6">Appendix B - Customisation File settings available</a></li>
 		<li><a href="#sect7">Appendix C - Quick Start Guide</a> (if you don't read manuals)</li>
-                <li><a href="#sect8">Appendix D - Major changes between versions you need to know</a></li>
-		<li><a href="#sect9">Appendix E - Known Issues with this toolkit</a></li>
+		<li><a href="#sect8">Appendix D - Known Issues with this toolkit</a></li>
 </ol>
 </p>
 
@@ -1066,6 +1065,38 @@ server.<br />
 Example<br />
 UDP_OUTBOUND_SUPPRESS=:123:local network ntp servers
 </td></tr>
+<tr><td>TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:port:<br />
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:port:</td></td>
+NetworkManager or Firewalls opens firewall ports for services that have not necessarily
+been manually configured by the site administrator. This parameter will
+allow downgrading of an alert to a warning if the following conditions
+are met; the port is not configured as an expected allowed port,
+nothing is listening on the port <b>and NetworkManager or Firewalld are running</b>
+on the server. This requirement is needed as I have servers not running firewalld where
+NetworkManager may (all I can think of) add ports to iptables that are not defined in any
+manually configured iptables rulesets, and on servers not running NetworkManager but using
+Firewalld where ports are opened in the firewall that are not defined to firewalld by the system administrator
+(they do not show in firewall-cmd queries on services or ports).<br />
+<b>Before using this parameter on firewalld systems ensure you have
+checked all services and ports defined to firewalld and remove them from there
+if possible rather than downgrading the alert.
+</td></tr>
+<tr><td>NETWORK_PORT_NOLISTENER_TCPV4_OK=port:optional description<br />
+NETWORK_PORT_NOLISTENER_TCPV6_OK=port:optional description<br />
+NETWORK_PORT_NOLISTENER_UDPV4_OK=port:optional description<br />
+NETWORK_PORT_NOLISTENER_UDPV6_OK=port:optional description<br />
+NETWORK_PORT_NOLISTENER_RAWV4_OK=port:optional description<br />
+NETWORK_PORT_NOLISTENER_RAWV6_OK=port:optional description<br />
+</td></td>
+This parameter is used to downgrade alerts to warnings for ports that are
+expected to be listening and have firewall ports open for them but
+at the time the data was collected had no application listening on the port.
+This is useful for ports such as the X11 ssh forwarding port that is only
+active when a user has a ssh session to the host, and for vnc consoles for
+VMs where the VMs are not always running on the default host.<br />
+It is still raised as a warning, as ifd the port is open in the firewall
+any rouge user application can use the port which is undesirable.
+</td></tr>
 <tr><td>ALLOW_OWNER_ROOT=<em>directoryname</em></td><td>
 Allows a directory that is expected to be owned by a user other than root to
 be accepted as OK for reporting if the directory is owned by the root user.
@@ -1225,11 +1256,30 @@ performed manually. Warnings would normally be raised in the report for these
 but using this configuration file option will suppress those alerts in the report.
 </td></tr>
 <tr><td>NOWARN_ON_CUSTOMFILE=YES</td><td>
-By default is using a custom file to override the defaults a warning is issued.
+By default is that if using a custom file to override the defaults a warning is issued.
 This custom file setting suppresses that waring.<br />
 As custom files are now the norm and a link from the main page of each
 servers results has a link to the custom file anyway this is depeciated
 and will probably be removed in the next release.
+</td></tr>
+<tr><td>REFRESH_INTERVAL_EXPECTED=days</td><td>
+By default the main index page displays a highlighted (alert colour) for the
+snapshot date field if the collected data for the snapshot is over 14 days old.
+This parameter allows you to override that default with a different number
+of days. For example if you have VMs that are only started as needed, or remote laptops
+that only connect to the local network occasionally you may want to increase the number
+of days before a data collection snapshot is considered obsolete.
+</td></tr>
+<tr><td>HOMEDIR_MISSING_OK=userid:</td><td>
+On Fedora and CentOS (and presumably Redhat) operating systems a lot of users are
+created with non-existant home directories; for example cockpit-ws and cockpit-wsinstance
+user have a home directory of '/nonexisting', tss has a home directory of '/dev/null',
+and there are many other examples. Each user that has a home directory that does not
+exist generates an increment to the warning count by default.<br />
+Using this parameter will suppress the warning count being incremented
+This suppressdion is done on a per user basis so new users/packages added can be 
+easily identified. The entry will still be listed in the report but in a non-warning
+colour and no warning counter incremented.
 </td></tr>
 </table>
 
@@ -1299,127 +1349,8 @@ Results are accessable from results/index.html under the application directory.
 
 <hr>
 <a name="sect8"></a>
-<center><a href="#sect7">[Previous Section]</a> <a href="#sect0">[Index]</a></center>
-<h1>8. Appendix D - Major changes between versions you need to know</h1>
-<p>
-This section does not list all changes, bug-fixes and enhancements.
-This section is specifically for changes that will impact the way you
-use this toolkit and the results that will be produced.
-</p>
-
-<ul>
-<li><b>Major changes between version 0.09 and 0.10</b>
-   <ul>
-   <li>Machines running F23/CentOS8/RHEL8 and above now use netfilter as a backend
-       to firewalld instead of iptables, so BETA implementation of firewall checks
-       for netfilter rules now reported on in the firewall check appendix if appropriate</li>
-   </ul>
-</li>
-</ul>
-
-<ul>
-<li><b>Major changes between version 0.08 and 0.09</b>
-   <ul>
-   <li>collector script defaults for --backup-etc= and --record-packages= has changed from yes to no<br />
-       if you are using the files produced by those adjust any scripts you use that run the collector</li>
-   <li>new server customfile parameter "SUID_SUPPRESS_DOCKER_OVERLAYS=yes". Refer to the documentation above</li>
-   </ul>
-</li>
-</ul>
-
-<ul>
-<li><b>Major changes between version 0.07 and 0.08</b>
-   <ul>
-   <li>obsolete custom file parameters TCP_PORT_ALLOW and UDP_PORT_ALLOW are no longer supported</li>
-   <li>custom file parameters FORCE_PERM_OK and FORCE_USER_OK have changed syntax, old syntax is no longer supported</li>
-   <li>any firewall rules on the server are checked if present to identify obsolete rules</li>
-   <li>facility to process all <em>updated</em> servers (fills the gap between processing one or all servers)</li>
-   <li>main index/status page. In prior releases during a full processing run there was nothing there until all
-       servers were processed giving users that bookmarked it an error, now an index exists that gets servers added
-       as they are processed. For single server processing rather than leave a stale index link during processing
-       the index page is updated to show that server is being processed</li>
-   <li>new optional facility in the capture script to collect information on files under paths that are required to
-       be read-only; if used the processing script will automatically process them in a new report page.
-       This is primarily for use on my webserver but may be useful to others</li>
-   </ul>
-</li>
-</ul>
-
-<ul>
-<li><b>Major changes between version 0.06 and 0.07</b>
-   <ul>
-   <li>new parameters added for 'raw' network ports, and improved data collection for network
-    port usage to allow for those</li>
-   <li>internal parameter name changes used by the scripts, <em>this will require data collection
-   to be rerun on all servers</em> as the old collector files cannot be sucessfully processed
-   by the new version of the processing  script (affects only the network processing section
-   which will generate many false alerts if an old format data collection file is used)</li>
-   <li>requirement of fuser installed on server has been removed</li>
-   </ul>
-</li>
-</ul>
-
-<ul>
-<li><b>Major changes between version 0.05 and 0.06</b>
-   <ul>
-   <li>existence of cron.allow or cron.deny is now checked for so you
-       can expect to see a new alert as most users do not use those</li>
-   <li>a new report page is available when files are suppressed from the report totals
-      (specifically if group write is allowed under /var)
-      as an additional link on the filesystem check page to a page where users can see exactly what files
-      were suppressed</li>
-   <li>the 'fuser' command is now expected to be available on all servers for which data
-       is collected to provide additional information on what processes are using
-       network ports and network socket files. Populates new table entries plus is
-       used in new custom file parameters</li>
-   <li>custom file parameter changes and additonal parameters added for open network ports,
-       all custom files using the old parameter format will still work (until version 0.08)
-       but an alert will be raised for servers using the obsolete parameters in the server 
-       totals and a list of servers using obsolete parameters will be shown on the main
-       index page</li>
-   </ul>
-</li>
-</ul>
-
-<ul>
-<li><b>Major changes between version 0.04 and 0.05</b>
-    <ul>
-    <li>sloppy var checking default has changed from OK to WARN so you can expect 
-        a lot more filenames to show up in the filesystem checks report</li>
-    <li>the syntax of passing parameters to the processing and collection scripts
-        has changed. If you have automated any of the processing you will need to
-        update your scripts</li>
-    <li>the directory name of the files shipped has changed from config_repository
-        to config-repository as I was ignoring the requirement not to include _ in
-        any directory name containing application files; <b><em>the processing script
-        will not run if you use the old name with the underscore</em></b> and to
-        avoid hundreds of errors the script checks the path it is in before doing any
-        real work</li>
-    <li><b>it is now possible to re-process a single servers results</b> rather than having
-        to re-process all servers to see changes for one. It is important to note
-        that in some cases this requires user interaction to prompts from the 
-        processing script so you cannot automate that (refer to the processing
-        the data section for details)</li>
-    </ul>
-</li>
-</ul>
-
-<ul>
-<li><b>Major changes between version 0.03 and 0.04</b>
-    <ul>
-    <li>a new parameter to force OK files such as the dynamically generated
-        pci remove/rescan files created by Fedora/CentOS/RHEL systems now</li>
-    <li>a new parameter to permit files under /var that are group writeable
-        to be accepted as OK as long as the group matched the user</li>
-    </ul>
-</li>
-</ul>
-
-
-<hr>
-<a name="sect9"></a>
 <center><a href="#sect8">[Previous Section]</a> <a href="#sect0">[Index]</a></center>
-<h1>9. Appendix E - Known Issues with this toolkit</h1>
+<h1>8. Appendix D - Known Issues with this toolkit</h1>
 <p>
 A customisation file per server is really required if you have multiple OS's.
 For example some releases of Fedora moved bin and sbin under /, leaving symbolic links for /usr/bin and /usr/sbin
@@ -1445,11 +1376,11 @@ docker containers I keep the userid numbers well away from 'real' users on the h
 'bad ownership' alerts logged for user numbers as those numbers do not exist as valid users on the docker host.<br />
 A customisation file entry exists to suppress the suid file alerts, it will however still generate a list of all
 suid files that were suppressed from alerting so you can manually review them.<br />
-At this time I have no intent to provide parameters to code paremeters to allow user numbers that do not match
-existing host users to be accepted as OK, simply because while I consider it best practise to ensure all
-userids in containers use user numbers that do not exist on the container host (or some random user with a
-matching uid on the host to one used in a container could kill processes belonging to the container) I am
-probably the only one enforcing such a rule in my environment.
+</p>
+<p>
+An issue with ubuntu 20.04 not the toolkit, suid checks for Unbuntu 20.04 will always generate lots of alerts 
+as it creates lots of suid files under /snap/core/nnnn and /snap/core18/nnnn where nnnn is a random
+number that changes on every server reboot so impossible to create 'expected suid file' rules for.
 </p>
 <p>
 <b><em>None of these are issues with the toolkit itself but the effect of different *nix implementations</em></b>,
@@ -1459,38 +1390,7 @@ I chose not to code for all possible OS's but only the ones I use.
 <b>Below are the know real issues with this toolkit</b>
 </p>
 <ul>
-<li>the crontab check section does its best to identify the files run from the crontabs
-but does not handle multiple commands (ie: 55 10 * * 0 cd /home/user/dir;./runcommand
-will perform a permissions check on the cd command as that is considered the command)
-so is only usefull if crontab entries run explicit script files 
-(ie: 55 10 * * 0 cd /home/user/dir/runcommand) that can be checked. But it is still
-able to check many entries so better than nothing, plus all entries that could not
-be correctly checked are reported on. It also expects the command to be run to be owned
-by the crontasb owner so an alert will be raised by a cron command such as "/bin/php parameters"
-as the crontab owner does not own /bin/php.
-Implement site standards that require scripts to be used,
-a full script path and no command concatenation and this will stop the alerts.<br />
-<em>I do not consider this a bug</em>, implement site standards for cron jobs</li>
-<li><b>Nowhere in the directory path of the processing script can there be an underscore</b> ( _ )
-character used, the underscore character is used by the script for parsing and having it
-in the directory path will cause problems. Not really an issue, just do not do it</li>
-<li>
-If the processing script is broken out of (with ctrl-c or a kill command) while the
---clearlock can be used to allow reruns it does not alter the status of the 
-server in the index from 'being processed' state, and obviously the server that
-was being processed will have incomplete results. The only solution is to re-process the
-server which had its processing interrupted. <em>I do not consider this an issue as if 
-you deliberately interrupt processing, expect it to be interrupted</em> and 
-after using --clearlock to re-enable processing restart the
-processing to correct the issue.
-</li>
-<li>On Ubuntu servers the /etc/shadow file is normally secured to root:shadow and -rw-r-----
-however this toolkit is designed for RHEL/CentOS/Fedora based systems and requires the
-/etc/shadow file to be either -r-------- or ---------- and owned by root:root and
-has no shadow group. As I only have two Debian based servers, a standard kali OS and a single
-Ubuntu server I don't intend
-to adjust the scripts to handle Debian based OS's like Unbuntu at this time</li>
-<li>and end of known issues</li>
+<li>Refer to the known issues in the README.md file; that is being kept up to date</li>
 </ul>
 <hr>
 <center><a href="#sect0">[Index]</a></center>

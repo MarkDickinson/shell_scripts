@@ -101,13 +101,26 @@
 #              the not found error was written to the output (cosmetic change)
 # 2020/07/06 - Altered version from 0.10 to 0.11 to match the processing
 #              script version change.
+# 2020/08/18 - Updates for version 0.12
+#              Record if NetworkManager is running on the server. Only
+#              if it is will the processing of networkmanager_downgrade
+#              firewall ports be permitted.
+#              Collect wtmp information using 'last -i', tagged LAST_LOG,
+#              need the -i option to capture ipaddr info I will use
+#              in later planned enhancements in addition to the checks
+#              to be done on checking user logins
+#              Use 'ip a' to collect network interface info, I need this 
+#              in later planned enhancements
+#              Find orphaned (no user in /etc/passwd matching uid number)
+#              directories and files, I need this in later planned
+#              processing.
 #
 # ======================================================================
-# Added the below PATH as when run bu cron no files under /usr/sbin were
+# Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.11"    # used to sync between capture and processing, so be correct
+EXTRACT_VERSION="0.12"    # used to sync between capture and processing, so be correct
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -221,7 +234,7 @@ myrunner=`whoami`
 if [ "${myrunner}." != "root." ];
 then
    echo "This script can only be run by the root user !."
-   echo "Much of the information being colected is not available to anyone but the root user."
+   echo "Much of the information being collected is not available to anyone but the root user."
    exit 1
 fi
 
@@ -256,6 +269,17 @@ then
 fi
 
 # ======================================================================
+# Some lists we need in multiple places
+# ======================================================================
+# System directories to search for
+#   * badly secured system files
+#   * orphaned files
+SYSTEM_DIR_LIST="/bin /boot /dev /etc /lib /opt /sbin /sys /usr /var"
+# All filesystems to search fo
+#   * directories to search for orphaned files in
+ALL_DIR_LIST="${SYSTEM_DIR_LIST} /home"
+
+# ======================================================================
 #                           Helper tools
 # ======================================================================
 # ----------------------------------------------------------------------
@@ -281,6 +305,18 @@ record_file() {
       done
    fi
 } # record_file
+
+# ----------------------------------------------------------------------
+# When passed a data 'list' will write out each item in the list as
+# a seperate line, so the list can be easily used in while loops.
+# ----------------------------------------------------------------------
+extract_as_unique_lines() {
+   while [[ $# -gt 0 ]];
+   do
+      echo "$1"
+      shift
+   done
+} # end of extract_as_unique_lines
 
 # ----------------------------------------------------------------------
 # output ls -la of dir + NA as expected owner
@@ -327,7 +363,7 @@ find_dir_perm() {
       # dir_perms=`ls -la ${dirname} | grep " .\/" | awk {'print $1":"$3'}`
       # cmdlind gives dirs as ./ and ../, script as . and ..
       # however . is a wildcard in grep, so we can't filter on it
-      # Instead, have to ger dirname and basename parts and grep that way
+      # Instead, have to get dirname and basename parts and grep that way
       dirbit=`dirname ${dirname}`
       finddir=`basename ${dirname}`
       # have to do more matching to catch things like uucp and uucppublic causing two matches
@@ -657,17 +693,11 @@ record_file LOGIN_DEFS /etc/login.defs        # passwd maxage, minlen etc
    timestamp_action "collecting system file details"
 #fi
 WEBPATHEXCLUDE=""            # DEBUG- removed as it results in multiple entries per file for some reason
-#find_perms_under_system_dir PERM_SYSTEM_FILE /
-find_perms_under_system_dir PERM_SYSTEM_FILE /bin
-find_perms_under_system_dir PERM_SYSTEM_FILE /boot
-find_perms_under_system_dir PERM_SYSTEM_FILE /dev
-find_perms_under_system_dir PERM_SYSTEM_FILE /etc
-find_perms_under_system_dir PERM_SYSTEM_FILE /lib
-find_perms_under_system_dir PERM_SYSTEM_FILE /opt
-find_perms_under_system_dir PERM_SYSTEM_FILE /sbin
-find_perms_under_system_dir PERM_SYSTEM_FILE /sys
-find_perms_under_system_dir PERM_SYSTEM_FILE /usr
-find_perms_under_system_dir PERM_SYSTEM_FILE /var
+#find_perms_under_system_dir PERM_SYSTEM_FILE /    not all, be selective using the below
+extract_as_unique_lines ${SYSTEM_DIR_LIST} | while read extractdirname
+do
+   find_perms_under_system_dir PERM_SYSTEM_FILE "${extractdirname}"
+done
 #
 # If we excluded directories in the above prcessing as they were
 # defined as webpath directories we must capture them now.
@@ -695,9 +725,10 @@ do
 done
 
 # ======================================================================
-# Find all SUID fileser directories.
+# Find all SUID file directories.
 # From F20 (19?) -perm +6000 is not permitted to find both,
 # we have to seperately search on -4000 and -2000 now
+# Find from /, no limiting on mount points as we want all suid files
 # ======================================================================
 timestamp_action "collecting suid file details"
 find / -type f -perm -4000 -exec ls -la {} \; 2>/dev/null | while read dataline
@@ -714,8 +745,30 @@ done
 # ======================================================================
 find_file_perm PERM_SHADOW_FILE /etc/shadow "root"
 
-# N/A, I use postfix
+# N/A, I use postfix, users may use many different mail setups
 # find_file_perm PERM_SENDMAIL_FILE /etc/sendmail.cf
+
+# ======================================================================
+# Find any orphaned files and directories (where owning uid has no
+# matching user in /etc/passwd)
+# ======================================================================
+timestamp_action "searching for orphan directories and files"
+find_orphans() {
+   dirname="$1"
+   find ${dirname} -mount -nouser -type d 2>/dev/null | while read xx
+   do
+      dirperms=`ls -la ${xx} | head -2 | tail -1 | awk {'print $1" "$2" "$3" "$4" "$5" "$6" "$7" "$8'}`
+      echo "ORPHAN_DIR=${dirperms} ${xx}" >> ${LOGFILE}
+   done
+   find / -mount -nouser -type f -exec ls -la {} \; | while read xx
+   do
+      echo "ORPHAN_FILE=${xx}" >> ${LOGFILE}
+   done
+}
+extract_as_unique_lines ${ALL_DIR_LIST} | while read extractdirname
+do
+   find_orphans "${dirname}"
+done
 
 # ======================================================================
 # Are cron.allow and cron.deny being used ?
@@ -746,7 +799,9 @@ fi
 # Collect permissions of jobs run by cron
 # ======================================================================
 # User cron jobs
-find /var/spool/cron -type f 2>/dev/null | while read dataline
+# 0.12 added grep -v .SEQ to handle Ubuntu creating that file, a Ubuntu specific file
+#      that of course caused false alerts when processed
+find /var/spool/cron -type f 2>/dev/null | grep -v ".SEQ" | while read dataline
 do
    # record each crontab filename, we check those in processing also
    filenamedata=`basename ${dataline}`
@@ -795,7 +850,7 @@ done
 # ======================================================================
 # Collect basic network info to be checked
 # ======================================================================
-timestamp_action "collecting information on open network ports and sockets"
+timestamp_action "searching for user network files that may pose a risk"
 
 record_file HOSTS_ALLOW /etc/hosts.allow
 record_file HOSTS_DENY /etc/hosts.deny
@@ -822,6 +877,7 @@ do
 done
 
 # --- How about any file shares ? ---
+timestamp_action "checking for exported filesystems"
 if [ -f /etc/exports ];
 then
    find_file_perm PERM_ETC_EXPORTS "/etc/exports" "root"
@@ -834,6 +890,7 @@ then
 fi
 
 # --- what ports are being listened to ? ---
+timestamp_action "collecting information on open network ports and sockets"
 netstat -an -p | grep LISTEN | grep "^tcp "| grep -v "::" | while read dataline
 do
    echo "PORT_TCPV4_LISTENING=${dataline}" >> ${LOGFILE}
@@ -912,6 +969,23 @@ then
 # else no issue, netfilter is not on servers prior to F23/C8/RH8 by default
 fi
 
+# record if NetworkManager andf Firewalld are running on the server
+timestamp_action "testing for NetworkManager and Firewalld service status"
+testfornm=`systemctl status NetworkManager.service | grep 'Active: active (running)'`
+if [ "${testfornm}." != "." ];
+then
+   echo "NETWORKMANAGER=YES" >> ${LOGFILE}
+else
+   echo "NETWORKMANAGER=NO" >> ${LOGFILE}
+fi
+testfornm=`systemctl status firewalld.service | grep 'Active: active (running)'`
+if [ "${testfornm}." != "." ];
+then
+   echo "FIREWALLD=YES" >> ${LOGFILE}
+else
+   echo "FIREWALLD=NO" >> ${LOGFILE}
+fi
+
 # ======================================================================
 # motd should contain a auth/business notice.
 # as should the sshd config, check root login flag here also
@@ -948,6 +1022,24 @@ timestamp_action "recording running process list"
 ps -ef | while read dataline
 do
    echo "PROCESS_RUNNING=${dataline}" >> ${LOGFILE}
+done
+
+# ======================================================================
+# Collect the contents of the wtmp log using the 'last' command.
+# ======================================================================
+timestamp_action "recording last login information"
+last -i | while read dataline
+do
+   echo "LAST_LOG=${dataline}" >> ${LOGFILE}
+done
+
+# ======================================================================
+# Collect the interface information.
+# ======================================================================
+timestamp_action "recording interface information"
+ip a | while read dataline
+do
+   echo "INTERFACE_INFO_IPA=${dataline}" >> ${LOGFILE}
 done
 
 # ======================================================================
