@@ -1,43 +1,66 @@
-# Customisation file specifically for VOSPREY3
+# Customisation file specifically for server VOSPREY4
+# (A webserver example customisation file)
 #
-#
-# TCP Ports that are permitted to be listening on falcon
+# TCP Ports that are permitted to be listening on vosprey4
 # Notes: The ":" around the port number is to make exact
 #        matching agaist the port number easier for the
 #        processing script.
 TCP_PORTV4_ALLOWED=:22:ssh
 TCP_PORTV4_ALLOWED=:25:sendmail
+TCP_PORTV4_ALLOWED=:53:dnsmasq used by vibr0
 TCP_PORTV6_ALLOWED=:80:http server
 TCP_PORTV4_ALLOWED=:111:RPC portmap daemon (portmap)
 TCP_PORTV6_ALLOWED=:111:RPC portmap daemon (portmap)
 TCP_PORTV6_ALLOWED=:443:http server
 TCP_PORTV6_ALLOWED=:3270:Container mvs3.8j
 TCP_PORTV4_ALLOWED=:3306:MySQL server
+TCP_PORTV4_ALLOWED=:4330:pcp pmlogger
+TCP_PORTV6_ALLOWED=:4330:pcp pmlogger
+TCP_PORTV6_ALLOWED=:5043:external port for registry redirect
+TCP_PORTV4_ALLOWED=:5355:systemd-resolvd
+TCP_PORTV6_ALLOWED=:5355:systemd-resolvd
 TCP_PORTV4_ALLOWED=:5666:NRPE
 TCP_PORTV6_ALLOWED=:5666:NRPE
-TCP_PORTV6_ALLOWED=:6667:Container ircserver
-TCP_PORTV6_ALLOWED=:6668:Container ircserver
 TCP_PORTV6_ALLOWED=:8080:Jetty server
-TCP_PORTV4_ALLOWED=:9002:Marks job scheduler
-TCP_PORTV4_ALLOWED=:9003:Marks alert server
 TCP_PORTV6_ALLOWED=:9090:Cockpit
 TCP_PORTV4_ALLOWED=:9102:Bacula FD
-TCP_PORTV4_ALLOWED=:50000:Marks twit server
+TCP_PORTV4_ALLOWED=:44321:PCP server (pmcd)
+TCP_PORTV6_ALLOWED=:44321:PCP server (pmcd)
 #
 # UDP Ports that are permitted to be listening on falcon
 # Notes: The ":" around the port number is to make exact
 #        matching agaist the port number easier for the
 #        processing script.
+UDP_PORTV4_ALLOWED=:53:dnsmasq used by vibr0
+UDP_PORTV4_ALLOWED=:67:dnsmasq used by vibr0
 UDP_PORTV4_ALLOWED=:111:RPC portmap daemon (portmap)
 UDP_PORTV6_ALLOWED=:111:RPC portmap daemon (portmap)
-UDP_PORTV4_ALLOWED=:123:NTP
-UDP_PORTV6_ALLOWED=:123:NTP
-# uses randpm ports, so match by exact process
-NETWORK_UDPV4_PROCESS_ALLOW=/sbin/rpcbind -w 
-NETWORK_UDPV6_PROCESS_ALLOW=/sbin/rpcbind -w 
+UDP_PORTV4_ALLOWED=:323:Chronyd
+UDP_PORTV6_ALLOWED=:323:Chronyd
+UDP_PORTV4_ALLOWED=:5355:systemd-resolvd
+UDP_PORTV6_ALLOWED=:5355:systemd-resolvd
+# uses randpm ports, so match by exact process, commented as not used on C8
+#NETWORK_UDPV4_PROCESS_ALLOW=/sbin/rpcbind -w  
+#NETWORK_UDPV6_PROCESS_ALLOW=/sbin/rpcbind -w 
 #
 # RAW ports expected to be listening on this server
 RAW_PORTV6_ALLOWED=:58:NetworkManager
+#
+# The following ports have firewall rules opening the
+# ports for outbound traffic. Nothing is expected to be
+# listening on these ports on the local server so explicitly
+# define them as outbound rules here so they do not alert.
+TCP_OUTBOUND_SUPPRESS=:123:Contact local network ntp servers
+TCP_OUTBOUND_SUPPRESS=:8140:Puppet agent outbound to puppet server
+UDP_OUTBOUND_SUPPRESS=:123:Contact local network ntp servers
+TCP_OUTBOUND_SUPPRESS=:5000:Outbound to contact local docker registry
+TCP_OUTBOUND_SUPPRESS=:9103:Contact bacula sd
+#
+# For firewall ports opened by networkManager we have no control over
+# downgrade from alerts to warnings if nothing is using the ports
+TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
+TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
 #
 # Directory ownership overrides as required
 ALLOW_OWNER_ROOT=bin
@@ -57,9 +80,7 @@ ALLOW_OWNER_ROOT=sshd
 ALLOW_OWNER_ROOT=dev
 ALLOW_OWNER_ROOT=fs
 ALLOW_OWNER_ROOT=gdm
-ALLOW_OWNER_ROOT=dovecot
 ALLOW_OWNER_ROOT=pvm3
-ALLOW_OWNER_ROOT=games
 ALLOW_OWNER_ROOT=operator
 ALLOW_OWNER_ROOT=ntp
 ALLOW_OWNER_ROOT=smolt
@@ -71,6 +92,12 @@ ALLOW_OWNER_ROOT=dockerroot
 ALLOW_OWNER_ROOT=httpd
 ALLOW_OWNER_ROOT=operator
 ALLOW_OWNER_ROOT=adm
+ALLOW_OWNER_ROOT=dnsmasq
+ALLOW_OWNER_ROOT=unbound
+ALLOW_OWNER_ROOT=ftp
+ALLOW_OWNER_ROOT=insights
+ALLOW_OWNER_ROOT=Pegasus
+ALLOW_OWNER_ROOT=grafana
 # multiple users have /root as a home dir (operator/shutdown/halt etc)
 ALLOW_OWNER_ROOT=root
 #
@@ -115,6 +142,16 @@ ALLOW_DIRPERM_SYSTEM=rtkit
 ALLOW_DIRPERM_SYSTEM=abrt
 ALLOW_DIRPERM_SYSTEM=clamupdate
 ALLOW_DIRPERM_SYSTEM=pcp
+ALLOW_DIRPERM_SYSTEM=chrony
+ALLOW_DIRPERM_SYSTEM=dnsmasq
+ALLOW_DIRPERM_SYSTEM=unbound
+ALLOW_DIRPERM_SYSTEM=rpc
+ALLOW_DIRPERM_SYSTEM=ftp
+# C8 specific
+ALLOW_DIRPERM_SYSTEM=testsuite
+ALLOW_DIRPERM_SYSTEM=insights
+ALLOW_DIRPERM_SYSTEM=rpcbind
+ALLOW_DIRPERM_SYSTEM=grafana
 #
 # Permission overrides for specific directories
 # Use with caution as they will catch-all any directory with this name.
@@ -124,15 +161,31 @@ ALLOW_DIRPERM_EXPLICIT=gdm drwxrwx--T
 ALLOW_DIRPERM_EXPLICIT=sshd drwx--x--x
 ALLOW_DIRPERM_EXPLICIT=dockerroot drwx--x--x
 ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T
-ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
+ALLOW_DIRPERM_EXPLICIT=bacula drwxrwx---
+ALLOW_DIRPERM_EXPLICIT=nagios drwxr-x---
+ALLOW_DIRPERM_EXPLICIT=Pegasus drwxr-x---
+# These two are a real bugger, instead of RHEL based systems correcting home directories
+# for users when they moved the bin and sbin locations they instead left the user (passwd)
+# entries pointing at the old location and created symbolic links at the old location.
+# Obviously rwxrwxrwx will alert as insecure but that is the only permission a symbolic
+# link is permitted to have. As like 99% of users I don't intend to 'vi' the passwd 
+# file to correct the entries, so override.
 ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
 ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
 #
+# These are permissions I do not want to alert, the alert is suppressed
+# only if the file permissions match exactly what is coded after the :
 FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
+FORCE_PERM_OK=/var/log/lastlog:-rw-rw-r--
+FORCE_PERM_OK=/var/log/btmp:-rw-rw----
 FORCE_PERM_OK=/opt/jetty/jetty.state:-rw-rw-r--
 FORCE_PERM_OK=/opt/dickinson/alert_management/run/monitor_var_log_parent.pid:-rw-rw-r--
 FORCE_PERM_OK=/opt/dickinson/alert_management/logs/evt_buffer.dat:-rw-rw-r--
+FORCE_PERM_OK=/opt/puppetlabs/puppet/cache/state/transactionstore.yaml:-rw-rw----
+FORCE_PERM_OK=/opt/puppetlabs/puppet/cache/state/state.yaml:-rw-rw----
 #
+# These files will have 'bad owner' alerts suppressed if the file
+# is owned by the userid after the :
 FORCE_OWNER_OK=/etc/tcsd.conf:tss
 FORCE_OWNER_OK=/var/www/usage/msfree.png:webalizer
 FORCE_OWNER_OK=/var/www/usage/webalizer.png:webalizer
@@ -141,8 +194,21 @@ FORCE_OWNER_OK=/var/lib/pgsql/.bash_profile:postgres
 FORCE_OWNER_OK=/var/lib/nfs/state:rpcuser
 FORCE_OWNER_OK=/opt/jetty/jetty.state:jetty
 #
+# Dynamicly created files well under the device directory
+# with random paths, so have to match on any file with these names
+# if the permissions match what is used here.
 FORCE_ANYFILE_OK=rescan --w--w----
 FORCE_ANYFILE_OK=remove --w--w----
+#
+# Some system users have home directories that do not
+# physically exist. If that is expected those warnings 
+# can be suppressed on an individual user bases.
+HOMEDIR_MISSING_OK=cockpit-wsinstance:
+HOMEDIR_MISSING_OK=tss:
+HOMEDIR_MISSING_OK=gluster:
+HOMEDIR_MISSING_OK=saslauth:
+HOMEDIR_MISSING_OK=clevis:
+HOMEDIR_MISSING_OK=rngd:
 #
 # Turn off warnings for manual review needed of things
 NOWARN_ON_MANUALLOGCHECK=YES
@@ -158,7 +224,6 @@ ALLOW_VAR_FILE_GROUPWRITE=YES
 #
 # Allow a whole lot of files to have the suid bit set
 SUID_ALLOW=/usr/sbin/sendmail.sendmail
-SUID_ALLOW=/usr/sbin/userhelper
 SUID_ALLOW=/usr/bin/lockfile
 SUID_ALLOW=/usr/bin/sudo
 SUID_ALLOW=/usr/bin/crontab
@@ -166,12 +231,10 @@ SUID_ALLOW=/usr/bin/gpasswd
 SUID_ALLOW=/usr/bin/at
 SUID_ALLOW=/usr/bin/locate
 SUID_ALLOW=/usr/bin/newgrp
-SUID_ALLOW=/usr/bin/ssh-agent
 SUID_ALLOW=/usr/bin/screen
 SUID_ALLOW=/usr/bin/chsh
 SUID_ALLOW=/usr/bin/chage
 SUID_ALLOW=/usr/bin/chfn
-SUID_ALLOW=/usr/bin/wall
 SUID_ALLOW=/usr/bin/write
 SUID_ALLOW=/usr/bin/passwd
 SUID_ALLOW=/usr/libexec/openssh/ssh-keysign
@@ -181,45 +244,62 @@ SUID_ALLOW=/usr/bin/su
 SUID_ALLOW=/usr/bin/umount
 SUID_ALLOW=/usr/sbin/mount.nfs
 SUID_ALLOW=/usr/sbin/pam_timestamp_check
-SUID_ALLOW=/usr/sbin/netreport
 SUID_ALLOW=/usr/sbin/unix_chkpwd
 SUID_ALLOW=/usr/bin/pkexec
 SUID_ALLOW=/usr/bin/staprun
 SUID_ALLOW=/usr/bin/fusermount
-SUID_ALLOW=/usr/sbin/usernetctl
 SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1
 SUID_ALLOW=/usr/libexec/cockpit-session
 SUID_ALLOW=/usr/libexec/abrt-action-install-debuginfo-to-abrt-cache
 SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper
 SUID_ALLOW=/usr/sbin/postqueue
 SUID_ALLOW=/usr/sbin/postdrop
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_icmp
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_dhcp
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_ide_smart
 SUID_ALLOW=/usr/libexec/qemu-bridge-helper
+# For C8
+SUID_ALLOW=/usr/libexec/sssd/proxy_child
+SUID_ALLOW=/usr/libexec/sssd/ldap_child
+SUID_ALLOW=/usr/libexec/sssd/krb5_child
+SUID_ALLOW=/usr/libexec/sssd/selinux_child
+SUID_ALLOW=/usr/sbin/grub2-set-bootflag
+SUID_ALLOW=/usr/sbin/userhelper
+#
+# Suppress alerts for all docker SUID files under the /var/lib/docker/overlay2 path
+# A seperate list of the files suppressed will be created in the report.
+SUID_SUPPRESS_DOCKER_OVERLAYS=yes
 #
 # Additional users that may own files classed as SYSTEM ownership
+ADD_SYSTEM_FILE_OWNER=apache
+ADD_SYSTEM_FILE_OWNER=mysql
 ADD_SYSTEM_FILE_OWNER=jetty
 ADD_SYSTEM_FILE_OWNER=smmsp
-ADD_SYSTEM_FILE_OWNER=logcheck
-ADD_SYSTEM_FILE_OWNER=mark
+ADD_SYSTEM_FILE_OWNER=snort
+ADD_SYSTEM_FILE_OWNER=abrt
+ADD_SYSTEM_FILE_OWNER=chrony
+ADD_SYSTEM_FILE_OWNER=snort
+ADD_SYSTEM_FILE_OWNER=abrt
+# below added for C8
+ADD_SYSTEM_FILE_OWNER=pcpqa
+ADD_SYSTEM_FILE_OWNER=pcp
+ADD_SYSTEM_FILE_OWNER=sssd
+ADD_SYSTEM_FILE_OWNER=pesign
+ADD_SYSTEM_FILE_OWNER=unbound
+ADD_SYSTEM_FILE_OWNER=setroubleshoot
 #
+# ====================================================
 # Added for webserver specific checks
+# The below rules will only be used if the capture/collect
+# was done with a webpath list.
+# ====================================================
 ADD_WEBSERVER_FILE_OWNER=apache
 #
 # The below must be all terminated with a : so we can do exact matches when processing
 WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/html/news/hercnews.log:
 WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/html/news/localtwitter.log:
-# PAC and local blog
 WEBSERVER_FILE_ALLOW_WRITE_SUFFIX=.log:
 WEBSERVER_FILE_ALLOW_WRITE_SUFFIX=.dat:
-WEBSERVER_FILE_ALLOW_WRITE_SUFFIX=.post:
-WEBSERVER_FILE_ALLOW_WRITE_SUFFIX=.users:
 WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/cgi-bin/public/blog_code/etc/blog_list.sorted_by_date:
 WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/cgi-bin/public/blog_code/etc/blog_list.sorted_by_desc:
 WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/cgi-bin/public/blog_code/etc/blog_list:
-WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/cgi-bin/system/PAC/etc/security/passwd:
-WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/cgi-bin/system/PAC/external_emails/list.txt:
-# Below must be owned by root
+# Below must be owned by root on my system, not readable by apache unless there
+# is news to be displayed.
 WEBSERVER_FILE_ALLOW_WRITE_EXACT=/var/www/html/news/site_outages.txt:
