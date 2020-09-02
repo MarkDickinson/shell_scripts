@@ -114,13 +114,20 @@
 #              Find orphaned (no user in /etc/passwd matching uid number)
 #              directories and files, I need this in later planned
 #              processing.
+# 2020/09/xx - Updates for version 0.13
+#              Collect info on at.allow and at.deny files.
+#              Collect minlen setting from pwquality.conf if uncommented
+#              in that file; as it overrides the value in login.defs on
+#              PAM systems so we need to collect it if present
+#              Use lastlog to collect last logged on info to avoid
+#              having to parse the fill last output
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.12"    # used to sync between capture and processing, so be correct
+EXTRACT_VERSION="0.13"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -278,6 +285,12 @@ SYSTEM_DIR_LIST="/bin /boot /dev /etc /lib /opt /sbin /sys /usr /var"
 # All filesystems to search fo
 #   * directories to search for orphaned files in
 ALL_DIR_LIST="${SYSTEM_DIR_LIST} /home"
+
+# A list of filenames for special handling within cron job file checks
+CRON_CMD_IGNORE_LIST="/usr/bin/echo /bin/echo /usr/bin/espeak"                       # commands to ignore as non-disruptive
+CRON_CMD_SHELL_LIST="/usr/bin/php /usr/bin/bash /usr/bin/csh /usr/bin/sh /bin/sh sh" # commands we want the second field as...
+                                                                                     #    ...the command being executed
+CRON_CMD_FATAL_LIST="/usr/bin/cd /usr/bin/find /usr/bin/ls"                          # commands that will invalidate all checks
 
 # ======================================================================
 #                           Helper tools
@@ -647,6 +660,43 @@ identify_network_listening_processes() {
    /bin/rm identify_network_listening_processes.wrk
 } # end of identify_network_listening_processes
 
+# -------------------------------------------------------------------------------
+# PAM is used on many systems to override the values in /etc/login.defs,
+# however we do not check if PAM modules are loaded so even if the PAM configuration
+# files exist we use the lowest entry in either to report/alert on.
+#
+# This routine returns the lowest value found in PAM configuration settings
+# or an empty string "" if there are no uncommented minlen settings.
+# -------------------------------------------------------------------------------
+get_PAM_pwminlen() {
+   # Check the default PAM pwquality file
+   # If a default is set (uncommented) in the default config file
+   # obtain that value.
+   pamentry=`cat /etc/security/pwquality.conf | grep -v "^#" | grep "minlen"`
+   if [ "${pamentry}." != "." ];
+   then
+      pamminlen=`echo "${pamentry}" | awk -F\= {'print $2'} | awk {'print $1'}`
+      echo "${pamminlen}" > ${WORKDIR}/pamwork.tmp
+   fi
+   # Then check for any override custom files
+   pamcustomcount=`ls /etc/security/pwquality.conf.d/*.conf 2>/dev/null | wc -l`
+   if [ ${pamcustomcount} -gt 0 ];
+   then
+      # -h suppresses each filename: being listed in the output
+      grep -h "minlen" /etc/security/pwquality.conf.d/*.conf | grep -v "^#" | awk -F\= {'print $2'} | awk {'print $1'} | while read pamminlen
+      do
+         echo "${pamminlen}" > ${WORKDIR}/pamwork.tmp
+      done
+   fi
+   # If any values recorded get the minimum
+   if [ -f ${WORKDIR}/pamwork.tmp ];
+   then
+      pamminlen=`cat ${WORKDIR}/pamwork.tmp | sort -nr | tail -1`
+   else
+      pamminlen=""
+   fi
+} # end of get_PAM_pwminlen
+
 # MAINLINE STARTS
 # ======================================================================
 # Record the server details
@@ -674,6 +724,8 @@ record_file PASSWD_SHADOW_FILE /etc/shadow    # password and expiry details
 record_file ETC_GROUP_FILE /etc/group         # the user groups on the server
 record_file FTPUSERS_FILE /etc/ftpusers       # users that cannot use ftp
 record_file LOGIN_DEFS /etc/login.defs        # passwd maxage, minlen etc
+aa=`get_PAM_pwminlen`                         # see if minlen overridden by PAM settings
+echo "PAM_PWQUALITY_MINLEN=${aa}" >> ${LOGFILE}
 
 # ======================================================================
 # Collect General operating system files and optional system files.
@@ -779,7 +831,10 @@ then
    echo "CRON_DENY_EXISTS=YES" >> ${LOGFILE}
    cat /etc/cron.deny | while read dataline
    do
-      echo "CRON_DENY_DATA=${dataline}" >> ${LOGFILE}
+      if [ "${dataline}." != "." ];    # only record non-blank lines
+      then
+         echo "CRON_DENY_DATA=${dataline}" >> ${LOGFILE}
+      fi
    done
 else
    echo "CRON_DENY_EXISTS=NO" >> ${LOGFILE}
@@ -789,7 +844,10 @@ then
    echo "CRON_ALLOW_EXISTS=YES" >> ${LOGFILE}
    cat /etc/cron.allow | while read dataline
    do
-      echo "CRON_ALLOW_DATA=${dataline}" >> ${LOGFILE}
+      if [ "${dataline}." != "." ];    # only record non-blank lines
+      then
+         echo "CRON_ALLOW_DATA=${dataline}" >> ${LOGFILE}
+      fi
    done
 else
    echo "CRON_ALLOW_EXISTS=NO" >> ${LOGFILE}
@@ -801,6 +859,170 @@ fi
 # User cron jobs
 # 0.12 added grep -v .SEQ to handle Ubuntu creating that file, a Ubuntu specific file
 #      that of course caused false alerts when processed
+# 0.13 added the subroutines below as parsing helpers to parse the crontab line
+#      and rework code to use them.
+# --------------------------------------------------------------------------------------------------------------
+# Called by (a helper routine for) cron_parse_out_commands below
+# Skip over any options (begining with -) between a command and its values
+# NOTE: only handles concatatenated commands such as -svalue, not such as '-s value"
+#       as that would require detailed knowledge of every possible program option
+#       for every possible program, and handling for all
+# Input: expected to be a
+#     command [-options] file moredata
+#     command [-options] "more data"
+# Output: file moredata
+# --------------------------------------------------------------------------------------------------------------
+cron_parse_strip_options() {
+   shift           # shift over system command
+   xx="$1"
+   while [ "${xx:0:1}." == "-." ]
+   do
+      shift
+      xx="$1"
+   done
+   # check for "" around the command, strip off if present
+   xx="$*"
+   if [ "${xx:0:1}." == "\"." ];
+   then
+      xx="${xx:1:${#xx}}"
+      if [ "${xx:$((${#xx} - 1)):1}." == "\"." ];
+      then
+         xx = ${xx:0:$((${#xx} - 1))}
+      fi
+   fi
+   echo "${xx}"
+} # end cron_parse_strip_options
+
+# --------------------------------------------------------------------------------------------------------------
+#
+# Parse out commands from complex crontab lines to extract all commands
+# being run on the line so all can be checked for file permissions.
+# In cases where 'shells' are the command use the second parm as the
+# file to be permission checked.
+# In cases where all checks are invalidated, such as the 'cd' command
+# being used making it impossible to locate references to files in
+# later concatenated commands on the same line mark it fatal.
+#
+# Input: expected to be a valid crontab command line
+# Output: as many lines as needed for stacked commands of
+#    FATAL:command:any text                cannot be checked for permissions by mainline code as environment changed
+#    IGNORE:command:any text               commands that do nothing or cannot be checked
+#    NOTFOUND:command:any text             commands that could not be located on the server, so cannot be checked
+#    USABLE:command:any text               commands that can be checked by mainline code
+# Note: mainline code does all the work with the resulting output; this routine is for parsing commands out only
+#
+# --------------------------------------------------------------------------------------------------------------
+cron_parse_out_commands() {
+   # shift over the five time fields, MUST assume space delimiter and not tab
+   var1=`echo "$1" | cut -d " " -f 6-999`
+   # and the rest of the data is the commands to check
+   while [ ${#var1} -gt 0 ];
+   do 
+      wasandand="no"
+      var2=`echo "${var1}" | awk -F\; {'print $1'}`     # test for commands stacked with ;
+      var3=`echo "${var1}" | awk -F\& {'print $1'}`     # test for commands stacked with &&
+      var4=`echo "${var1}" | awk -F\| {'print $1'}`     # test for commands stacked with | pipe
+      len2=${#var2}
+      len3=${#var3}
+      len4=${#var4}
+      # workaround, & may not be &&, it may be 2>&1
+      if [ ${len3} -gt 2 ];
+      then
+         testvar=${var3:((${len3} - 2)):2}
+         if [ "${testvar}." == "2>." ];    # was 2>&n syntax, cannot use as end of command
+         then
+            var3="${var2}"                 #  so replace with the ; search text
+            len3=${len2}                   #  and length
+         fi
+      fi
+      if [ ${len3} -lt ${len2} -a ${len3} -lt ${len4} ];    # truncated on a &
+      then
+         uselen=${len3}
+         wasandand="yes"
+      else
+         if [ ${len2} -lt ${len4} ];                    # was trucation on ;
+         then
+            uselen=${len2}                              #   yes, use that
+         else
+            uselen=${len4}                              #   no, use pipe (or no match) length
+         fi
+      fi
+      cmdtest=${var1:0:${uselen}}
+      # if and the end of a stacked command list in " may have reached last command so strip last "
+      if [ "${cmdtest:$((${#cmdtest} - 1)):1}." == "\"." ];
+      then
+         cmdtest=${cmdtest:0:$((${#cmdtest} - 1))}
+      fi
+      firstpart=`echo "${cmdtest}" | awk {'print $1'}`
+      if [ "${firstpart:0:1}." != "/". ];   # if not full path find the file
+      then
+         cmdexists=`which ${firstpart} 2>/dev/null`
+      else
+         cmdexists="${firstpart}"
+      fi
+      if [ "${cmdexists}." == "." ];                    # if 'which' found no result
+      then
+         isfatal="yes"
+      else
+         firstpart="${cmdexists}"                       # for messages expand to full path is which found it
+         isfatal=`echo "${CRON_CMD_FATAL_LIST}" | grep -w "${cmdexists}"`  
+      fi
+      if [ "${isfatal}." != "." ];
+      then
+         echo "FATAL:${cmdexists}:cannot be checked, ${cmdtest}, in fatal list"
+      else
+         if [ "${cmdexists}." != "." ];
+         then
+            isignore=`echo "${CRON_CMD_IGNORE_LIST}" | grep -w "${cmdexists}"`
+            issystem=`echo "${CRON_CMD_SHELL_LIST}" | grep -w "${cmdexists}"`
+         else
+            isignore=""
+            issystem=""
+         fi
+         if [ "${issystem}." != "." ];
+         then
+            # something like 'php file' or 'bash file' so get the file
+            cmdtest=`cron_parse_strip_options ${cmdtest}`   # skipping any -X options between command and file
+            cmdtest=`echo "${cmdtest}" | awk {'print $1'}`    # only want filename, ignore trailing data
+            firstpart=`echo "${cmdtest}" | awk {'print $1'}`
+         fi
+         if [ "${isignore}." == "." ];
+         then
+            if [ "${firstpart:0:1}." != "/". ];   # if not full path find the file
+            then
+               cmdexists=`which ${firstpart} 2>/dev/null`
+            else                                  # else use what was provided as full path
+               cmdexists="${firstpart}"
+            fi
+            if [ "${cmdexists}." != "." ];        # do not check for an empty value (possible if 'which' was used and no file found)
+            then
+               if [ ! -f ${cmdexists} ];          # if file/command does not exist cannot use it
+               then                               # note: cannot check for -x as it may be a readable file into php/bash etc.
+                  cmdexists=""
+               fi
+            fi
+            if [ "${cmdexists}." == "." ];
+            then 
+               echo "NOTFOUND:${firstpart}:${cmdtest}"
+            else
+               echo "USABLE:${cmdexists}:${cmdtest}"
+            fi
+         else
+            echo "IGNORE:${cmdexists}:${cmdtest}"
+         fi
+      fi
+      if [ "${wasandand}." == "yes." ];
+      then
+         var1=${var1:$((${uselen}+2)):${#var1}}
+      else
+         var1=${var1:$((${uselen}+1)):${#var1}}
+      fi
+   done
+} # end of cron_parse_out_commands
+
+# --------------------------------------------------------------------------------------------------------------
+# Now actually do the checks of the crontab lines, using the subroutines above to assist
+# --------------------------------------------------------------------------------------------------------------
 find /var/spool/cron -type f 2>/dev/null | grep -v ".SEQ" | while read dataline
 do
    # record each crontab filename, we check those in processing also
@@ -813,39 +1035,70 @@ do
    do
       if [ ${#crontabline} -gt 10 ]; # try and ignore blank lines
       then
-         # allow for * * * * * file, and * * * * * sh -c "file"
-         testvar=`echo "${crontabline}" | awk {'print $6" "$7" "$8'}`
-         testvar=`echo "${testvar}" | grep "\ \-c\ "`
-         if [ "${testvar}." = "." ];
-         then
-            fname=`echo "${crontabline}" | awk {'print $6'}`
-         else
-            fname=`echo "${crontabline}" | awk {'print $8'}`
-            # if command after "shell -c" is in quotes remove the start/end quotes
-            aa=${fname:0:1}
-            if [ "${aa}." == "\"." -o "${aa}." == "\'." ];
-            then
-               fname=${fname:1:${#fname}}
-               # may not have a tailing quote if there was a space after the command,
-               # so test before  removing the last char.
-               aa=${fname:$(( ${#fname} - 1 )):1}
-               if [ "${aa}." == "\"." -o "${aa}." == "\'." ];
-               then
-                  fname=${fname:0:$((${#fname} - 1))}
-               fi
-            fi
-         fi
-         resultdata=`find_file_perm_nolog PERM_CRON_JOB_FILE ${fname} "${crontabowner}" "crontab"`
-         if [ "${resultdata}." != "." ];
-         then
-            echo "${resultdata}@${crontabline}" >> ${LOGFILE}
-         else # record crontab lines we could not check file perms for
-              # these will be lines with commands such as 'cd xxx;./command'
-            echo "NO_PERM_CRON_JOB_FILE=${crontabowner} crontab:@${crontabline}" >> ${LOGFILE}
-         fi
-      fi
+         echo "CRONTAB_DATA_LINE=${crontabowner} crontab:@${crontabline}" >> ${LOGFILE}
+         cron_parse_out_commands "${crontabline}" | while read commanddata
+         do
+            respcode=`echo "${commanddata}" | awk -F: {'print $1'}`
+            case "${respcode}" in
+               "USABLE")
+                       actualcmd=`echo "${commanddata}" | awk -F: {'print $2'}`
+                       resultdata=`find_file_perm_nolog PERM_CRON_JOB_FILE ${actualcmd} "${crontabowner}" "crontab"`
+                       if [ "${resultdata}." != "." ];
+                       then
+                          echo "${resultdata}@${crontabline}" >> ${LOGFILE}
+                       else # record crontab lines we could not check file perms for
+                            # these will be lines with commands such as 'cd xxx;./command'
+                          echo "NO_PERM_CRON_JOB_FILE=${crontabowner} crontab:@${crontabline}@${actualcmd}" >> ${LOGFILE}
+                       fi
+                       ;;
+               "NOTFOUND"|"FATAL")
+                       actualcmd=`echo "${commanddata}" | awk -F: {'print $2'}`
+                       echo "NO_PERM_CRON_JOB_FILE=${crontabowner} crontab:@${crontabline}@${actualcmd}" >> ${LOGFILE}
+                       ;;
+               *)      # must be IGNORE
+                       actualcmd=`echo "${commanddata}" | awk -F: {'print $2'}`
+                       echo "IGNORE_PERM_CRON_JOB_FILE=${crontabowner} crontab:@${crontabline}@${actualcmd}" >> ${LOGFILE}
+                       ;;
+            esac
+         done
+      fi   # if contab line len gt 10
    done
 done
+# --------------------------------------------------------------------------------------------------------------
+# Done with the helper subroutines
+# --------------------------------------------------------------------------------------------------------------
+unset cron_parse_strip_options
+unset cron_parse_out_commands
+
+# ======================================================================
+# Are at.allow and at.deny being used ?
+# ======================================================================
+if [ -f /etc/at.deny ];
+then
+   echo "CRON_AT_DENY_EXISTS=YES" >> ${LOGFILE}
+   cat /etc/at.deny | while read dataline
+   do
+      if [ "${dataline}." != "." ];    # only record non-blank lines
+      then
+         echo "CRON_AT_DENY_DATA=${dataline}" >> ${LOGFILE}
+      fi
+   done
+else
+   echo "CRON_AT_DENY_EXISTS=NO" >> ${LOGFILE}
+fi
+if [ -f /etc/at.allow ];
+then
+   echo "CRON_AT_ALLOW_EXISTS=YES" >> ${LOGFILE}
+   cat /etc/at.allow | while read dataline
+   do
+      if [ "${dataline}." != "." ];    # only record non-blank lines
+      then
+         echo "CRON_AT_ALLOW_DATA=${dataline}" >> ${LOGFILE}
+      fi
+   done
+else
+   echo "CRON_AT_ALLOW_EXISTS=NO" >> ${LOGFILE}
+fi
 
 # ======================================================================
 # Collect basic network info to be checked
@@ -1026,11 +1279,16 @@ done
 
 # ======================================================================
 # Collect the contents of the wtmp log using the 'last' command.
+# Plus user last logged on info for all users using lastlog
 # ======================================================================
 timestamp_action "recording last login information"
 last -i | while read dataline
 do
-   echo "LAST_LOG=${dataline}" >> ${LOGFILE}
+   echo "WTMP_LAST_LOG=${dataline}" >> ${LOGFILE}
+done
+lastlog | while read dataline
+do
+   echo "LASTLOG_ENTRY=${dataline}" >> ${LOGFILE}
 done
 
 # ======================================================================

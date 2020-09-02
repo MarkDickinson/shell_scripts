@@ -277,6 +277,17 @@
 #                       home directory
 #                   (5) Added extra checks for verifying data in custom file
 #                       against what is actually on the server
+# MID: 2020/09/01 - Version 0.13
+#                   (1) Added checks for at.allow and at.deny files
+#                   (2) added handling for new customfile parameter
+#                       "SUID_SUPPRESS_SNAP_OVERLAYS=yes", will not
+#                       alert on /snap/core* suid files in overlay directories
+#                       but will produce a list of all alerts that were
+#                       suppressed. This is needed for Ubuntu which installs
+#                       many apps as snap applications which means there
+#                       are a lot of randomply paced suid files per application.
+#                   (3) Enhance cron job command checks to handle quite
+#                       a few stacked command types
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -330,7 +341,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.12"
+PROCESSING_VERSION="0.13"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -356,6 +367,7 @@ NUM_VALUE=0      # used a lot
 CUSTOMFILE=""                        # set on a per server being processed basis
 LOGICAL_LOCK="${RESULTS_DIR}/logical_lock.dat"
 DEFAULT_DAYS_BEFORE_SNAPSHOT_WARN=14    # default number of days a snapshot is considered valid
+NEEDPWLEN=6             # minimum password length allowed for those checks
 
 # First see if the request was to clear the lockfile, if so we need to
 # do nothing else.
@@ -1086,11 +1098,16 @@ write_details_page_exit() {
 # Called from a couple of places so needs its own routine.
 # Checks that the user exists on the server and that the
 # combination of cron.allow/cron.deny files does not
-# prevent them from using cron.
+# prevent them from using cron. 
+# Updated to allow 3rd parm to be passed so we can run the same
+# checks against values CRON_AT_DENY_EXISTS etc as well as 
+# CRON_DENY_EXISTS (3rd parm value would be "_AT") for
+# at.allow and at.deny checks.
 # ----------------------------------------------------------
 can_user_use_cron() {
-   fileuser="$1"
-   hostfile="$2"
+   fileuser="$1"    # userid to be checked
+   hostfile="$2"    # hostname being processed
+   optsearch="$3"   # optional, see comments above
    resultdata="YES"    # default is yes
    # user must exist in /etc/passwd for the server
    userexists=`grep "^PASSWD_FILE=${fileuser}:" ${SRCDIR}/secaudit_${hostfile}.txt`
@@ -1414,8 +1431,8 @@ build_appendix_a() {
    then
       echo "<table bgcolor=\"${colour_alert}\" width=\"100%\"><tr><td>" >> ${htmlfile}
       echo "<p>No <b>/etc/ftpusers</b> file exists on the server. This means" >> ${htmlfile}
-      echo "all users are able to use <b>ftp</b></p>." >> ${htmlfile}
-      echo "<p><b>Remedial action:</b> create a <b>/etc/ftpusers</b> file and" >> ${htmlfile}
+      echo "all users are able to use <b>ftp</b>." >> ${htmlfile}
+      echo "Remedial action: create a <b>/etc/ftpusers</b> file and" >> ${htmlfile}
       echo "add an entry for every user that should not be using ftp.</p>" >> ${htmlfile}
       echo "</td></tr></table>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
@@ -1517,6 +1534,7 @@ build_appendix_a() {
       mindays=`grep "^PASS_MIN_DAYS" ${WORKDIR}/login.defs | awk {'print $2'}`
       minlen=`grep "^PASS_MIN_LEN" ${WORKDIR}/login.defs | awk {'print $2'}`
       warndays=`grep "^PASS_WARN_AGE" ${WORKDIR}/login.defs | awk {'print $2'}`
+      minlen2=`grep "^PAM_PWQUALITY_MINLEN" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
       if [ "${maxdays}." == "." ];
       then
          maxdays="0"
@@ -1529,12 +1547,16 @@ build_appendix_a() {
       then
          minlen="0"
       fi
+      if [ "${minlen2}." == "." ];
+      then
+         minlen2="0"
+      fi
       if [ "${warndays}." == "." ];
       then
          warndays="0"
       fi
-      # Check it
-	  echo "<table border=\"1\"><tr bgcolor=\"${colour_border}\"><td><center>User Default Settings</center></td></tr>" >> ${htmlfile}
+      # Now report on what we found
+      echo "<table border=\"1\"><tr bgcolor=\"${colour_border}\"><td><center>User Default Settings</center></td></tr>" >> ${htmlfile}
       if [ ${maxdays} -gt 31 ];  # doesn't expire in 31 days as a default
       then
          echo "<tr bgcolor=\"${colour_alert}\"><td>Default password expiry > 31 days, it is ${maxdays}</td></tr>" >> ${htmlfile}
@@ -1549,12 +1571,26 @@ build_appendix_a() {
       else
          echo "<tr bgcolor=\"${colour_OK}\"><td>The default time within which users can change passwords is acceptable</td></tr>" >> ${htmlfile}
       fi
-      if [ ${minlen} -lt 6 ];    # passwds less than 6 is a bad default
+      # minlen can be set in the system login.defs or the pam pwquality.conf
+      if [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -lt ${NEEDPWLEN} ];
       then
-         echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < 6, it is ${minlen}</td></tr>" >> ${htmlfile}
+         echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      elif [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -eq 0 ]; 
+      then
+         minlen2="commented"
+         echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      elif [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -ne 0 ]; 
+      then
+         if [ ${minlen} -eq 0 ];
+         then
+            minlen="commented"
+         fi
+         echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
       else
-         echo "<tr bgcolor=\"${colour_OK}\"><td>Default minimum password length is OK</td></tr>" >> ${htmlfile}
+         echo "<tr bgcolor=\"${colour_OK}\"><td>Default minimum password length is OK, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf</td></tr>" >> ${htmlfile}
       fi
       if [ ${warndays} -lt 7 ];  # less than 7 days warning is insufficient
       then
@@ -2453,6 +2489,64 @@ build_appendix_c() {
 #   D. Cron security
 #      D.1 - all cronjob script files secured tightly, to correct owner
 # ----------------------------------------------------------
+# A helper for build_appendix_d as checkas for cron.allow and cron.deny
+# are identical to checks for at.allow and at.deny (apart from names) so
+# we only want one block of code.
+appendix_d_check_allow_deny_files() {
+   htmlfile="$1"
+   checktype="$2"     # expected to be cron or at
+   optname=""
+   if [ "${checktype}." == "at." ];
+   then
+      optname="_AT"
+   fi
+   isdeny=`grep "^CRON${optname}_DENY_EXISTS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+   isallow=`grep "^CRON${optname}_ALLOW_EXISTS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+   echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
+   echo "<tr><td colspan=\"2\"><center>${checktype} User Access Settings</center></td></tr>" >> ${htmlfile}
+   if [ "${isallow}." != "YES." -a "${isdeny}." != "YES." ];
+   then
+      echo "<tr bgcolor=\"${colour_alert}\"><td>Neither a ${checktype}.deny or ${checktype}.allow file exists, all users can run ${checktype} jobs</td></tr>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   elif [ "${isallow}." == "YES."  ];
+   then
+      isallowcount=`grep "^CRON${optname}_ALLOW_DATA" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+      if [ ${isallowcount} -gt 0 ];
+      then
+         echo "<tr bgcolor=\"${colour_OK}\"><td>A ${checktype}.allow file exists and has ${isallowcount} users defined." >> ${htmlfile}
+         grep "^CRON${optname}_ALLOW_DATA" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read allowed
+         do
+             echo "<br />${allowed}" >> ${htmlfile}
+         done
+         echo "</td></tr>" >> ${htmlfile}
+      else
+         echo "<tr bgcolor=\"${colour_OK}\"><td>A ${checktype}.allow file exists and has zero users, only root can use ${checktype}</td></tr>" >> ${htmlfile}
+      fi
+   elif [ "${isdeny}." == "YES." ];
+   then
+      isdenycount=`grep "^CRON${optname}_DENY_DATA" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+      if [ ${isdenycount} -gt 0 ];
+      then
+         echo "<tr bgcolor=\"${colour_warn}\"><td>No ${checktype}.allow file exists so you are relying on ${checktype}.deny which has ${isdenycount} users entered." >> ${htmlfile}
+         echo "This is a risk as if you add a new user to the system and forget to add them to ${checktype}.deny they can use ${checktype}." >> ${htmlfile}
+         echo "You should investigate the use of ${checktype}.allow to limit the users that can use ${checktype}." >> ${htmlfile}
+         echo "The users currently defined in ${checktype}.deny are" >> ${htmlfile}
+         grep "^CRON${optname}_DENY_DATA" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read denied
+         do
+             echo "<br />${denied}" >> ${htmlfile}
+         done
+         echo "</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} warning_count
+      else
+         echo "<tr bgcolor=\"${colour_alert}\"><td>No ${checktype}.allow file exists and the ${checktype}.deny file has zero users, all users can run ${checktype} jobs</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      fi
+   else
+      echo "<tr><td>There is an script issue with an unexpected combination of ${checktype}.allow and ${checktype}.deny files</td></tr>" >> ${htmlfile}
+   fi  # end of all the eif/elif for cron allow/deny checks
+   echo "</table>" >> ${htmlfile}
+} # end of appendix_d_check_allow_deny_files
+
 build_appendix_d() {
    hostid="$1"
    htmlfile="${RESULTS_DIR}/${hostid}/appendix_D.html"
@@ -2466,52 +2560,8 @@ build_appendix_d() {
    echo "<h1>Appendix D - Cron Job Security Checks for ${hostid}</h1>" >> ${htmlfile}
 
    echo "<h2>Appendix D.1 - Limiting cron access</h2>" >> ${htmlfile}
-   isdeny=`grep "^CRON_DENY_EXISTS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
-   isallow=`grep "^CRON_ALLOW_EXISTS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
-
-   echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
-   echo "<tr><td colspan=\"2\"><center>Cron User Access Settings</center></td></tr>" >> ${htmlfile}
-   if [ "${isallow}." != "YES." -a "${isdeny}." != "YES." ];
-   then
-      echo "<tr bgcolor=\"${colour_alert}\"><td>Neither a cron.deny or cron.allow file exists, all users can run cron jobs</td></tr>" >> ${htmlfile}
-      inc_counter ${hostid} alert_count
-   elif [ "${isallow}." == "YES."  ];
-   then
-      isallowcount=`grep "^CRON_ALLOW_DATA" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
-      if [ ${isallowcount} -gt 0 ];
-      then
-         echo "<tr bgcolor=\"${colour_OK}\"><td>A cron.allow file exists and has ${isallowcount} users defined." >> ${htmlfile}
-         grep "^CRON_ALLOW_DATA" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read allowed
-         do
-             echo "<br />${allowed}" >> ${htmlfile}
-         done
-         echo "</td></tr>" >> ${htmlfile}
-      else
-         echo "<tr bgcolor=\"${colour_OK}\"><td>A cron.allow file exists and has zero users, only root can use cron</td></tr>" >> ${htmlfile}
-      fi
-   elif [ "${isdeny}." == "YES." ];
-   then
-      isdenycount=`grep "^CRON_DENY_DATA" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
-      if [ ${isdenycount} -gt 0 ];
-      then
-         echo "<tr bgcolor=\"${colour_warn}\"><td>No cron.allow file exists so you are relying on cron.deny which has ${isdenycount} users entered." >> ${htmlfile}
-         echo "This is a risk as if you add a new user to the system and forget to add them to cron.deny thay can use cron." >> ${htmlfile}
-         echo "You should investigate the use of cron.allow to limit the users that can use cron." >> ${htmlfile}
-         echo "The users currently defined in cron.deny are" >> ${htmlfile}
-         grep "^CRON_DENY_DATA" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read denied
-         do
-             echo "<br />${denied}" >> ${htmlfile}
-         done
-         echo "</td></tr>" >> ${htmlfile}
-         inc_counter ${hostid} warning_count
-      else
-         echo "<tr bgcolor=\"${colour_alert}\"><td>No cron.allow file exists and the cron.deny file has zero users, all users can run cron jobs</td></tr>" >> ${htmlfile}
-         inc_counter ${hostid} alert_count
-      fi
-   else
-      echo "<tr><td>There is an script issue with an unexpected combination of cron allow/deny files</td></tr>" >> ${htmlfile}
-   fi  # end of all the eif/elif for cron allow/deny checks
-   echo "</table>" >> ${htmlfile}
+   appendix_d_check_allow_deny_files "${htmlfile}" "cron"   # report on cron.deny and cron.allow files
+   appendix_d_check_allow_deny_files "${htmlfile}" "at"     # report on at.deny and at.allow files
 
    # List all crontab files on the server and report if those users can use cron or not
    echo "<br /><br /><table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
@@ -2572,6 +2622,8 @@ build_appendix_d() {
 
    echo "<h2>Appendix D.3 - Cron Job Files not able to be checked</h2>" >> ${htmlfile}
    errcount=`grep "^NO_PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   errcount2=`grep "^IGNORE_PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   errcount=$((${errcount} + ${errcount2}))
    if [ ${errcount} -gt 0 ];
    then
       echo "<p>There were ${errcount} crontab entries where it was not possible to check" >> ${htmlfile}
@@ -2581,15 +2633,28 @@ build_appendix_d() {
       echo "command will run one single command (normally a shell script file) only," >> ${htmlfile}
       echo "do not stack multiple commands in crontab entries as they cannot be audited." >> ${htmlfile}
       echo "If you have already implemented that then the scripts listed here simply no longer exist" >> ${htmlfile}
-      echo "so should be renmoved from crontab entries.</p>" >> ${htmlfile}
-      echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
-      echo "<tr><td colspan=\"2\"><center>Cron Job Files which could not be checked</center></td></tr>" >> ${htmlfile}
-      echo "<tr><td>Crontab Owner</td><td>Crontab Command</td></tr>" >> ${htmlfile}
+      echo "so should be removed from crontab entries.</p>" >> ${htmlfile}
+      echo "<p>Crontab commands that use commands such as 'cd' or 'find' where it is not possible" >> ${htmlfile}
+      echo "to keep track of what directories are being traversed will also alert here.</p>" >> ${htmlfile}
+      echo "<p>Entries in this list that are not highlighted as issues are crontab lines that call" >> ${htmlfile}
+      echo "recognised no-impact system utilities; but you should avoid that whenever possible.</p>" >> ${htmlfile}
+      echo "<table border=\"1\">" >> ${htmlfile}
+      echo "<tr bgcolor=\"${colour_banner}\"><td colspan=\"3\"><center>Cron Job Files which could not be checked</center></td></tr>" >> ${htmlfile}
+      echo "<tr><td>Crontab Owner</td><td>Crontab Command</td><td>Command tested</td></tr>" >> ${htmlfile}
       grep "^NO_PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read dataline
       do
          crontabowner=`echo "${dataline}" | awk -F: {'print $1'}`
          crontabdata=`echo "${dataline}" | awk -F@ {'print $2'}`
-         echo "<tr bgcolor=\"${colour_warn}\"><td>${crontabowner}</td><td>${crontabdata}</td></tr>" >> ${htmlfile}
+         crontabcmd=`echo "${dataline}" | awk -F@ {'print $3'}`
+         echo "<tr bgcolor=\"${colour_warn}\"><td>${crontabowner}</td><td>${crontabdata}</td><td>${crontabcmd}</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} warning_count
+      done
+      grep "^IGNORE_PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read dataline
+      do
+         crontabowner=`echo "${dataline}" | awk -F: {'print $1'}`
+         crontabdata=`echo "${dataline}" | awk -F@ {'print $2'}`
+         crontabcmd=`echo "${dataline}" | awk -F@ {'print $3'}`
+         echo "<tr><td>${crontabowner}</td><td>${crontabdata}</td><td>${crontabcmd}<br />(in ignore list)</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} warning_count
       done
       echo "</table>" >> ${htmlfile}
@@ -2607,20 +2672,7 @@ build_appendix_d() {
    echo "should review why that crontab file is still on the system.</p>" >> ${htmlfile}
    echo "" >> ${htmlfile}
    echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>Crontab Type</td><td>Crontab Owner</td><td>Crontab line</td></tr>" >> ${htmlfile}
-   grep "^PERM_CRON_JOB_FILE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $3'} | while read crondata
-   do
-       crontype=`echo "${crondata}" | awk {'print $2'} | awk -F@ {'print $1'}`
-       cronowner=`echo "${crondata}" | awk {'print $1'}`
-       croncmd=`echo "${crondata}" | awk -F@ {'print $2'}`
-       cronallowed=`can_user_use_cron "${cronowner}" "${hostid}"`
-       if [ "${cronallowed}." == "YES." ];
-       then
-          echo "<tr><td>${crontype}</td><td>${cronowner}</td><td>${croncmd}</td></tr>" >> ${htmlfile}
-       else
-          echo "<tr><td>${crontype}</td><td bgcolor=\"${colour_alert}\">${cronowner}</td><td>${croncmd}</td></tr>" >> ${htmlfile}
-       fi
-   done
-   grep "^NO_PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read crondata
+   grep "^CRONTAB_DATA_LINE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read crondata
    do
        crontype=`echo "${crondata}" | awk {'print $2'} | awk -F@ {'print $1'}`
        cronowner=`echo "${crondata}" | awk {'print $1'}`
@@ -2919,6 +2971,7 @@ EOF
    # now the suid file checks
    # ---------------------------------------------------------------------------
    suppress_docker="no"
+   suppress_snap="no"
    if [ "${CUSTOMFILE}." != "." ];
    then
       # save the allowed suid files now as well
@@ -2932,6 +2985,11 @@ EOF
       if [ "${testparm}." != "." ];
       then
          suppress_docker="yes"
+      fi
+      testparm=`grep -i "^SUID_SUPPRESS_SNAP_OVERLAYS=yes" ${CUSTOMFILE}`
+      if [ "${testparm}." != "." ];
+      then
+         suppress_snap="yes"
       fi
    fi
 
@@ -2948,8 +3006,8 @@ EOF
    done
    if [ -f ${WORKDIR}/suid_allow_list ];
    then
-      # if not suppressing docker overlay files then process all files
-      if [ "${suppress_docker}." != "yes." ];
+      # if not suppressing docker overlay files and snap/core* overlay fiiles then process all files
+      if [ "${suppress_docker}." != "yes." -a "${suppress_snap}." != "yes." ];
       then
          cat ${WORKDIR}/suid_file_list | while read dataline
          do
@@ -2963,8 +3021,8 @@ EOF
             fi
          done
       else
-         # same as above, but omitting docker overlay entries
-         cat ${WORKDIR}/suid_file_list | grep -v "\/var\/lib\/docker\/overlay2\/" | while read dataline
+         # same as above, but omitting /var/lib/docker/overlay2 and /snap/core* entries
+         cat ${WORKDIR}/suid_file_list | grep -v "\/var\/lib\/docker\/overlay2\/" | grep -v "\/snap\/core" | grep -v "\/snap\/snapd\/" | while read dataline
          do
             fname=`echo "${dataline}" | awk '{print $9}'`
             # check for override
@@ -2979,6 +3037,15 @@ EOF
          cat ${WORKDIR}/suid_file_list | grep "\/var\/lib\/docker\/overlay2\/" | while read dataline
          do
             echo "${dataline}" >> ${WORKDIR}/appendix_e_dockersuppresslist.txt
+         done
+         # record the suppressed snap core overlay files
+         cat ${WORKDIR}/suid_file_list | grep "\/snap\/core" | while read dataline
+         do
+            echo "${dataline}" >> ${WORKDIR}/appendix_e_snapsuppresslist.txt
+         done
+         cat ${WORKDIR}/suid_file_list | grep "\/snap\/snapd\/" | while read dataline
+         do
+            echo "${dataline}" >> ${WORKDIR}/appendix_e_snapsuppresslist.txt
          done
       fi
    else    # no overrides, all are alerts
@@ -2999,14 +3066,39 @@ EOF
       echo "<table bgcolor=\"${colour_OK}\"><tr><td>No unexpected SUID files found. No action required.</td></tr></table>" >> ${htmlfile}
    fi
 
+   # Check if we suppressed docker or snap suid files. Also if none were found to suppress but a customfile
+   # entry requesting suppression was found alert on the parameter being not needed.
    # Did we suppress any docker SUID file alerts ?
    if [ -f ${WORKDIR}/appendix_e_dockersuppresslist.txt ];
    then
-      dockersuppress=`cat ${WORKDIR}/appendix_e_dockersuppresslist.txt | wc -l`
+      suppresscount=`cat ${WORKDIR}/appendix_e_dockersuppresslist.txt | wc -l`
       echo "<p><b>The customisation file requested docker overlay SUID files be suppressed from raising alerts in the report</b>," >> ${htmlfile}
-      echo "${dockersuppress} SUID files were suppressed from being reported on for this reason." >> ${htmlfile}
+      echo "${suppresscount} SUID files were suppressed from being reported on for this reason." >> ${htmlfile}
       /bin/mv ${WORKDIR}/appendix_e_dockersuppresslist.txt ${RESULTS_DIR}/${hostid}/appendix_e_dockersuppresslist.txt
       echo "A list of those files is <a href="appendix_e_dockersuppresslist.txt">available here</a>.</p>" >> ${htmlfile}
+   else
+      if [ "${suppress_docker}." == "yes." ];
+      then
+         echo "<br /><table bgcolor=\"${colour_alert}\"><tr><td>The value SUID_SUPPRESS_DOCKER_OVERLAYS=yes was set in ${CUSTOMFILE} but" >> ${htmlfile}
+         echo "no docker overlay2 suid files are on this server. You should remove the override.</td></tr></table>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      fi
+   fi
+   # Did we suppress any /snap/core* SUID file alerts ?
+   if [ -f ${WORKDIR}/appendix_e_snapsuppresslist.txt ];
+   then
+      suppresscount=`cat ${WORKDIR}/appendix_e_snapsuppresslist.txt | wc -l`
+      echo "<p><b>The customisation file requested /snap/core* SUID files be suppressed from raising alerts in the report</b>," >> ${htmlfile}
+      echo "${suppresscount} SUID files were suppressed from being reported on for this reason." >> ${htmlfile}
+      /bin/mv ${WORKDIR}/appendix_e_snapsuppresslist.txt ${RESULTS_DIR}/${hostid}/appendix_e_snapsuppresslist.txt
+      echo "A list of those files is <a href="appendix_e_snapsuppresslist.txt">available here</a>.</p>" >> ${htmlfile}
+   else
+      if [ "${suppress_snap}." == "yes." ];
+      then
+         echo "<br /><table bgcolor=\"${colour_alert}\"><tr><td>The value SUID_SUPPRESS_SNAP_OVERLAYS=yes was set in ${CUSTOMFILE} but" >> ${htmlfile}
+         echo "no /snap/core.. suid files are on this server. You should remove the override.</td></tr></table>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      fi
    fi
 
    # and then check for stray entries in the customisation file (entries
@@ -3519,7 +3611,7 @@ EOF
                         isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${ipportmin}:" ${CUSTOMFILE}`
                         if [ "${isoutbound}." == "." ];
                         then
-                           # 0.012 inserted test for downgrading ports added by networkmanager or firewalld to warnings; only if
+                           # 0.12 inserted test for downgrading ports added by networkmanager or firewalld to warnings; only if
                            #       networkmanager or firewalld are running on the server
                            # Do we have a networkmanager/firewalld downgrade parm for it ?
                            isdowngrade=`grep "^${searchtype}_NETWORKMANAGER_FIREWALL_DOWNGRADE=:${ipportmin}:" ${CUSTOMFILE}`
@@ -3610,10 +3702,8 @@ EOF
          echo "This is acceptable if you are running firewalld on an OS Fedora32/CentOS8/RHEL8 or later which no longer use iptables as a back-end for firewalld." >> ${htmlfile}
          echo "</td></tr></table><br /><br />" >> ${htmlfile}
       else
-         echo "<table bgcolor=\"${colour_alert}\"><tr><td>Either the iptables command did not exist on the server or the data capture" >> ${htmlfile}
-         echo "was performed with an older version of the data capture script." >> ${htmlfile}
-         echo "<b>Also no netfilter rules were recored for the server firewalld</b>." >> ${htmlfile}
-         echo "This means that there are no manually created firewall rules and that firewalld is also not running. <b>This server is not using a firewall !</b></td></tr></table><br /><br />" >> ${htmlfile}
+         echo "<table bgcolor=\"${colour_alert}\"><tr><td>Neither iptables or netfilter tables with accept rules exist on this server." >> ${htmlfile}
+         echo "<b>This server appears to be not running a firewall !</b></td></tr></table><br /><br />" >> ${htmlfile}
          inc_counter ${hostid} alert_count
       fi
    fi
@@ -3709,7 +3799,7 @@ EOF
                            isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${destport}:" ${CUSTOMFILE}`
                            if [ "${isoutbound}." == "." ];
                            then
-                              # 0.012 inserted test for downgrading ports added by networkmanager to warnings
+                              # 0.12 inserted test for downgrading ports added by networkmanager to warnings
                               isdowngrade=`grep "^${searchtype}_NETWORKMANAGER_FIREWALL_DOWNGRADE=:${destport}:" ${CUSTOMFILE}`
                               if [ "${isdowngrade}." != "." ];
                               then

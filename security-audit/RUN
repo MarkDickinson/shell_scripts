@@ -1,6 +1,8 @@
 # Examples of how to run the processing script
-# The default uncommented command will perform a full processing run.
-# simply 'bash RUN'
+# The default uncommented command will perform a full processing run of all
+# collected data files in the rawdatafiles directory, reults into results directory.
+#
+# simply cd into this directory and 'bash RUN'
 
 #--------------------------------------------------------------------------------
 # Default processing: process all server collection datafiles in the

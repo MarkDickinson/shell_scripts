@@ -3,6 +3,18 @@ For changes made under the covers not visible to users refer to the change histo
 the bash script files.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.12 and version 0.13 are
+-------------------------------------------------------------------------------------
+(1) *important* changes in crontab handling have been made, if you upgrade to
+    processing version 0.13 you must use data collection files collected by
+    version 0.13; I chose not to provide backward compability for the cron 
+    section of the report. The effect of using an old version of the collector
+    is that no crontab entries will be reported on when processed
+(2) Not using at.allow/at.deny on the server will now alert
+(3) Allow suppression of suid file alerts for the files installed as snap packages
+    on Ubuntu that come bundled with thier own copy of system files
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.11 and version 0.12 are
 -------------------------------------------------------------------------------------
 (1) If both netfilter and iptables are in use raise a warning (in 0.11 was an alert)

@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.12 of the processing script<br />
-Version 0.12 of the data collection script<br />
-Last updated 16 August 2020
+Version 0.13 of the processing script<br />
+Version 0.13 of the data collection script<br />
+Last updated 01 September 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -58,7 +58,7 @@ Last updated 16 August 2020
 		</ul>
 		<li><a href="#sect6">Appendix B - Customisation File settings available</a></li>
 		<li><a href="#sect7">Appendix C - Quick Start Guide</a> (if you don't read manuals)</li>
-		<li><a href="#sect8">Appendix D - Known Issues with this toolkit</a></li>
+		<li><a href="#sect8">Appendix D - Known Complications with using this toolkit</a></li>
 </ol>
 </p>
 
@@ -1207,7 +1207,19 @@ the above parameter; so this parameter can be used to suppress all alerts for
 for SUID file if they are under the directory path /var/lib/docker/overlay2.
 If this parameter is used the file security page of the report will list the
 number of alerts suppressed for this reason and provide a link to all the files
-that had alerts suppressed. <b>Yiu</b> are responsible for reviewing this list
+that had alerts suppressed. <b>You</b> are responsible for reviewing this list
+of suppressed files if you suppress the alerts.
+</td></tr>
+<tr><td>SUID_SUPPRESS_SNAP_OVERLAYS=yes</td><td>
+On Ubuntu servers (at least from release 20.04 onward) many applications are installed
+as SNAP packages, these contain copies of filesystem files including SUID set files
+under directories such as /snap/snapd, /snap/core, /snap.core18, /snap/core*)
+which will alert as unexpected SUID files, as they are in pretty much completely
+randonly names directories under the paths mentioned they cannot be coded in custom
+files as expected SUID files. This parameter can be used to suppress alerts for those files.
+If this parameter is used the file security page of the report will list the
+number of alerts suppressed for this reason and provide a link to all the files
+that had alerts suppressed. <b>You</b> are responsible for reviewing this list
 of suppressed files if you suppress the alerts.
 </td></tr>
 <tr><td>ADD_SYSTEM_FILE_OWNER=<em>username</em></td><td>
@@ -1350,7 +1362,7 @@ Results are accessable from results/index.html under the application directory.
 <hr>
 <a name="sect8"></a>
 <center><a href="#sect8">[Previous Section]</a> <a href="#sect0">[Index]</a></center>
-<h1>8. Appendix D - Known Issues with this toolkit</h1>
+<h1>8. Appendix D - Known Complications with using this toolkit</h1>
 <p>
 A customisation file per server is really required if you have multiple OS's.
 For example some releases of Fedora moved bin and sbin under /, leaving symbolic links for /usr/bin and /usr/sbin
@@ -1374,13 +1386,14 @@ There are also lots of critical alerts plus lots of warning generated on systems
 running containers as in the docker overlay2 directory it keeps copies of setuid files for each container; plus with my
 docker containers I keep the userid numbers well away from 'real' users on the host so there are
 'bad ownership' alerts logged for user numbers as those numbers do not exist as valid users on the docker host.<br />
-A customisation file entry exists to suppress the suid file alerts, it will however still generate a list of all
+A customisation file entry exists to suppress these suid file alerts, it will however still generate a list of all
 suid files that were suppressed from alerting so you can manually review them.<br />
 </p>
 <p>
-An issue with ubuntu 20.04 not the toolkit, suid checks for Unbuntu 20.04 will always generate lots of alerts 
-as it creates lots of suid files under /snap/core/nnnn and /snap/core18/nnnn where nnnn is a random
-number that changes on every server reboot so impossible to create 'expected suid file' rules for.
+There are also lots of critical alerts for Ubuntu distributions as these now supply many applications
+as SNAP packages which have their own copies of SUID files.
+A customisation file entry exists to suppress these suid file alerts, it will however still generate a list of all
+suid files that were suppressed from alerting so you can manually review them.<br />
 </p>
 <p>
 <b><em>None of these are issues with the toolkit itself but the effect of different *nix implementations</em></b>,
