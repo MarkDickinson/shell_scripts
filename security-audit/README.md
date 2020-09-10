@@ -25,7 +25,6 @@ I even have a few servers with zero alerts now.
 * [Example install using required directories](#example-install-using-required-directories)
 * [Using the scripts](#using-the-scripts)
 * [Example of the main index produced from processing](#example-of-the-main-index-produced-from-processing)
-* [Known issues with the current release](#known-issues-with-the-current-release)
 * [Planned enhancements](#planned-enhancements)
 
 
@@ -117,7 +116,9 @@ designed to highlight issues that could be exploited.
   server as defined by the network checks, and also alert if firewall rules
   accept traffic to ports that are not in use on the server (to identify
   obsolete server firewall rules)
-* reports on all orphaned files and directories
+* filesystem checks - reports on all orphaned files and directories (those
+  not owned by an existing user). This report 'appendix J' is only
+  produced if orphans were found
 * optional, backs up /etc
 * optional (but default) collect hardware info
 * optional, if 'rpm' is available collect a installed package list
@@ -130,9 +131,12 @@ designed to highlight issues that could be exploited.
   are mapped to /bin or /sbin which must be owned by root (not by the
   system user such as adm or operator) and must be traversable by other
   users, and quite a few other customisable cases.
-* runtime processing parameter to allow a single server to be re-processed as needed
-* runtime processing parameter to allow automatic detection of updated collected data files and process them
-* NOTE HOWEVER automatic re-processing of all servers is forced/performed if a new version of the processing script is installed
+* runtime processing parameter to allow a single server to be re-processed as needed,
+  note however automatic re-processing of all servers is forced/performed if a new version
+  of the processing script is installed and you try to process a single server
+* runtime processing parameter to allow automatic detection of updated collected data
+  files and process only those new ones (intended for batch processing where you
+  automate collection of data and provide a few new servers per day)
 
 ## Directories that must exist for processing
 
@@ -205,73 +209,19 @@ Look at the file RUN for examples of all available processing script options.
 
 Most fields are self explainatory, requiring a mention are the points below
 
-* optional processing runtime parameter '--indexkernel=yes' will add an extra field to the
-  index listing the kernel version reported by 'uname' on the server that was processed
-  (tip: can be used in conjunction with '--indexonly=yes' to switch that extra column on/off
-  without any server processing)
-* if new collector data files are available they will be shown as ready to be processed
-* if any server collected data files are over two weeks old they will be highlighted for easy visibility,
-  as you should have automated data collection and getting it to the processing server
 * the values in the server name field are links to individual server results indexes,
   which in turn have links to details on each check performed for the server
-
-## Known issues with the current release
-* Nowhere in the directory path of the processing script can there be an underscore</b> ( _ )
-  character used, the underscore character is used by the script for parsing and having it
-  in the directory path will cause problems. Not really an issue, just do not do it
-* if you ^C or kill a running processing scriot the lockfile remains, you must use the
-  processing script --clearlock option to remove it
-* cron job checks - only cron jobs have securiry permissions checked, not anacron files
-  or any queued 'at' jobs
-* cron job checks - stacked commands are able to be tested if seperated by ';' '&&' '|',
-  the '||' syntax is not supported yet.
-* cron job checks - where a cron job uses a system command (echo, cd, php) rather than
-  a discrete script an alert will normally be raised as system commands are normally owned
-  by root and not the owner of the cron job. A list of commands considered to be non-disruptive
-  can be used to suppress alerts for things like 'echo', 'php', 'bash' etc. to allow those
-  to be used without alerting; although commands such as 'ls', 'cd', 'find' etc. will
-  always alert as there is no way of determing what environment a stacked crontab command
-  line has obtained if it is using combinations of these. These are 'hard coded' in the
-  collection script (as custom files are used only by the processing script which runs on
-  a seperate server so cannot be used by the collection script). If you wish to alter the
-  defaults search in the collection script for CRON_CMD_IGNORE_LIST, CRON_CMD_SHELL_LIST,
-  CRON_CMD_FATAL_LIST strings and update those
-* user checks - system defaults for max password length and expiry checks are
-  obtained from /etc/login.defs; An uncommented minlen value is also searched for in pwquality.conf
-  and any files in the pwquality.conf.d directory as PAM systems would use this in preference
-  on Fedora/CentOS/RHEL systems. _On Ubuntu servers comments in login.defs indicate minlen
-  is set in files in /etc/pam.d but as I can find no examples of this Ubuntu servers will
-  always raise an alert saying minlen is 0_ which as I don't use Ubuntu other than testing
-  this script so am unlikely to spend time resolving.
-  Commented values would be ignored so ensure they are set. authconfig is depreciated on fedora in favor of authselect
-  and god knows what tools ubuntu use so as every system will have different management tools
-  cannot use those to query values so rely
-  on values set in the files _and ignore commented defaults_ as defaults change
-* server firewall rule checks - no attempt is made to follow firewall chains or determine zones,
-  any rule to open a port is considered an open port
-* servers running NetworkManager will have firewall ports opened that users may not expect,
-  _This is not an issue with this toolkit_ but
-  with a lack of control over what NetworkManager decides to open; prior to version 0.12 any
-  firewall accept rule for a port not in use alerted as an obsolete firewall rule, from
-  0.12 onward a custom file rule can be used to identify and downgrade alerts to warnings for ports opened
-  by NetworkManager rather than ports you explicitly configured.
-  Examples: 'firewall-cmd --list-ervices' shows 'cockpit dhcpv6-client dns http ntp ssh' and
-  'firewall-cmd --list-ports' does not show the following ports,
-  but the following ports have firewall rules opening the ports, udp 67(/usr/lib/firewalld/services/dhcp.xml),
-  udp 68(/usr/lib/firewalld/services/RH-Satellite-6.xml),udp 69(/usr/lib/firewalld/services/tftp.xml);
-  _and worse_ some processes that use dynamic ports will occasionally use those ports so unexpected apps are exposed
-* BUG: when processing a capture with a large number of files _SOMETIMES_ an error is thrown
-  "bin/process_server_details.sh: line 4422: ----------------------------------: command not found"
-  which is not the contents of line 4422. A rerun with no changes does not have the same issue.
-  Ocurrence is completely random so hard to track down. Does not affect any results produced
-* Only handles simple firewall rules. Does not handle complex firewall rules such as the
-  iptables entries below 
-
-```
-multiport dports 8773,8774,8775,8778 /* 001 nova api
-multiport dports 5900:5999 /* 001 nova compute
-multiport dports 16509,49152:49215 /* 001 nova qemu
-```
+* the alerts field will have text in green if OK and red if not, note fields in green
+  that have alerts have a (N) column also which is the number of expected (never to be fixed)
+  alerts as coded as descriptions in the server customisation file and a link to the description
+  of all alerts expected, exact match to actual alerts for it to be considered acceptable
+* if new collector data files timestamped more recenly than the last processing for that server
+  are available they will be shown as 'New data ready' in the warning color
+* if any server collected data files are over N days old they will be highlighted in the alert
+  color for easy visibility, as you should have automated data collection and getting it to the
+  processing server, default is 14 days before considered obsolete but may be overidden on a per
+  server basis with number of days actually configured in the custom file as (N) shown after the
+  snapshot date
 
 ## Planned enhancements
 
@@ -280,5 +230,5 @@ starting to add checks for silly things that were more server monitoring
 than security/audit related so I have decided to hold off on future changes
 until I find more security specific checks that _need_ implementing.
 
-Any releases in the newxt few months will be bugfix, if any are found to correct.
+Any releases in the next few months will be bugfix, if any are found to correct.
 

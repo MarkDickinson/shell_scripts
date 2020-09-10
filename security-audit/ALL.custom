@@ -56,7 +56,31 @@ TCP_PORTV4_ALLOWED=:6010:X11 ssh forwarding
 TCP_PORTV4_ALLOWED=:9102:Bacula FD
 TCP_PORTV6_ALLOWED=:111:portmapper
 TCP_PORTV6_ALLOWED=:5666:NRPE
+TCP_PORTV6_ALLOWED=:6010:X11 ssh forwarding
 TCP_PORTV6_ALLOWED=:9090:Cockpit
+# If you are likely to have more than one ssh session using x11 forwarding
+# to a server allow for additional forwarding ports also (ie: if the server
+# will have up to six users allow an additional six ports).
+#TCP_PORTV4_ALLOWED=:6011:X11 ssh forwarding
+#TCP_PORTV4_ALLOWED=:6012:X11 ssh forwarding
+#TCP_PORTV4_ALLOWED=:6013:X11 ssh forwarding
+#TCP_PORTV4_ALLOWED=:6014:X11 ssh forwarding
+#TCP_PORTV4_ALLOWED=:6015:X11 ssh forwarding
+#TCP_PORTV6_ALLOWED=:6011:X11 ssh forwarding
+#TCP_PORTV6_ALLOWED=:6012:X11 ssh forwarding
+#TCP_PORTV6_ALLOWED=:6013:X11 ssh forwarding
+#TCP_PORTV6_ALLOWED=:6014:X11 ssh forwarding
+#TCP_PORTV6_ALLOWED=:6015:X11 ssh forwarding
+#NETWORK_PORT_NOLISTENER_TCPV4_OK=6011:
+#NETWORK_PORT_NOLISTENER_TCPV4_OK=6012:
+#NETWORK_PORT_NOLISTENER_TCPV4_OK=6013:
+#NETWORK_PORT_NOLISTENER_TCPV4_OK=6014:
+#NETWORK_PORT_NOLISTENER_TCPV4_OK=6015:
+#NETWORK_PORT_NOLISTENER_TCPV6_OK=6011:
+#NETWORK_PORT_NOLISTENER_TCPV6_OK=6012:
+#NETWORK_PORT_NOLISTENER_TCPV6_OK=6013:
+#NETWORK_PORT_NOLISTENER_TCPV6_OK=6014:
+#NETWORK_PORT_NOLISTENER_TCPV6_OK=6015:
 #
 # Common UDP ports on Fedora systems
 UDP_PORTV4_ALLOWED=:111:portmapper
@@ -367,6 +391,20 @@ SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
 #SUID_ALLOW=/usr/bin/fusermount-glusterfs
 #
 # ===============================================================
+# Overrides for commands being run from crontab (added in 0.14)
+# ===============================================================
+# Appendix D.2 overrides
+# if a user crontab run a system command owned by root (that is not in
+# the collectors 'expected' list of things like echo) it would normally
+# alert as not being owned by the correct user.
+# From 0.14 onward this parameter can be used to indicate that root
+# owning the file is OK.
+# As you can see it can be multiple entries, of a space seperated list
+# or individual filenames. They will be merged.
+#CRONTAB_CMD_OWNER_ROOT_ALLOWED=/bin/keystone-manage /bin/nova-manage
+#CRONTAB_CMD_OWNER_ROOT_ALLOWED=/bin/cinder-manage
+#
+# ===============================================================
 # Special alert suppression parameters
 # ===============================================================
 # Do not raise a warning to remind manual log retention checks
@@ -379,4 +417,14 @@ NOWARN_ON_CUSTOMFILE=YES
 # be before the main report index shows a highlighted error that
 # the server report is out of date. Default 14
 REFRESH_INTERVAL_EXPECTED=14
-
+#
+# Below two example parameters added in 0.14
+# There can be a EXACT_ALERT_REASON line for each expected
+# alert explaining what the expected alert is. If there are
+# N EXPECT_A:ERT_REASON lines and the total number of alerts
+# for a server is also N the main index weill display the alert
+# count in green instead of red, and provide a link to a page
+# listing the exact alerts expected so they can be checked
+# for validity.
+#EXACT_ALERT_REASON=On debian based systems cannot determine the minimum password length
+#EXACT_ALERT_REASON=I require PermitRootLogin yes for this server

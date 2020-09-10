@@ -114,20 +114,22 @@
 #              Find orphaned (no user in /etc/passwd matching uid number)
 #              directories and files, I need this in later planned
 #              processing.
-# 2020/09/xx - Updates for version 0.13
+# 2020/09/01 - Updates for version 0.13
 #              Collect info on at.allow and at.deny files.
 #              Collect minlen setting from pwquality.conf if uncommented
 #              in that file; as it overrides the value in login.defs on
 #              PAM systems so we need to collect it if present
 #              Use lastlog to collect last logged on info to avoid
 #              having to parse the fill last output
+# 2020/09/10 - Updates for version 0.14
+#              Collect selinux config information
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.13"    # capture script version
+EXTRACT_VERSION="0.14"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -1299,6 +1301,25 @@ ip a | while read dataline
 do
    echo "INTERFACE_INFO_IPA=${dataline}" >> ${LOGFILE}
 done
+
+# ======================================================================
+# Collect the selinux settings.
+# ======================================================================
+if [ -f /etc/selinux/config ];
+then
+   echo "SELINUX_INSTALLED=yes" >> ${LOGFILE}
+   grep -v "^#" /etc/selinux/config | while read xx
+   do
+      if [ "${xx}." != "." ];
+      then
+         echo "${xx}" >> ${LOGFILE}
+      fi
+   done
+   selinux_current=`getenforce`
+   echo "SELINUX_CURRENT_GETENFORCE=${selinux_current}" >> ${LOGFILE}
+else
+   echo "SELINUX_INSTALLED=no" >> ${LOGFILE}
+fi
 
 # ======================================================================
 #

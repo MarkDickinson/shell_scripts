@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.13 of the processing script<br />
-Version 0.13 of the data collection script<br />
-Last updated 01 September 2020
+Version 0.14 of the processing script<br />
+Version 0.14 of the data collection script<br />
+Last updated 08 September 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -1281,6 +1281,20 @@ This parameter allows you to override that default with a different number
 of days. For example if you have VMs that are only started as needed, or remote laptops
 that only connect to the local network occasionally you may want to increase the number
 of days before a data collection snapshot is considered obsolete.
+</td></tr>
+<tr><td>EXACT_ALERT_REASON=description text</td><td>
+Occasionally there will be alerts raised you just cannot fix, this parameter
+can be used multiple times to document each expected alert.
+This parameter is designed to acknowledge that fact and provide a entries for which
+the count of alerts displayed on the main index menu next to the server entry are
+considered 'expected' and if the number of actual alerts are equal to the number
+of alerts expected the total will show in green text with a (C) indicating a custom
+file override. <em>Note this is the exact number of alerts expected not a less or
+equal check</em> as if the alert count drops from the expected to something has changed
+and you need to investigate.
+<br />This should be used as a last resort as ideally you would correct all issues,
+but unfortunately if the toolkit is run on debian based systems currently there
+will always be at least one alert.
 </td></tr>
 <tr><td>HOMEDIR_MISSING_OK=userid:</td><td>
 On Fedora and CentOS (and presumably Redhat) operating systems a lot of users are

@@ -1,6 +1,5 @@
 #!/bin/bash
 # !!! WILL ONLY WORK WITH BASH !!! - needs bash substring facility
-
 # ======================================================================
 #
 # process_server_details.sh
@@ -83,6 +82,7 @@
 #      F.1 - motd must exist and contain reqd keywords
 #      F.2 - security log retention checks
 #      F.3 - sshd configuration checks
+#      F.4 - selinux configuration checks
 #   G. Report on custom file used (if any)
 #   H. Firewall rule checks to determine if open ports in the firewall
 #      rules match ports actualy in use on the server
@@ -288,6 +288,33 @@
 #                       are a lot of randomply paced suid files per application.
 #                   (3) Enhance cron job command checks to handle quite
 #                       a few stacked command types
+# MID: 2020/09/10 - Version 0.14
+#                   (1) Main index display changes  
+#                       Allow for a new paramater EXACT_ALERT_REASON  
+#                       for those servers we know will always have 
+#                       unfixable alerts, one entry per expected reason
+#                       describing the expected alert. Alert field text to
+#                       green for 0 or expected number of alerts, red for
+#                       any other non-zero value. It is 'exact', if you expect
+#                       3 alerts and the total is 2 it will be red as something
+#                       has changed and you must investigate. In all cases
+#                       if a server has these parameters set the alert field will
+#                       append '(number)' after the alert count to show an
+#                       override was used (so only use if needed, not for 0)
+#                   (2) File permission checks for crontab commands (D.2)
+#                       Allow for a new parameter CRONTAB_CMD_OWNER_ROOT_ALLOWED
+#                       to suppress alerts for non-standard system files
+#                       run directly by user crontabs (in addition to the
+#                       standard ones the collector knows about). This
+#                       if for things like /bin/keystone-manage,
+#                       /bin/nova-manage etc that are in user crontabs
+#                       for users keystone and nova but the files are
+#                       owned by root rather than the user. These are
+#                       definately server specific so should not be coded
+#                       in the collector script, but are also known cases
+#                       so we need to manage alerts for them, so this new
+#                       parameter has been added.
+#                   (4) added F.3 for simple selinux config checks
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -341,7 +368,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.13"
+PROCESSING_VERSION="0.14"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -674,9 +701,6 @@ update_system_file_owner_list() {
 # ---------------------------------------------------------------
 update_webserver_file_owner_list() {
    hostid="$1"
-   # Space seperated list of users that can own files of class SYSTEM.
-   # Additional users can be added on a per server basis from the server
-   # customisation file with ADD_SYSTEM_FILE_OWNER=xx
    WEBSERVER_FILE_OWNERS=""
    if [ "${CUSTOMFILE}." != "." ];
    then
@@ -842,14 +866,11 @@ check_homedir_perms() {
 # ---------------------------------------------------------------
 # Used to check file permissions, we do a lot of that.
 # Input is from a ls -la with the expected owner appended
-#
-# hostid is only passed from the home dir checks as a
-# general rule.
-# If a config override file exists for ALL or the hostid then
 # ---------------------------------------------------------------
 check_file_perms() {
    databuffer="$1"
    reqd_permMask="$2"
+   optionalowner="$3"    # added for 0.14 where we may allow root to own a file rather than expected owner
    # USE AWK, cut doesn't handle the tabs in the dataline
    perm=`echo "${databuffer}" | awk {'print $1'}`
    perm=${perm:0:10}   # fix for trailing . on perms now
@@ -934,14 +955,24 @@ check_file_perms() {
                PERM_CHECK_RESULT="${PERM_CHECK_RESULT}<br>Bad Ownership ${realowner}, should be ${neededowner}"
             fi
          else  # must be the real user
-            if [ "${realowner}." != "${neededowner}." ];
+            if [ "${realowner}." != "${neededowner}." -a "${realowner}." != "${optionalowner}." ];
             then
                # Original processing, an error
                if [ "${PERM_CHECK_RESULT}." == "OK." ];
                then
-                  PERM_CHECK_RESULT="Bad Ownership ${realowner}, should be ${neededowner}"
+                  if [ "${optionalowner}." == "." ];
+                  then
+                     PERM_CHECK_RESULT="Bad Ownership ${realowner}, should be ${neededowner}"
+                  else
+                     PERM_CHECK_RESULT="Bad Ownership ${realowner}, should be ${neededowner} or ${optionalowner}"
+                  fi
                else
-                  PERM_CHECK_RESULT="${PERM_CHECK_RESULT}<br>Bad Ownership ${realowner}, should be ${neededowner}"
+                  if [ "${optionalowner}." == "." ];
+                  then
+                     PERM_CHECK_RESULT="${PERM_CHECK_RESULT}<br>Bad Ownership ${realowner}, should be ${neededowner}"
+                  else
+                     PERM_CHECK_RESULT="${PERM_CHECK_RESULT}<br>Bad Ownership ${realowner}, should be ${neededowner} or ${optionalowner}"
+                  fi
                fi
             fi
          fi
@@ -2594,14 +2625,48 @@ build_appendix_d() {
    echo "<p>On a well managed site user cron jobs should run scripts from well defined directories and not" >> ${htmlfile}
    echo "be permitted to execute system utilities directly as they see fit. If you have no such" >> ${htmlfile}
    echo "standards at your site you can expect quite a few issues here as users cannot own such files as" >> ${htmlfile}
-   echo "'mv', 'cp', 'echo' etc which they may populate their crontabs with and which will alert.</p>" >> ${htmlfile}
+   echo "'mv', 'cp', 'echo' etc which they may populate their crontabs with and which will alert unless overridden.</p>" >> ${htmlfile}
+
+   # For 0.14 added a new parm to allow specific files to be forced OK
+   cronoverridelist=""
+   if [ "${CUSTOMFILE}." != "." ];
+   then
+      if [ -f ${WORKDIR}/delme ];
+      then
+         rm -f ${WORKDIR}/delme
+      fi
+      grep "^CRONTAB_CMD_OWNER_ROOT_ALLOWED=" ${CUSTOMFILE} | awk -F\= '{print $2}' | while read fnameonly
+      do
+         cronoverridelist="${cronoverridelist} ${fnameonly}"
+         echo "${cronoverridelist}" > ${WORKDIR}/delme
+      done
+      if [ -f ${WORKDIR}/delme ];
+      then
+         cronoverridelist=`cat ${WORKDIR}/delme`
+         rm -f ${WORKDIR}/delme
+         log_message "Note: crontab command ownership has overrides in the custom file"
+      fi
+   fi
 
    delete_file ${WORKDIR}/cron_badperm_check
    grep "^PERM_CRON_JOB_FILE" ${SRCDIR}/secaudit_${hostid}.txt | while read dataline
    do
       cronpermline=`echo "${dataline}" | awk -F\= {'print $2"="$3'} | awk -F@ {'print $1'}`
-      check_file_perms "${cronpermline}" "-rXXX-XX-X"
-      if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not empty has error text
+      # Below if is for 0.14 where we have a list of commands to force OK
+      if [ "${cronoverridelist}." != "." ];
+      then
+         fnameonly=`echo "${cronpermline}" | awk {'print $9'} | awk -F\= {'print $1'}`
+         isinlist=`echo "${cronoverridelist}" | grep -w "${fnameonly}"`
+         if [ "${isinlist}." != "." ];                              # is it found in the override list
+         then
+            check_file_perms "${cronpermline}" "-rXXX-XX-X" "root"  #  yes, root is also a permitted optional owner
+         else
+            check_file_perms "${cronpermline}" "-rXXX-XX-X"         #  no, normal checks
+         fi
+      else
+         check_file_perms "${cronpermline}" "-rXXX-XX-X"            # if no override list, normal checks
+      fi
+      if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not OK has error text
       then
          inc_counter ${hostid} alert_count
          crontabdata=`echo "${dataline}" | awk -F@ {'print $2'}`
@@ -3149,8 +3214,10 @@ EOF
 #   F. Server environment
 #      F.1 - motd must exist and contain reqd keywords
 #      F.2 - security log retention checks
-#      F.3 - ssh banner should exist and contain reqd keywords
-#      F.4 - ssh must not allow direct root login
+#      F.3 - ssh config settings
+#      F.3.1 - ssh banner should exist and contain reqd keywords
+#      F.3.2 - ssh must not allow direct root login
+#      F.4 - selinux config checks
 # ----------------------------------------------------------
 extract_appendix_f_files() {
    hostid="$1"
@@ -3386,6 +3453,60 @@ build_appendix_f() {
          echo "<p>There is no explicit 'PermitRootLogin no' statement in /etc/ssh/sshd_config." >> ${htmlfile}
          echo "It may be possible for a hacker to directly login as root. You should explicitly code this setting.</p>" >> ${htmlfile}
          echo "</td></tr></table>" >> ${htmlfile}
+   fi
+
+   # The selinux configuration checks
+   echo "<h2>F.4 - SELinux Configuration</h2>" >> ${htmlfile}
+   selinuxinstalled=`grep "^SELINUX_INSTALLED=yes" ${SRCDIR}/secaudit_${hostid}.txt`
+   if [ "${selinuxinstalled}." != "." ];
+   then
+      typeset -l lowercasevar1            # all data in here to be lowercase
+      typeset -l lowercasevar2            # all data in here to be lowercase
+      lowercasevar1=`grep "^SELINUX=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+      echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>Selinux Settings</td></tr>" >> ${htmlfile}
+      case "${lowercasevar1}" in
+         "disabled")  
+            echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux is configured as disabled</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} alert_count
+            ;;
+         "permissive")
+            echo "<tr bgcolor=\"${colour_warn}\" border=\"1\"><td>SELinux configured for permissive mode</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} warning_count
+            ;;
+         "enforcing")
+            echo "<tr bgcolor=\"${colour_OK}\" border=\"1\"><td>SELinux configured for enforcing mode</td></tr>" >> ${htmlfile}
+            ;;
+         *) echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux is configured incorrectly as ${lowecasevar1}</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} alert_count
+            ;;
+      esac
+      lowercasevar2=`grep "^SELINUX_CURRENT_GETENFORCE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+      if [ "${lowercasevar1}." != "${lowercasevar2}." ];
+      then
+         echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux is configured as ${lowecasevar1}, getenforce reports it as ${lowercasevar2}</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      else
+         echo "<tr bgcolor=\"${colour_OK}\" border=\"1\"><td>SELinux configuration and getenforce response match</td></tr>" >> ${htmlfile}
+      fi
+      lowercasevar1=`grep "^SELINUXTYPE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+      case "${lowercasevar1}" in
+         "mls"|"targeted")  
+            echo "<tr bgcolor=\"${colour_OK}\" border=\"1\"><td>SELinux is using targeted or mls protection mode</td></tr>" >> ${htmlfile}
+            ;;
+         "minimum")  
+            echo "<tr bgcolor=\"${colour_warn}\" border=\"1\"><td>SELinux is using minimum protection, should be at least targeted</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} warning_count
+            ;;
+         *) echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux type is configured incorrectly as ${lowecasevar1}</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} alert_count
+            ;;
+      esac
+      unset lowercasevar1         # done with type specefic usage
+      unset lowercasevar2         # done with type specefic usage
+      echo "</table>" >> ${htmlfile}
+   else
+      echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>SELinux is not installed on the server (no /etc/selinux/config file found)</td></tr></table>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
    fi
 
    # Close the appendix page
@@ -4131,6 +4252,11 @@ build_main_index_page() {
       dataline=`basename ${dataline}`
       if [ "${dataline}." != "${onseservername}." ];
       then
+         # we now use the custom file for a server to build the index as it
+         # provides the number if days before a snapshot expires (since 0.12)
+         # and the maximum number of alerts expected (since 0.14)
+         locate_custom_file "${dataline}" "suppress"
+         # and continue on
          if [ -f ${RESULTS_DIR}/${dataline}/alert_totals ];
          then
             alerts=`cat ${RESULTS_DIR}/${dataline}/alert_totals`
@@ -4180,9 +4306,47 @@ build_main_index_page() {
          # in multiple lines, makes it easier to read that we change the capture date colour field if
          # a newer cpature file has been put in place since the last processing date.
          # If a newer capture file exists but has not been processed show capture date in warning colour
-         # If a capture file has not been refreshed in over two weeks show capture date in alert colour
+         # If a capture file has not been refreshed in over two weeks show capture date in alert colour (0.12)
          # If no capture file exists show capture data field as 'no datafile' in alert colour
-         echo "<tr><td><a href=\"${dataline}/index.html\">${dataline}</a></td><td>${alerts}</td><td>${warns}</td>" >> ${htmlfile}
+         # If number of alerts le expected max alerts show alert total in green text (0.14)
+         exactalertsfound="no"
+         if [ "${CUSTOMFILE}." != "." ];
+         then
+            maxalertsallowed=`grep "^EXACT_ALERT_REASON" ${CUSTOMFILE} | wc -l`
+            if [ ${maxalertsallowed} -ne 0 ];
+            then
+               exactalertsfound="yes"
+            fi
+            if [ "${exactalertsfound}." == "yes." ];
+            then
+               # save all the reasons at a location the main index can provide a link to, it is
+               # important anyone looking at the main index page can quickly see why an override was
+               # used. We recreate the file on each index rebuild as it may be possible an index
+               # rebuid was requested just to update the expected alert count.
+               grep "^EXACT_ALERT_REASON" ${CUSTOMFILE} > ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+            fi
+         else
+            maxalertsallowed=0
+         fi
+         if [ ${alerts} -eq ${maxalertsallowed} ];   # use -eq now, -le could hide a change in totals
+         then
+            if [ ${alerts} -eq 0 -a "${exactalertsfound}." == "no." ];        # all ok and no custom override
+            then
+               alertdata="<span style=\"color:green;\">${alerts}</span>"      # all good just show the number
+            else
+                                                                              # else flag (C) to show customfile override used and link to reasons
+               alertdata="<span style=\"color:green;\">${alerts} (<a href=\"${RESULTS_DIR}/${dataline}/expected_alerts_list.txt\">${maxalertsallowed}</a>)</span>" 
+            fi
+         else
+            if [ "${exactalertsfound}." == "no." ];        # no custom override
+            then
+               alertdata="<span style=\"color:red;\">${alerts}</span>"           # else non-zero and no override so red
+            else
+                                                                                 # else override but not a match so still red and link to reasons
+               alertdata="<span style=\"color:red;\">${alerts} (<a href=\"${RESULTS_DIR}/${dataline}/expected_alerts_list.txt\">${maxalertsallowed}</a>)</span>"
+            fi
+         fi
+         echo "<tr><td><a href=\"${dataline}/index.html\">${dataline}</a></td><td>${alertdata}</td><td>${warns}</td>" >> ${htmlfile}
          if [ "${captdate}." == "NO DATAFILE." ];
          then
             echo "<td bgcolor=\"${colour_alert}\">${captdate}</td>" >> ${htmlfile}
@@ -4191,10 +4355,9 @@ build_main_index_page() {
             then
                echo "<td bgcolor=\"${colour_warn}\">${captdate}<br />New data ready</td>" >> ${htmlfile}
             else
-               locate_custom_file "${dataline}" "suppress"
                if [ "${CUSTOMFILE}." != "." ];
                then
-                  daysbeforewarn=`grep "^REFRESH_INTERVAL_EXPECTED=" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+                  daysbeforewarn=`grep "^REFRESH_INTERVAL_EXPECTED=" ${CUSTOMFILE} | head -1 | awk -F\= {'print $2'}`
                else
                   daysbeforewarn=${DEFAULT_DAYS_BEFORE_SNAPSHOT_WARN}
                fi
@@ -4208,7 +4371,7 @@ build_main_index_page() {
                warndate=$(( ${epocsecsnow} - (${onedaysecs} * ${daysbeforewarn}) ))   # one days secs * daysbeforewarn days
                if [ ${captepoc} -lt ${warndate} ];
                then
-                  echo "<td bgcolor=\"${colour_alert}\">${captdate} (${daysbeforewarn})<br />Over ${daysbeforewarn} old</td>" >> ${htmlfile}
+                  echo "<td bgcolor=\"${colour_alert}\">${captdate} (${daysbeforewarn})<br />Over ${daysbeforewarn} days old</td>" >> ${htmlfile}
                else
                   echo "<td>${captdate} (${daysbeforewarn})</td>" >> ${htmlfile}
                fi
@@ -4241,7 +4404,11 @@ build_main_index_page() {
    else
       echo "<td colspan=\"2\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}
    fi
-   echo "</table></center><br><br>" >> ${htmlfile}
+   echo "</table></center>" >> ${htmlfile}
+
+   # If the new EXACT_ALERT_REASON is used show why non-zero values may be in green
+   echo "<br /><center>Any alert counts flagged with (number) indicate custom file override for an expected number of alerts" >> ${htmlfile}
+   echo "<br />Within the () will be a link to the reasons they are expected</center>" >> ${htmlfile}
 
    echo "</body></html>" >> ${htmlfile}
    delete_file ${RESULTS_DIR}/global_alert_totals
@@ -4293,9 +4460,9 @@ check_for_new_files() {
    done
 
    # (2) check the source directory to see if there are any collector files that have no results yet
-   ls ${SRCDIR}/secaudit_*.txt | while read dataline
+   ls ${SRCDIR}/secaudit_*.txt | while read srcdataline
    do
-      fname=`basename ${dataline}`
+      fname=`basename ${srcdataline}`
       servername=`echo "${fname}" | cut -d_ -f2`
       servername=`echo "${servername}" | cut -d. -f1`
       if [ ! -d ${RESULTS_DIR}/${servername} ];

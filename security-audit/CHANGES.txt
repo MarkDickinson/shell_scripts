@@ -1,9 +1,41 @@
-These are the changes that will be obvious to users.
+These are the changes that will be obvious to users such as display changes or
+breakage of previous functionality.
+
 For changes made under the covers not visible to users refer to the change history in
-the bash script files.
+the bash script files, and for new parameters the documentation and example ALL.custom
+file provided.
+
+From 0.14 onward changes that can cause problems with a newer processing script
+version processing collected data files from prior versions will not be documented,
+it is recomended that when upgrading between versions you also perform captures
+with the new version. As each new release is produced more and more code used
+for backward compatability will be removed plus any new checks implemented will
+be permitted to alert if older capture files are used rather than add new coding
+for backward compatability. Simply always use the same versions.
+
+-------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.13 and version 0.14 are
+-------------------------------------------------------------------------------------
+(1) Main index page display changes and specifying expected alerts
+    If alert count for a server is 0 that total will show in green text on the main
+    index. Additional custom file parameter added to specify a maximum number of
+    alerts that are considered OK which will also show the alert total for a server
+    in green text on the main index page; this parameter is added for servers that
+    will have known issues that will never be fixed such as debian based servers
+    always reporting password minlen is 0 (until I figure out how to obtain it) and
+    openindianna/solaris servers reporting there is no firewall installed (as they use
+    ipfilter and I have only coded checks for iptables and netfilter which are all
+    I care about at the moment). HOWEVER unless you have a good reason, such as examples
+    mentioned, you should not use the new parameter but strive for zero alerts which
+    is easily possible on RHEL based systems using existing parameters in this toolkilt.
+    If the new parameter is used you must provide N reson text entries to match the
+    expected N alert counts which will be made available as a link from the index
 
 -------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.12 and version 0.13 are
+IMPORTANT: backward compatibility for crontab checks made by collector versions
+           prior to 0.13 is not provided. You must use the latest collector on
+           all servers.
 -------------------------------------------------------------------------------------
 (1) *important* changes in crontab handling have been made, if you upgrade to
     processing version 0.13 you must use data collection files collected by
