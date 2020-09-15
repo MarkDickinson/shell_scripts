@@ -30,6 +30,11 @@ Noteable changes implemented between version 0.13 and version 0.14 are
     is easily possible on RHEL based systems using existing parameters in this toolkilt.
     If the new parameter is used you must provide N reson text entries to match the
     expected N alert counts which will be made available as a link from the index
+(2) Now checks are done to see if subsystems are configured in sshd_config and an
+    alert raised for each one configured. A customfile parameter can be used to
+    downgrade the alert to a warning. On servers managed by ansible which must
+    have the sftp subsystem available an additional customfile parameter is provided
+    to downgrade the warning to OK only if the subsystem is named sftp.
 
 -------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.12 and version 0.13 are

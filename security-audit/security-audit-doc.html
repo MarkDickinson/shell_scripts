@@ -5,7 +5,7 @@
 <b>This documentation is for</b><br />
 Version 0.14 of the processing script<br />
 Version 0.14 of the data collection script<br />
-Last updated 08 September 2020
+Last updated 16 September 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -1306,6 +1306,19 @@ Using this parameter will suppress the warning count being incremented
 This suppressdion is done on a per user basis so new users/packages added can be 
 easily identified. The entry will still be listed in the report but in a non-warning
 colour and no warning counter incremented.
+</td></tr>
+<tr><td>SSHD_SUBSYSTEM_ALLOW=subsysname:fullsubsyscommand:</td><td>
+Example SSHD_SUBSYSTEM_ALLOW=sftp:/usr/libexec/openssh/sftp-server:<br />
+This parameter was added for servers that are managed by ansible, and as such
+reguire sftp to be enabled. It can however be used for any subsystem enabled
+by the sshd_config file. If used the alert raised for the specified subsystem
+is downgraded to a warning.
+</td></tr>
+<tr><td>SERVER_IS_ANSIBLE_NODE=yes</td><td>
+This parameter is only used if the SSHD_SUBSYSTEM_ALLOW parameter has been
+used for the sftp subsystem. If used it identified the server as being
+managed by ansible and as such must have sftp running, in this case the
+warning for the sftp subsystem is altered to OK.
 </td></tr>
 </table>
 

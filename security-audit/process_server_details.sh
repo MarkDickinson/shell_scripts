@@ -315,7 +315,13 @@
 #                       so we need to manage alerts for them, so this new
 #                       parameter has been added.
 #                   (4) added F.3 for simple selinux config checks
-#
+# MID: 2020/09/15 - Version 0.14 - no version change
+#                   (1) added check for sshd subsystems being enabled,
+#                       new customfile entry SSHD_SUBSYSTEM_ALLOW=${subsysname}:${subsyscmd}:
+#                       added to change alert to warning, new customfile entry
+#                       SERVER_IS_ANSIBLE_NODE=yes added to change warning to OK
+#                       if subsystem was sftp.
+#                       
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
 SRCDIR=""           # where are the raw datafiles to process (required)
@@ -3438,7 +3444,7 @@ build_appendix_f() {
 
    echo "<h3>F.3.2 - SSHD root login setting</h3>" >> ${htmlfile}
    echo "<p>SSH should <b>not</b> permit the root account to be logged into directly." >> ${htmlfile}
-   echo "That should be considered a major secirity risk." >> ${htmlfile}
+   echo "That should be considered a major security risk." >> ${htmlfile}
 
    xx=`grep -i "PermitRootLogin" ${WORKDIR}/sshd_config | grep -v "^#" | grep -i "no"`
    if [ "${xx}." != "." ];
@@ -3453,6 +3459,38 @@ build_appendix_f() {
          echo "<p>There is no explicit 'PermitRootLogin no' statement in /etc/ssh/sshd_config." >> ${htmlfile}
          echo "It may be possible for a hacker to directly login as root. You should explicitly code this setting.</p>" >> ${htmlfile}
          echo "</td></tr></table>" >> ${htmlfile}
+   fi
+
+   echo "<h3>F.3.3 - SSH subsystems</h3>" >> ${htmlfile}
+   subsyscount=`grep -i "^Subsystem" ${WORKDIR}/sshd_config | wc -l`
+   if [ ${subsyscount} -gt 0 ];
+   then
+      echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>Subsystems configured in sshd_config</td></tr>" >> ${htmlfile}
+      grep -i "^Subsystem" ${WORKDIR}/sshd_config | while read subsys
+      do
+         subsysname=`echo "${subsys}" | awk {'print $2'}`
+         subsyscmd=`echo "${subsys}" | awk {'print $3'}`
+         isallowed=`grep "^SSHD_SUBSYSTEM_ALLOW=${subsysname}:${subsyscmd}:" ${CUSTOMFILE}`
+         if [ "${isallowed}." == "." ];
+         then
+            echo "<tr bgcolor=\"${colour_alert}\"><td>${subsys}</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} alert_count
+         else
+            isallowed=`grep "^SERVER_IS_ANSIBLE_NODE=yes" ${CUSTOMFILE}`
+            if [ "${isallowed}." != "." -a "${subsysname}." == "sftp." ];   # ansible nodes require sftp
+            then
+               echo "<tr bgcolor=\"${colour_OK}\"><td>${subsys}</td></tr>" >> ${htmlfile}
+            else
+               echo "<tr bgcolor=\"${colour_warn}\"><td>${subsys}</td></tr>" >> ${htmlfile}
+               inc_counter ${hostid} warning_count
+            fi
+         fi
+      done
+      echo "</table>" >> ${htmlfile}
+      echo "<p>As a general rule subsystems should be disabled in sshd_config unless needed.</p>" >> ${htmlfile}
+      echo "<p>If you use <b>ansible</b> it is permissable to have the sftp subsystem available for ansible, there should be no other subsystems available.</p>" >> ${htmlfile}
+   else
+      echo "<p>No subsystems are defined in the sshd_config file.</p>" >> ${htmlfile}
    fi
 
    # The selinux configuration checks
