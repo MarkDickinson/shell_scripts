@@ -418,6 +418,14 @@ NOWARN_ON_CUSTOMFILE=YES
 # the server report is out of date. Default 14
 REFRESH_INTERVAL_EXPECTED=14
 #
+#
+# Below two added as ansible required the sftp service available
+# Only Needed for ansible managed servers that need sftp
+#    Downgrade to warning is sftp is used on the server
+#SSHD_SUBSYSTEM_ALLOW=sftp:/usr/libexec/openssh/sftp-server:
+#    Downgrade to OK is server is ansible managed
+#SERVER_IS_ANSIBLE_NODE=yes
+#
 # Below two example parameters added in 0.14
 # There can be a EXACT_ALERT_REASON line for each expected
 # alert explaining what the expected alert is. If there are

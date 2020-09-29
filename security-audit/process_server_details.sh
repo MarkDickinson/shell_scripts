@@ -3514,14 +3514,14 @@ build_appendix_f() {
          "enforcing")
             echo "<tr bgcolor=\"${colour_OK}\" border=\"1\"><td>SELinux configured for enforcing mode</td></tr>" >> ${htmlfile}
             ;;
-         *) echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux is configured incorrectly as ${lowecasevar1}</td></tr>" >> ${htmlfile}
+         *) echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux is configured incorrectly as ${lowercasevar1}</td></tr>" >> ${htmlfile}
             inc_counter ${hostid} alert_count
             ;;
       esac
       lowercasevar2=`grep "^SELINUX_CURRENT_GETENFORCE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
       if [ "${lowercasevar1}." != "${lowercasevar2}." ];
       then
-         echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux is configured as ${lowecasevar1}, getenforce reports it as ${lowercasevar2}</td></tr>" >> ${htmlfile}
+         echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux is configured as ${lowercasevar1}, getenforce reports it as ${lowercasevar2}</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
       else
          echo "<tr bgcolor=\"${colour_OK}\" border=\"1\"><td>SELinux configuration and getenforce response match</td></tr>" >> ${htmlfile}
@@ -3535,7 +3535,7 @@ build_appendix_f() {
             echo "<tr bgcolor=\"${colour_warn}\" border=\"1\"><td>SELinux is using minimum protection, should be at least targeted</td></tr>" >> ${htmlfile}
             inc_counter ${hostid} warning_count
             ;;
-         *) echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux type is configured incorrectly as ${lowecasevar1}</td></tr>" >> ${htmlfile}
+         *) echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux type is configured incorrectly as ${lowercasevar1}</td></tr>" >> ${htmlfile}
             inc_counter ${hostid} alert_count
             ;;
       esac
