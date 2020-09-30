@@ -341,11 +341,22 @@ FORCE_PERM_OK=/var/log/btmp:-rw-rw----
 FORCE_ANYFILE_OK=remove --w--w----
 FORCE_ANYFILE_OK=rescan --w--w----
 #
+# Only warn for /var file security failures, cuts out a lot
+# of alerts as a lot of stuff in /var is owned by many different
+# userids.
+ALLOW_SLOPPY_VAR=WARN
+#
+# Consider it OK if a file under /var is group writeable but the 
+# group also matches the userid owning the file
+ALLOW_VAR_FILE_GROUPWRITE=YES
+#
 # ===============================================================
 # Filesystem check check overrides
 # Section E.2 Permitted SUID files
 # ===============================================================
-# SUID files on a Fedora 31 system KVM system
+# ---------------------------------------------------------------
+# SUID files expected on Fedora 32 server
+# ---------------------------------------------------------------
 SUID_ALLOW=/usr/sbin/sendmail.sendmail
 SUID_ALLOW=/usr/sbin/userhelper
 SUID_ALLOW=/usr/bin/lockfile
@@ -374,21 +385,59 @@ SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper
 SUID_ALLOW=/usr/sbin/usernetctl
 SUID_ALLOW=/usr/sbin/mtr-packet
 SUID_ALLOW=/usr/sbin/grub2-set-bootflag
-# I have nrpe and nagios-plugins-all installed on all my servers
 SUID_ALLOW=/usr/lib64/nagios/plugins/check_dhcp
 SUID_ALLOW=/usr/lib64/nagios/plugins/check_icmp
 SUID_ALLOW=/usr/lib64/nagios/plugins/check_ide_smart
 SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
-#
-# Additional if on a non KVM guest system
-#SUID_ALLOW=/usr/sbin/lockdev
+SUID_ALLOW=/usr/lib64/mariadb/plugin/auth_pam_tool_dir/auth_pam_tool
+# ---------------------------------------------------------------
+# SUID files expected on a CentOS8 server
+# ---------------------------------------------------------------
+#SUID_ALLOW=/usr/sbin/sendmail.sendmail
+#SUID_ALLOW=/usr/bin/lockfile
+#SUID_ALLOW=/usr/bin/sudo
+#SUID_ALLOW=/usr/bin/crontab
+#SUID_ALLOW=/usr/bin/gpasswd
+#SUID_ALLOW=/usr/bin/at
+#SUID_ALLOW=/usr/bin/locate
+#SUID_ALLOW=/usr/bin/newgrp
+#SUID_ALLOW=/usr/bin/screen
 #SUID_ALLOW=/usr/bin/chsh
+#SUID_ALLOW=/usr/bin/chage
 #SUID_ALLOW=/usr/bin/chfn
-#SUID_ALLOW=/usr/libexec/qemu-bridge-helper
-#SUID_ALLOW=/usr/libexec/abrt-action-install-debuginfo-to-abrt-cache
-#SUID_ALLOW=/usr/libexec/Xorg.wrap
+#SUID_ALLOW=/usr/bin/write
+#SUID_ALLOW=/usr/bin/passwd
+#SUID_ALLOW=/usr/libexec/openssh/ssh-keysign
+#SUID_ALLOW=/usr/libexec/utempter/utempter
+#SUID_ALLOW=/usr/bin/mount
+#SUID_ALLOW=/usr/bin/su
+#SUID_ALLOW=/usr/bin/umount
+#SUID_ALLOW=/usr/sbin/mount.nfs
+#SUID_ALLOW=/usr/sbin/pam_timestamp_check
+#SUID_ALLOW=/usr/sbin/unix_chkpwd
+#SUID_ALLOW=/usr/bin/pkexec
+#SUID_ALLOW=/usr/bin/staprun
 #SUID_ALLOW=/usr/bin/fusermount
-#SUID_ALLOW=/usr/bin/fusermount-glusterfs
+#SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1
+#SUID_ALLOW=/usr/libexec/cockpit-session
+#SUID_ALLOW=/usr/libexec/abrt-action-install-debuginfo-to-abrt-cache
+#SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper
+#SUID_ALLOW=/usr/sbin/postqueue
+#SUID_ALLOW=/usr/sbin/postdrop
+#SUID_ALLOW=/usr/libexec/qemu-bridge-helper
+#SUID_ALLOW=/usr/libexec/sssd/proxy_child
+#SUID_ALLOW=/usr/libexec/sssd/ldap_child
+#SUID_ALLOW=/usr/libexec/sssd/krb5_child
+#SUID_ALLOW=/usr/libexec/sssd/selinux_child
+#SUID_ALLOW=/usr/sbin/grub2-set-bootflag
+#SUID_ALLOW=/usr/sbin/userhelper
+# ---------------------------------------------------------------
+# SUID files for nagios-plugins-all package
+# ---------------------------------------------------------------
+#SUID_ALLOW=/usr/lib64/nagios/plugins/check_dhcp
+#SUID_ALLOW=/usr/lib64/nagios/plugins/check_icmp
+#SUID_ALLOW=/usr/lib64/nagios/plugins/check_ide_smart
+#SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
 #
 # ===============================================================
 # Overrides for commands being run from crontab (added in 0.14)

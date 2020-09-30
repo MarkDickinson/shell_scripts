@@ -5,7 +5,7 @@
 <b>This documentation is for</b><br />
 Version 0.14 of the processing script<br />
 Version 0.14 of the data collection script<br />
-Last updated 16 September 2020
+Last updated 30 September 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -256,7 +256,7 @@ Limiting capture syntax: <span style="background-color: #FFCCFF">bin/collect_ser
 Example                : <span style="background-color: #D7FFFF">bin/collect_server_details.sh --scanlevel=5</span>
 </pre>
 
-<h2>All collection parameters explained</li>
+<h2>All collection parameters explained</h2>
 <p>
 These are all the parameters available to the collection script.
 </p>
@@ -1066,7 +1066,7 @@ Example<br />
 UDP_OUTBOUND_SUPPRESS=:123:local network ntp servers
 </td></tr>
 <tr><td>TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:port:<br />
-UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:port:</td></td>
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:port:</td><td>
 NetworkManager or Firewalls opens firewall ports for services that have not necessarily
 been manually configured by the site administrator. This parameter will
 allow downgrading of an alert to a warning if the following conditions
@@ -1079,7 +1079,7 @@ Firewalld where ports are opened in the firewall that are not defined to firewal
 (they do not show in firewall-cmd queries on services or ports).<br />
 <b>Before using this parameter on firewalld systems ensure you have
 checked all services and ports defined to firewalld and remove them from there
-if possible rather than downgrading the alert.
+if possible rather than downgrading the alert</b>.
 </td></tr>
 <tr><td>NETWORK_PORT_NOLISTENER_TCPV4_OK=port:optional description<br />
 NETWORK_PORT_NOLISTENER_TCPV6_OK=port:optional description<br />
@@ -1087,7 +1087,7 @@ NETWORK_PORT_NOLISTENER_UDPV4_OK=port:optional description<br />
 NETWORK_PORT_NOLISTENER_UDPV6_OK=port:optional description<br />
 NETWORK_PORT_NOLISTENER_RAWV4_OK=port:optional description<br />
 NETWORK_PORT_NOLISTENER_RAWV6_OK=port:optional description<br />
-</td></td>
+</td><td>
 This parameter is used to downgrade alerts to warnings for ports that are
 expected to be listening and have firewall ports open for them but
 at the time the data was collected had no application listening on the port.
