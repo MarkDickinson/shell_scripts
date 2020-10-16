@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.14 of the processing script<br />
-Version 0.14 of the data collection script<br />
-Last updated 30 September 2020
+Version 0.15 of the processing script<br />
+Version 0.15 of the data collection script<br />
+Last updated 03 October 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -26,13 +26,15 @@ Last updated 30 September 2020
 		</li>
 		<li><a href="#sect3">Processing the data</a>
 		<ul>
-				<li>Running the reporting script</li>
-				<ul>
-<li>Collecting the data to be processed</li>
-<li>Processing the data</li>
-<li>Automating Report Archiving</li>
-				</ul>
-				<li>Overiding/Customising the default reporting</li>
+			<li>Running the reporting script</li>
+			<ul>
+				<li>Collecting the data to be processed</li>
+				<li>Processing the data</li>
+				<li>Automating Report Archiving</li>
+<li>Processing only a single server</li>
+<li>Processing only updated servers</li>
+			</ul>
+			<li>Overiding/Customising the default reporting</li>
 		</ul>
 		</li>
 		<li><a href="#sect4">Viewing the security report output</a></li>
@@ -281,8 +283,9 @@ If used references a file containing a list of directories that are to be consid
 that are required to have all files secured as read only. The file contains a list of full path directory names
 (with no trailing /), one directory name per line. The # character in column 1 can be used to place comments
 in the file. If this option is used when the processing script processes data collected with this option
-a seperate appendix in the security report is produced to alert on files under these directory paths
-that are not read only. The default is that it is not used
+a seperate 'appendix W' in the security report is produced to alert on files under these directory paths
+that are not read only. The default is that it is not used.<br />
+<em>This could be used for any directory path that should contain read-only files such as package repositories</em>
 </li>
 </ul>
 
@@ -294,11 +297,20 @@ that are not read only. The default is that it is not used
 <p>
 The four required steps to produce a security report are
 <ol>
-		<li>Collecting the data to be processed, discussed above</li>
-		<li>Processing the data</li>
-		<li>Automating report archiving</li>
-		<li>Viewing the reports produced</li>
+	<li>Collecting the data to be processed, discussed above</li>
+	<li>Processing the data</li>
+	<li>Automating report archiving</li>
+	<li>Viewing the reports produced</li>
 </ol>
+<p>
+Often you will not want to re-process all servers just to test changes made to one, 
+and for performance reasons you are likely to want to process only a few servers a
+say; so the following processing options are also available.
+</p>
+<ul>
+	<li>Processing only a single server</li>
+	<li>Processing only updated servers</li>
+</ul>
 </p>
 <h3>Collecting the data to be processed</h3>
 <p>
@@ -482,6 +494,23 @@ global site custom file into the server specific ones if required.
 <b>As custom files are a topic into themselves the use of, and
 values available in, the custom files are covered in the
 Appendix A section</b>.
+</p>
+<H2>Processing Performance tips</H2>
+<p>
+As my list of servers has grown I have needed to find ways of processing 
+servers without having to process all servers in each processing run.
+</p>
+<p>
+The --checkchanged=process|list option was introduced to allow staggered
+processing (as long as the processing versions do not change) so you can stagger
+collection of datafiles from servers to only process a few each day rather than have to re-process
+all servers everyday.
+</p>
+<p>
+The --indexonly=yes option was origionally added to permit processing to be
+carried out on multiple servers, with the results (and raw datafiles) being
+able to be copied to a single master results server where the --indexonly=yes
+option will be able to merge all the results for a consolidated view.
 </p>
 
 <hr>
@@ -899,6 +928,10 @@ ALL.custom may accomodate most of your servers but if you have one you want more
 secured the last thing you would want is less strict settings fom ALL.custom being merged with
 you servername.custom settings.
 </p>
+<p>
+The list of parameters available is not in alpabetical order, but quite jumbled.
+I will get around to updating that one day.
+</p>
 
 <table border="1">
 <tr><td>TCP_PORTV4_ALLOWED=:<em>port:description[:WILD]</em></td><td>
@@ -1247,6 +1280,23 @@ ADD_WEBSERVER_FILE_OWNER=jetty<br />
 If no entry exists and there are webserver files to be checked a default
 owner of apache will be the default.
 </td></tr>
+<tr><td>WEBSERVER_FILE_ALLOW_WRITE_SUFFIX=<em>.suffix:</em></td><td>
+This is only used if the server data file was produced using the collector --webpathlist option
+to specifically identify web server directories that must only contain read-only files.<br />
+The parameter can be used to identify file suffixes than can be writeable under that 
+directory path.
+Example<br />
+WEBSERVER_FILE_ALLOW_WRITE_SUFFIX=.log:<br />
+This should ideally never be required, writeable files should be kept in
+directory paths outside the webserver root directories.
+</td></tr>
+<tr><td>WEBSERVER_FILE_ALLOW_WRITE_EXACT=<em>/full/path/file:</em></td><td>
+This is only used if the server data file was produced using the collector --webpathlist option
+to specifically identify web server directories that must only contain read-only files.<br />
+Can be used to suppress an alert for a specific webserver file by explicitly naming
+a file than can be writeable. The trailing : is required to prevent false matches such
+as xxx.log matching xxx.log.1
+</td></tr>
 <tr><td>ALLOW_SLOPPY_VAR=WARN</td><td>
 Setting this alters the report to
 only warn for /var file security failures, this cuts out a lot
@@ -1294,7 +1344,13 @@ equal check</em> as if the alert count drops from the expected to something has 
 and you need to investigate.
 <br />This should be used as a last resort as ideally you would correct all issues,
 but unfortunately if the toolkit is run on debian based systems currently there
-will always be at least one alert.
+will always be at least one alert.<br />
+<b>It must exactly match the alert text raised</b>, and the possible exact matches
+will be shown in the expected alert report also.<br />
+<b>This parameter will be ignored if there are more that 30 alerts for a server</b>
+as (a) index processing time woul be too great, and (b) you should fix your problems
+rather than suppress them; this parameter is to be used when you have only a couple
+of alerts you require or do not intend to fix
 </td></tr>
 <tr><td>HOMEDIR_MISSING_OK=userid:</td><td>
 On Fedora and CentOS (and presumably Redhat) operating systems a lot of users are
@@ -1319,6 +1375,13 @@ This parameter is only used if the SSHD_SUBSYSTEM_ALLOW parameter has been
 used for the sftp subsystem. If used it identified the server as being
 managed by ansible and as such must have sftp running, in this case the
 warning for the sftp subsystem is altered to OK.
+</td></tr>
+<tr><td>ALLOW_AUTHORISED_KEYS=yes</td><td>
+By default users with authorized_keys files are warnings, using this
+parameter indicates it is OK fir users to have those files and
+suppresses the warnings.<br />
+This does not affect the 'root' user as an alert will always be raised
+if root has ssh keys; that should never be allowed.
 </td></tr>
 </table>
 

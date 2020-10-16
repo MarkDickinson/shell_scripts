@@ -14,13 +14,38 @@ be permitted to alert if older capture files are used rather than add new coding
 for backward compatability. Simply always use the same versions.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.14 and version 0.15 are
+-------------------------------------------------------------------------------------
+main index page changes
+(1) Changes made only affect the main index page produced by the processing script,
+    and will result in a noticably slower rebuild of the main index page if there
+    are alerts for a server.
+    Configuration file changes are only needed for those using the custom file
+    parameter EXACT_ALERT_REASON introduced in version 0.14
+    The expected alerts parameter EXACT_ALERT_REASON handling has changed, now
+    the reason must exactly match the text of a real alert.
+    The link in the index page that used to show the expected alert parameters
+    still shows those, but it also now lists all alerts that may be matched plus
+    the alerts that did actually match. Note: only selected alerts can be matched
+    this way (critical alerts for things such as network and cron cannot be matched
+    as these must be fixed rather than documeneted as being expected)
+    Also the checks for EXACT_ALERT_REASON handling will now only be performed if
+    there are no more than thirty alerts for a server (and I may lower that in
+    the next release).
+
+additional checks added
+(2) User authorized_keys files are now searched for and reported on in new
+    Appendix K. New appendix only produced if those files exist on the server.
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.13 and version 0.14 are
 -------------------------------------------------------------------------------------
 (1) Main index page display changes and specifying expected alerts
     If alert count for a server is 0 that total will show in green text on the main
-    index. Additional custom file parameter added to specify a maximum number of
-    alerts that are considered OK which will also show the alert total for a server
-    in green text on the main index page; this parameter is added for servers that
+    index. Additional custom file parameter added to specify an alert that is
+    expected that is considered OK which will also show the alert total for a server
+    in green text on the main index page if the total of the expected alerts
+    match the number of alerts; this parameter is added for servers that
     will have known issues that will never be fixed such as debian based servers
     always reporting password minlen is 0 (until I figure out how to obtain it) and
     openindianna/solaris servers reporting there is no firewall installed (as they use

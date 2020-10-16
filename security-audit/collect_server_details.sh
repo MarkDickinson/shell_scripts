@@ -123,13 +123,15 @@
 #              having to parse the fill last output
 # 2020/09/10 - Updates for version 0.14
 #              Collect selinux config information
+# 2020/10/03 - Updates for version 0.15
+#              now collect some user authorized_keys info
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.14"    # capture script version
+EXTRACT_VERSION="0.15"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -674,7 +676,7 @@ get_PAM_pwminlen() {
    # Check the default PAM pwquality file
    # If a default is set (uncommented) in the default config file
    # obtain that value.
-   pamentry=`cat /etc/security/pwquality.conf | grep -v "^#" | grep "minlen"`
+   pamentry=`cat /etc/security/pwquality.conf 2>/dev/null | grep -v "^#" | grep "minlen"`
    if [ "${pamentry}." != "." ];
    then
       pamminlen=`echo "${pamentry}" | awk -F\= {'print $2'} | awk {'print $1'}`
@@ -685,7 +687,7 @@ get_PAM_pwminlen() {
    if [ ${pamcustomcount} -gt 0 ];
    then
       # -h suppresses each filename: being listed in the output
-      grep -h "minlen" /etc/security/pwquality.conf.d/*.conf | grep -v "^#" | awk -F\= {'print $2'} | awk {'print $1'} | while read pamminlen
+      grep -h "minlen" /etc/security/pwquality.conf.d/*.conf 2>/dev/null | grep -v "^#" | awk -F\= {'print $2'} | awk {'print $1'} | while read pamminlen
       do
          echo "${pamminlen}" > ${WORKDIR}/pamwork.tmp
       done
@@ -699,7 +701,9 @@ get_PAM_pwminlen() {
    fi
 } # end of get_PAM_pwminlen
 
-# MAINLINE STARTS
+# **********************************************************************
+#                            MAINLINE STARTS
+# **********************************************************************
 # ======================================================================
 # Record the server details
 # ======================================================================
@@ -1144,6 +1148,25 @@ then
    done
 fi
 
+# --- record any users with authorized_keys files
+cat /etc/passwd | while read pwline
+do
+   username=`echo "${pwline}" | awk -F: {'print $1'}`
+   userdir=`echo "${pwline}" | awk -F: {'print $6'}`
+   if [ -f ${userdir}/.ssh/authorized_keys ];    # ~${username}/.ssh syntax does not work, need full homedir
+   then
+      echo "USER_HAS_AUTHORIZED_KEYS=${username}" >> ${LOGFILE}
+      # for rsa keys we can extract the hostnames they are for
+      grep "ssh-rsa" ${userdir}/.ssh/authorized_keys | awk '{print $NF}' | while read userhost
+      do
+         echo "USER_RSA_KEYS_FOR=${username}:${userhost}" >> ${LOGFILE}
+      done
+      # if there are non-rsa keys just record the total number of them
+      otherkeys=`grep -v "ssh-rsa" ${userdir}/.ssh/authorized_keys | wc -l`
+      echo "USER_NOTRSA_KEYS_COUNT=${username}:${otherkeys}" >> ${LOGFILE}
+   fi
+done
+
 # --- what ports are being listened to ? ---
 timestamp_action "collecting information on open network ports and sockets"
 netstat -an -p | grep LISTEN | grep "^tcp "| grep -v "::" | while read dataline
@@ -1305,7 +1328,7 @@ done
 # ======================================================================
 # Collect the selinux settings.
 # ======================================================================
-if [ -f /etc/selinux/config ];
+if [ -f /etc/selinux/config ];   # exists if selinux-policy is installed
 then
    echo "SELINUX_INSTALLED=yes" >> ${LOGFILE}
    grep -v "^#" /etc/selinux/config | while read xx

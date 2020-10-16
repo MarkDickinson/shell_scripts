@@ -1,12 +1,12 @@
 # Examples of how to run the processing script
-# The default uncommented command will perform a full processing run of all
-# collected data files in the rawdatafiles directory, reults into results directory.
+#   Environment
+#     rawdatafiles directory: contains output of collect_server_details.sh for one or more servers
+#     results directory: will have the results, entrypoint index.html
+#     archive directory: optionally take an archive snapshot of the results into here
 #
-# simply cd into this directory and 'bash RUN'
 
 #--------------------------------------------------------------------------------
-# Default processing: process all server collection datafiles in the
-# --datadir directory.
+# DEFAULT processing: process all server collection datafiles in the --datadir directory.
 # Results stored in directory 'results'
 # Results archived into directory 'archive'
 #--------------------------------------------------------------------------------
@@ -20,18 +20,18 @@ bash bin/process_server_details.sh --datadir=rawdatafiles --archivedir=archive
 
 #--------------------------------------------------------------------------------
 # 1st line is an example of checking if there are new datafiles to process,
-# 2nd line is checking and processing any found
+# 2nd line is checking and processing any new datafiles found
 #--------------------------------------------------------------------------------
 #bash bin/process_server_details.sh --datadir=rawdatafiles --checkchanged=list
 #bash bin/process_server_details.sh --datadir=rawdatafiles --checkchanged=process
 
 #--------------------------------------------------------------------------------
 # example of just refresing the index page
-# this is indended to be used where you have multiple servers doing processing
+# this is intended to be used where you have multiple servers doing processing
 # and have copied the contents of the results directory into this servers
 # results directory (and ideally file files from --datadir also or those results
 # will be deleted on the next full processing run).
-# While the --rawdatafiles is ignored in this case it is still a required parm
+# While the --datadir is ignored in this case it is still a required parm
 #--------------------------------------------------------------------------------
 #bash bin/process_server_details.sh --datadir=rawdatafiles --indexonly=yes
 #

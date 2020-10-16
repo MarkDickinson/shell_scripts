@@ -86,6 +86,9 @@
 #   G. Report on custom file used (if any)
 #   H. Firewall rule checks to determine if open ports in the firewall
 #      rules match ports actualy in use on the server
+#   I. Processes running at snapshot time
+#   K. Orphaned files and directories on the server
+#   K. Users with authorized_keys files
 #   W. Webserver file security checks if webserver file
 #      information was collected
 #   Z. Record /etc file settings for the server
@@ -321,6 +324,27 @@
 #                       added to change alert to warning, new customfile entry
 #                       SERVER_IS_ANSIBLE_NODE=yes added to change warning to OK
 #                       if subsystem was sftp.
+# MID: 2020/10/02 - Version 0.15 
+#                   (1) add extra handling to expected alerts checks to
+#                       ensure an expected alert parameter is only valid
+#                       if it does exactly match a real alert that can be 
+#                       defined in this way.
+#                       During processing create a list of alerts that can
+#                       be used to match the EXACT_ALERT_REASON parameter, 
+#                       these are only items that cannot be easily customised
+#                       with other custom file entries and specifically
+#                       exclude things like network checks, this is used
+#                       to match expected alerts and also shown in the
+#                       expected alert report.
+#                       Also only do EXACT_ALERT_REASON processing if
+#                       total alerts for a server 30 or less; otherwise
+#                       index rebuilding would just take too long.
+#                   (2) authorized_keys appendix K report added
+#                   (3) bugfix, results/servername/index.html was not
+#                       being correctly cleared on reruns; now rm * the
+#                       entire servername directory before reprocessing;
+#                       and added check to prevent 'root' running the
+#                       processing script now we have an * in a rm command
 #                       
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -374,7 +398,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.14"
+PROCESSING_VERSION="0.15"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -553,7 +577,7 @@ log_message() {
 clean_prev_work_files() {
    if [ -d ${WORKDIR} ];
    then
-      rm -rf ${WORKDIR}
+      /bin/rm -rf ${WORKDIR}
    fi
 } # clean_prev_work_files
 
@@ -561,7 +585,7 @@ delete_file() {
    filename="$1"
    if [ -f ${filename} ];
    then
-      rm -f ${filename}
+      /bin/rm -f ${filename}
    fi
 } # delete_file
 
@@ -618,6 +642,16 @@ inc_counter() {
    add_to_counter "${hostid}" "${type}" "1"
    delete_file ${WORKDIR}/${hostid}_all_ok
 } # inc_counter
+
+# ---------------------------------------------------------------
+# Added in 0.15 to create a log of alerts that can be matched
+# against expected denies.
+# ---------------------------------------------------------------
+log_alert_detail() {
+   hostid="$1"
+   msgtext="$2"
+   echo "${msgtext}" >> ${RESULTS_DIR}/${hostid}/errorlist_subset.txt
+} # log_alert_detail
 
 # ---------------------------------------------------------------
 # Used to update counter files in the global resutls
@@ -1253,9 +1287,10 @@ build_appendix_a() {
    then
       cat ${WORKDIR}/duplicate_uid | uniq | while read dataline
       do
-	     echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
+         echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
          echo "More than one user has uid ${dataline}<ul>"
          inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "More than one user has uid ${dataline}"
          cat ${WORKDIR}/passwd | while read pswdline
          do
             testvar=`echo "${pswdline}" | cut -d: -f3`
@@ -1303,6 +1338,7 @@ build_appendix_a() {
          echo "</td></tr></table>" >> ${htmlfile}
          pwconv_note
          inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "${userid}</b> has no entry in /etc/shadow, run pwconv"
       else
          # must have a password, check expiry
          # * is=locked ?, x=locked ?, !!=locked,no initial passwd set ?, else pswd assumed
@@ -1340,6 +1376,7 @@ build_appendix_a() {
          echo "Shadow file entry for user <b>${userid}</b>, but no passwd file entry, run pwconv" >> ${htmlfile}
          echo "</td></tr></table>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "Shadow file entry for user <b>${userid}</b>, but no passwd file entry, run pwconv"
          pwconv_note
       fi
    done
@@ -1403,6 +1440,7 @@ build_appendix_a() {
             echo "<td>The home directory of <b>${username2}</b> is secured incorrectly (${dirname2})" >> ${htmlfile}
             echo "<br>${PERM_CHECK_RESULT}: ${dataline}</td></tr>" >> ${htmlfile}
             inc_counter ${hostid} alert_count
+            log_alert_detail ${hostid} "${PERM_CHECK_RESULT}: ${dataline}"
          fi
       fi
    done
@@ -1553,6 +1591,7 @@ build_appendix_a() {
       echo "Log up to root and resecure this file correctly <b>immediately</b>.</p>" >> ${htmlfile}
       echo "</td></tr></table>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
+      log_alert_detail ${hostid} "The /etc/shadow file is badly secured ${PERM_CHECK_RESULT}"
    else
       echo "<table bgcolor=\"${colour_OK}\"><tr><td>" >> ${htmlfile}
       echo "<p>The /etc/shadow file is correctly secured, no action needed.</p>" >> ${htmlfile}
@@ -1598,6 +1637,7 @@ build_appendix_a() {
       then
          echo "<tr bgcolor=\"${colour_alert}\"><td>Default password expiry > 31 days, it is ${maxdays}</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "Default password expiry > 31 days, it is ${maxdays}"
       else
          echo "<tr bgcolor=\"${colour_OK}\"><td>Default password expiry is <= 31 days</td></tr>" >> ${htmlfile}
       fi
@@ -1613,11 +1653,13 @@ build_appendix_a() {
       then
          echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf"
       elif [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -eq 0 ]; 
       then
          minlen2="commented"
          echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs"
       elif [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -ne 0 ]; 
       then
          if [ ${minlen} -eq 0 ];
@@ -1626,6 +1668,7 @@ build_appendix_a() {
          fi
          echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf"
       else
          echo "<tr bgcolor=\"${colour_OK}\"><td>Default minimum password length is OK, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf</td></tr>" >> ${htmlfile}
       fi
@@ -1650,6 +1693,7 @@ build_appendix_a() {
       echo "<p>The following additional users are in the root group : ${testextra}</p>" >> ${htmlfile}
       echo "</td></tr></table>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
+      log_alert_detail ${hostid} "More than one user in the root group"
    else
       echo "<table bgcolor=\"${colour_OK}\"><tr><td>" >> ${htmlfile}
       echo "<p>No additional users have been added to the root group.</p>" >> ${htmlfile}
@@ -1714,6 +1758,7 @@ build_appendix_b() {
        cat ${WORKDIR}/system_equiv_files >> ${htmlfile}
        echo "</pre></table>" >> ${htmlfile}
        inc_counter ${hostid} alert_count
+       log_alert_detail ${hostid} "Server wide host equivalence files exist"
    fi
    if [ -f ${WORKDIR}/${hostid}_all_ok ];
    then
@@ -1739,6 +1784,10 @@ build_appendix_b() {
        numentries=`cat ${WORKDIR}/system_equiv_files | wc -l`
        get_num_only ${numentries}
        add_to_counter_counter ${hostid} alert_count ${NUM_VALUE}
+       cat ${WORKDIR}/system_equiv_files | while read xx
+       do
+          log_alert_detail ${hostid} "User has their own host equivalence files : ${xx}"
+       done
    fi
    if [ -f ${WORKDIR}/${hostid}_all_ok ];
    then
@@ -1754,6 +1803,7 @@ build_appendix_b() {
       if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not empty has error text
       then
          inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "/etc/exports is badly secured"
          echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>" >> ${htmlfile}
          echo "<p><b>The /etc/exports file is badly secured</b>. It must be owned by root and" >> ${htmlfile}
          echo "only writeable by root.<br>Actual: ${testvar}<br>${PERM_CHECK_RESULT}<br>" >> ${htmlfile}
@@ -2545,6 +2595,7 @@ appendix_d_check_allow_deny_files() {
    then
       echo "<tr bgcolor=\"${colour_alert}\"><td>Neither a ${checktype}.deny or ${checktype}.allow file exists, all users can run ${checktype} jobs</td></tr>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
+      log_alert_detail ${hostid} "neither a ${checktype}.deny or ${checktype}.allow file exists"
    elif [ "${isallow}." == "YES."  ];
    then
       isallowcount=`grep "^CRON${optname}_ALLOW_DATA" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
@@ -2577,6 +2628,7 @@ appendix_d_check_allow_deny_files() {
       else
          echo "<tr bgcolor=\"${colour_alert}\"><td>No ${checktype}.allow file exists and the ${checktype}.deny file has zero users, all users can run ${checktype} jobs</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "No ${checktype}.allow file exists and the ${checktype}.deny file has zero users"
       fi
    else
       echo "<tr><td>There is an script issue with an unexpected combination of ${checktype}.allow and ${checktype}.deny files</td></tr>" >> ${htmlfile}
@@ -2879,6 +2931,7 @@ EOF
          then
             inc_counter ${hostid} alert_count
             echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_e_list
+            log_alert_detail ${hostid} "${PERM_CHECK_RESULT}: ${dataline}"
          else
             # Find out if the file is under /var
             testforvar=`echo "${dataline}" | awk -F\/ '{print $2}'`
@@ -2968,11 +3021,13 @@ EOF
                   else # if skipchecks was set we found something we must alert on
                      inc_counter ${hostid} alert_count
                      echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_e_list
+                     log_alert_detail ${hostid} "${PERM_CHECK_RESULT}: ${dataline}"
                   fi
                fi
             else # not in /var
                inc_counter ${hostid} alert_count
                echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_e_list
+               log_alert_detail ${hostid} "${PERM_CHECK_RESULT}: ${dataline}"
             fi # if testforvar = var
          fi # if allowsloppyvar = NO of allowgroupwrite != YES
       fi # if permcheckresult != OK
@@ -3036,7 +3091,7 @@ EOF
    fi
 
    totalcount=`cat ${WORKDIR}/system_totals_count`
-   echo "<hr><b>There were ${totalcount} file permissions checked for section E.1</b><hr>" >> ${htmlfile}
+   echo "<hr><b>There were ${totalcount} file permissions checked for section E.2</b><hr>" >> ${htmlfile}
 
    # ---------------------------------------------------------------------------
    # now the suid file checks
@@ -3298,7 +3353,7 @@ build_appendix_f() {
    check_file_perms "${testvar}" "-rX-r--r--"
    if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not empty has error text
    then
-      inc_counter ${hostid} alert_count
+      inc_counter ${hostid} a lert_count
       echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>" >> ${htmlfile}
       echo "<p>The file <b>/etc/motd</b> is secured so users other than <b>root</b>" >> ${htmlfile}
       echo "are able to update it.<br>" >> ${htmlfile}
@@ -3325,10 +3380,10 @@ build_appendix_f() {
    if [ "${numentries}." == "0." ];
    then
       inc_counter ${hostid} alert_count
-	  echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>" >> ${htmlfile}
+      echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>" >> ${htmlfile}
       echo "<p>The file <b>/etc/motd</b> is empty. Place some form of authorised" >> ${htmlfile}
       echo "user only message into it.</p>" >> ${htmlfile}
-	  echo "</td></tr></table>" >> ${htmlfile}
+      echo "</td></tr></table>" >> ${htmlfile}
       errorsfound="YES"
    else
       key_matches="0"
@@ -3459,6 +3514,7 @@ build_appendix_f() {
          echo "<p>There is no explicit 'PermitRootLogin no' statement in /etc/ssh/sshd_config." >> ${htmlfile}
          echo "It may be possible for a hacker to directly login as root. You should explicitly code this setting.</p>" >> ${htmlfile}
          echo "</td></tr></table>" >> ${htmlfile}
+         log_alert_detail ${hostid} "There is no explicit 'PermitRootLogin no' statement in /etc/ssh/sshd_config"
    fi
 
    echo "<h3>F.3.3 - SSH subsystems</h3>" >> ${htmlfile}
@@ -3506,6 +3562,7 @@ build_appendix_f() {
          "disabled")  
             echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux is configured as disabled</td></tr>" >> ${htmlfile}
             inc_counter ${hostid} alert_count
+            log_alert_detail ${hostid} "SELinux is disabled"
             ;;
          "permissive")
             echo "<tr bgcolor=\"${colour_warn}\" border=\"1\"><td>SELinux configured for permissive mode</td></tr>" >> ${htmlfile}
@@ -3516,6 +3573,7 @@ build_appendix_f() {
             ;;
          *) echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux is configured incorrectly as ${lowercasevar1}</td></tr>" >> ${htmlfile}
             inc_counter ${hostid} alert_count
+            log_alert_detail ${hostid} "SELinux is configured incorrectly as ${lowercasevar1}"
             ;;
       esac
       lowercasevar2=`grep "^SELINUX_CURRENT_GETENFORCE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
@@ -3537,14 +3595,16 @@ build_appendix_f() {
             ;;
          *) echo "<tr bgcolor=\"${colour_alert}\" border=\"1\"><td>SELinux type is configured incorrectly as ${lowercasevar1}</td></tr>" >> ${htmlfile}
             inc_counter ${hostid} alert_count
+            log_alert_detail ${hostid} "SELinux type is configured incorrectly as ${lowercasevar1}"
             ;;
       esac
       unset lowercasevar1         # done with type specefic usage
       unset lowercasevar2         # done with type specefic usage
       echo "</table>" >> ${htmlfile}
    else
-      echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>SELinux is not installed on the server (no /etc/selinux/config file found)</td></tr></table>" >> ${htmlfile}
+      echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>SELinux is not installed on the server (no /etc/selinux/config file found, provided by selinux-policy)</td></tr></table>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
+      log_alert_detail ${hostid} "SELinux is not installed on this server (needs selinux-policy)"
    fi
 
    # Close the appendix page
@@ -3864,6 +3924,7 @@ EOF
          echo "<table bgcolor=\"${colour_alert}\"><tr><td>Neither iptables or netfilter tables with accept rules exist on this server." >> ${htmlfile}
          echo "<b>This server appears to be not running a firewall !</b></td></tr></table><br /><br />" >> ${htmlfile}
          inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "This server appears to be not running a firewall"
       fi
    fi
  
@@ -4174,9 +4235,90 @@ EOF
       # Add a summary of the section to the server index, and total alert & warning counts
       server_index_addline "${hostid}" "Appendix J - Orphan directories and files" "${htmlfile}"
    else
-      log_message ".     Skipped Appendix J - No orphan entries in searched filesystems on this server"
+      log_message ".      Skipped Appendix J - No orphan entries in searched filesystems on this server"
    fi
 } # end build_appendix_j
+
+# ----------------------------------------------------------
+#                      Appendix K.
+#   K. Users with aithorized_keys files
+# ----------------------------------------------------------
+build_appendix_k() {
+   hostid="$1"
+
+   tempcount=`grep "^USER_HAS_AUTHORIZED_KEYS" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   if [ ${tempcount} -gt 0 ];
+   then
+      htmlfile="${RESULTS_DIR}/${hostid}/appendix_K.html"
+      log_message ".     Building Appendix K - users with authorized_keys files, ${tempcount} users"
+      clean_prev_work_files
+      mkdir ${WORKDIR}
+      clear_counter "${hostid}" alert_count
+      clear_counter "${hostid}" warning_count
+
+      # suppress wanrnings for these ?
+      authkeysallowed=`grep "^ALLOW_AUTHORISED_KEYS=yes" ${CUSTOMFILE}`
+
+      cat << EOF > ${htmlfile}
+<html><head><title>Users with ssh authorized_keys files on ${hostid}</title></head><body>
+<h1>Appendix K - Users with authorized_keys files on ${hostid}</h1>
+<p>This is normally not a problem as the users do have userids on the system, however
+it does allow users to logon to the system if their passwords have expired without
+needing to change them which may violate password retention standards.</p>
+<p>However the <b>root</b> user must never have ssh keys in use. Always use a seperate admin userid
+if passwordless access is needed to remote access a server.</p>
+EOF
+      if [ "${authkeysallowed}." == "." ];
+      then 
+         echo "<p>Warnings in this section can be suppressed with the custom file entry 'ALLOW_AUTHORISED_KEYS=yes'.</p>" >> ${htmlfile}
+      fi
+
+      echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>Userid</td><td>RSA keys</td><td>Non-RSA keys</td></tr>" >> ${htmlfile}
+      grep "^USER_HAS_AUTHORIZED_KEYS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read username
+      do
+         tempcount=`grep "^USER_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+         if [ "${username}." == "root." ];
+         then
+            echo "<tr bgcolor=\"${colour_alert}\"><td>${username}</td><td>${tempcount}</td>" >> ${htmlfile}
+            inc_counter ${hostid} alert_count
+         else
+            if [ "${authkeysallowed}." == "." ];
+            then
+               echo "<tr bgcolor=\"${colour_warn}\"><td>${username}</td><td>${tempcount}</td>" >> ${htmlfile}
+               inc_counter ${hostid} warning_count
+            else
+               echo "<tr><td>${username}</td><td>${tempcount}</td>" >> ${htmlfile}
+            fi
+         fi
+         tempcount=`grep "^USER_NOTRSA_KEYS_COUNT=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | awk -F: {'print $2'}`
+         echo "<td>${tempcount}</td></tr>" >> ${htmlfile}
+      done
+      echo "</table>" >> ${htmlfile}
+
+      # We can list all the userid@host entries for RSA keys 
+      grep "^USER_HAS_AUTHORIZED_KEYS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read username
+      do
+         tempcount=`grep "^USER_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+         if [ ${tempcount} -gt 0 ];
+         then
+            echo "<br /><table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>User <b>${username}</b> has RSA keys for the follwing ids</td></tr><tr><td>" >> ${htmlfile}
+            grep "^USER_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | awk -F: {'print $2'} | while read keydesc
+            do
+               echo "${keydesc}<br />" >> ${htmlfile}
+            done
+            echo "</td></tr></table>" >> ${htmlfile}
+         else
+            echo "<p>User ${username} has no RSA keys in their authorized_keys file.</p>" >> ${htmlfile}
+         fi
+      done
+      # Close the appendix page
+      write_details_page_exit "${hostid}" "${htmlfile}"
+      # Add a summary of the section to the server index, and total alert & warning counts
+      server_index_addline "${hostid}" "Appendix K - Users with authorized_keys files" "${htmlfile}"
+   else
+      log_message ".      Skipped Appendix K - No users have authorized_keys files on this server"
+   fi
+} # end build_appendix_k
 
 # ----------------------------------------------------------
 #                      Appendix W.
@@ -4348,25 +4490,79 @@ build_main_index_page() {
          # If no capture file exists show capture data field as 'no datafile' in alert colour
          # If number of alerts le expected max alerts show alert total in green text (0.14)
          exactalertsfound="no"
-         if [ "${CUSTOMFILE}." != "." ];
+         maxalertsallowed=0
+         matchedalerts=0
+         # Must keep matchedalerts in a file due to the way bash does not
+         # expose data incremented within a loop outside the loop, we can
+         # use the file to retrieve the counter outside the loop.
+         echo "${matchedalerts}" > ${RESULTS_DIR}/${dataline}/workfile_alcount
+         if [ ${alerts} -gt 30 ];
          then
-            maxalertsallowed=`grep "^EXACT_ALERT_REASON" ${CUSTOMFILE} | wc -l`
-            if [ ${maxalertsallowed} -ne 0 ];
-            then
-               exactalertsfound="yes"
-            fi
-            if [ "${exactalertsfound}." == "yes." ];
-            then
-               # save all the reasons at a location the main index can provide a link to, it is
-               # important anyone looking at the main index page can quickly see why an override was
-               # used. We recreate the file on each index rebuild as it may be possible an index
-               # rebuid was requested just to update the expected alert count.
-               grep "^EXACT_ALERT_REASON" ${CUSTOMFILE} > ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
-            fi
+            log_message ".     Alerts found > 30 so ignoring any custom file reason entries"
          else
-            maxalertsallowed=0
+            if [ "${CUSTOMFILE}." != "." ];
+            then
+               maxalertsallowed=`grep "^EXACT_ALERT_REASON" ${CUSTOMFILE} | wc -l`
+               if [ ${maxalertsallowed} -ne 0 ];
+               then
+                  exactalertsfound="yes"
+               fi
+               if [ "${exactalertsfound}." == "yes." ];
+               then
+                  # save all the reasons at a location the main index can provide a link to, it is
+                  # important anyone looking at the main index page can quickly see why an override was
+                  # used. We recreate the file on each index rebuild as it may be possible an index
+                  # rebuild was requested just to update the expected alert count.
+                  echo "Actual custom file parameter expected alerts lines" > ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                  echo "--------------------------------------------------" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                  grep "^EXACT_ALERT_REASON" ${CUSTOMFILE} >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                  #
+                  # 0.15 requires that an expected alert must match a real alert that occurred, needed to prevent
+                  # and alert being fixed and an unexpected one occuring but not obviously visible as
+                  # expected alert count would still match
+                  #
+                  # Can only do these additional checks if an error list file exists, it will
+                  # not exist if no errors were found, or if last processing was from a prior version.
+                  if [ -f ${RESULTS_DIR}/${dataline}/errorlist_subset.txt ];
+                  then
+                     #
+                     # in the list of custom entries append what could have been used
+                     echo "" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                     echo "Real alerts that could be matched" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                     echo "---------------------------------" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                     cat ${RESULTS_DIR}/${dataline}/errorlist_subset.txt >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                     echo "" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                     echo "Actual suppression matches" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                     echo "--------------------------" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                     # Then the checks
+                     grep "^EXACT_ALERT_REASON" ${CUSTOMFILE} | sed -e's/EXACT_ALERT_REASON=//g' | while read xx
+                     do
+                        if [ ${#xx} -gt 29 ];    # if < 30 bytes too short to safely match
+                        then
+                           yy=`grep "${xx}" ${RESULTS_DIR}/${dataline}/errorlist_subset.txt 2>/dev/null`
+                           if [ "${yy}." != "." ];
+                           then
+                              matchedalerts=$(( ${matchedalerts} + 1 ))
+                              echo "${matchedalerts}" > ${RESULTS_DIR}/${dataline}/workfile_alcount
+                              echo "${xx}" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                           fi
+                        else
+                           # log if we are ignoring lines so they can be fixed
+                           log_message ".     Ignored (too short) custom file  line : EXACT_ALERT_REASON=${xx}"
+                        fi
+                     done
+                  else
+                     echo "" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                     echo "-- There are no alerts for this server that can be overridden with EXACT_ALERT_REASON" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                  fi
+               fi
+            fi
          fi
-         if [ ${alerts} -eq ${maxalertsallowed} ];   # use -eq now, -le could hide a change in totals
+         matchedalerts=`cat ${RESULTS_DIR}/${dataline}/workfile_alcount 2>/dev/null`
+         delete_file ${RESULTS_DIR}/${dataline}/workfile_alcount
+
+         # only green if expected alerts match actual alerts (including 0 if no overrides)
+         if [ ${alerts} -eq ${matchedalerts} -a ${matchedalerts} -eq ${maxalertsallowed} ];  # use -eq now, -le could hide a change in totals
          then
             if [ ${alerts} -eq 0 -a "${exactalertsfound}." == "no." ];        # all ok and no custom override
             then
@@ -4540,8 +4736,7 @@ perform_single_server_processing() {
    then
       mkdir ${RESULTS_DIR}/${hostname}
    else
-      /bin/rm ${RESULTS_DIR}/${hostname}/*html
-      /bin/rm ${RESULTS_DIR}/${hostname}/groupsuppress_count
+      /bin/rm -rf ${RESULTS_DIR}/${hostname}/*
    fi
    clear_counter "${hostname}" alert_totals
    clear_counter "${hostname}" warning_totals
@@ -4575,6 +4770,7 @@ perform_single_server_processing() {
    build_appendix_h ${hostname}               # iptables checks
    build_appendix_i ${hostname}               # iptables checks
    build_appendix_j ${hostname}               # orphans, if any found
+   build_appendix_k ${hostname}               # authorized_keys, if any found
 
    # only create appendix H if the data collection used the option to explicity
    # isoloate secure web directories from normal system directories
@@ -4682,10 +4878,13 @@ single_server_sanity_checks() {
       then
          errors=$((${errors} + 1))
       else
-         testversion=`cat ${RESULTS_DIR}/${dirname}/report_version`
-         if [ "${testversion}." != "${PROCESSING_VERSION}." ];
+         if [ "${dirname}." != "${hostname}." ];
          then
-            errors=$((${errors} + 1))
+            testversion=`cat ${RESULTS_DIR}/${dirname}/report_version`
+            if [ "${testversion}." != "${PROCESSING_VERSION}." ];
+            then
+               errors=$((${errors} + 1))
+            fi
          fi
       fi
       if [ ${errors} -gt 0 ];
@@ -4744,6 +4943,12 @@ single_server_sanity_checks() {
 #                       MAINLINE
 # ==========================================================
 marks_banner
+runuser=`whoami`
+if [ "${runuser}." == "root." ];
+then
+   echo "DO NOT RUN THIS SCRIPT AS THE ROOT USER !"
+   exit 1
+fi
 
 # We need the results directory
 if [ ! -d ${RESULTS_DIR} ];
