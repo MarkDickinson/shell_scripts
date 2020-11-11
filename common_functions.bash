@@ -20,6 +20,7 @@
 # notes: parm and value can be anywhere in the string
 #        value can be bracketed wiith " or ' characters
 #        if value not quoted within the string word1 after key is the value
+#        seperator between key and value can be space, = or :
 #
 # history:
 #    2020/Jun/10 MID - created function as I needed to parse out fields
@@ -36,9 +37,9 @@ extract_parm_value() {
    then
       # rest will contain all data after the matched substring
       rest=${datastr#*$parmkey}
-      # if pair was key=value move over the =
+      # if pair was key=value or key:value move over the = or :
       testvar=${rest:0:1}
-      if [ "${testvar}." == "=." ];
+      if [ "${testvar}." == "=." -o "${testvar}." == ":." ];
       then
          rest=${rest:1:$((${#rest} - 1))}
       fi

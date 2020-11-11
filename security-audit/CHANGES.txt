@@ -14,6 +14,13 @@ be permitted to alert if older capture files are used rather than add new coding
 for backward compatability. Simply always use the same versions.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.15 and version 0.16 are
+-------------------------------------------------------------------------------------
+additional checks added - so you have new alerts in the report
+(1) Appendix L added for checks against /etc/sudoers to check for install defaults 
+    that should have been changed and newer insecure entries users may have added.
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.14 and version 0.15 are
 -------------------------------------------------------------------------------------
 main index page changes
@@ -36,6 +43,9 @@ main index page changes
 additional checks added
 (2) User authorized_keys files are now searched for and reported on in new
     Appendix K. New appendix only produced if those files exist on the server.
+    New customfile parameter to suppress alerting on those and just report on
+    then with the exception of the root user which should never have them so
+    will always alert.
 
 -------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.13 and version 0.14 are

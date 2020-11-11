@@ -493,3 +493,17 @@ REFRESH_INTERVAL_EXPECTED=14
 # Do not raise warnings if users have authorized_keys files,
 # the reposrt listing them will still be produced but no warning counters bumped
 ALLOW_AUTHORISED_KEYS=yes
+#
+# Downgrade the default ntries for ALL servers and ALL commands created on RHEL systems by default
+# from alerts to warnings
+# (note: anything sudoers line granting all commands can never go below warning)
+# The two lines added on any RHEL install are as below, you should really change them
+# to limit commands to the servername and restrict the commands that can be used.
+#     root	ALL=(ALL) 	ALL
+#     %wheel	ALL=(ALL)	ALL
+# Note: on debian based systems it will probably be %sudo instead og %wheel
+# Overrides for sudoers checks
+SUDOERS_ALLOW_ALL_SERVERS=root
+SUDOERS_ALLOW_ALL_COMMANDS=root
+SUDOERS_ALLOW_ALL_SERVERS=%wheel
+SUDOERS_ALLOW_ALL_COMMANDS=%wheel

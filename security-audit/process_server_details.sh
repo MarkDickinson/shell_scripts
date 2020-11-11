@@ -16,7 +16,8 @@
 #
 #         process_server_details.sh --datadir=<directory> --indexonly=yes [--indexkernel=yes|no]
 #
-#         process_server_details.sh --clearlock
+#         process_server_details.sh --clearlock 
+#         process_server_details.sh --listlock 
 #
 #      --datadir         is where the collected snapshots are
 #      --archivedir      can be used to take an archive of the results
@@ -25,6 +26,8 @@
 #                        lockfile can be cleared with this option, it will check to
 #                        make sure the pid of the process that created the lock is 
 #                        no longer running before doing so
+#      --listlock        list the contents of the lockfile and see if the process    
+#                        that created the lockfile is still running
 #   *  --onseserver      will only process the named server instead of all servers,
 #                        unless checks identify other servers that also need processing
 #   *  --checkchanged    will list all the servers that would be processed if the
@@ -89,6 +92,11 @@
 #   I. Processes running at snapshot time
 #   K. Orphaned files and directories on the server
 #   K. Users with authorized_keys files
+#   L. sudoers file unsafe rule checks
+#      L.1 - Users and groups that do not need to use a TTY when using SUDO
+#      L.2 - Users and groups that do not need to use a password when using SUDO
+#      L.3 - User and group rules that are not tied to a specific server when using SUDO
+#      L.4 - User and group rules that can issue any command when using SUDO for a specific server
 #   W. Webserver file security checks if webserver file
 #      information was collected
 #   Z. Record /etc file settings for the server
@@ -345,7 +353,20 @@
 #                       entire servername directory before reprocessing;
 #                       and added check to prevent 'root' running the
 #                       processing script now we have an * in a rm command
-#                       
+# MID: 2020/10/10 - Version 0.16 
+#                   (1) Merged extract_parm_value routine from my common libraries
+#                       as I needed it for sudoers checks. I will as time
+#                       goes by use this for routines that already do their
+#                       own complicated parsing as code cleanup is done.
+#                   (2) Added Appendix L for the sudoers checks
+#                   (3) Added --listlock option, merged with --clearlock
+#                       logic block and enables a way of checking whats
+#                       in the lockfile before trying to clear it (because
+#                       I am too lazy to try to remember where I placed
+#                       the lockfile to manually check at filesys level)
+#                   (4) Bugfix: when processing all servers the lockfile
+#                       was not being used correctly, fixed.
+#
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
 SRCDIR=""           # where are the raw datafiles to process (required)
@@ -354,7 +375,7 @@ SINGLESERVER=""     # process all servers by default if this is not populated (o
 INDEXONLY="no"      # default is to actually process something
 INDEXKERNEL="no"    # default is to not include kernel versions on main index page
 CHECKCHANGE=""      # default nothing, depending on parms may be list or process
-ONLYCLEARLOCK="no"  # default is normal processing
+ONLYLOCKOPERATION="no"  # default is normal processing
 while [[ $# -gt 0 ]];
 do
    parm=$1
@@ -386,7 +407,10 @@ do
                    fi
                    shift
                    ;;
-      "--clearlock") ONLYCLEARLOCK="yes"
+      "--clearlock") ONLYLOCKOPERATION="clear"
+                   shift
+                   ;;
+      "--listlock"|"--showlock") ONLYLOCKOPERATION="list"
                    shift
                    ;;
       *)          echo "Unknown paramater value ${key}"
@@ -398,7 +422,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.15"
+PROCESSING_VERSION="0.16"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -428,7 +452,7 @@ NEEDPWLEN=6             # minimum password length allowed for those checks
 
 # First see if the request was to clear the lockfile, if so we need to
 # do nothing else.
-if [ "${ONLYCLEARLOCK}." == "yes." ];
+if [ "${ONLYLOCKOPERATION}." == "clear." -o "${ONLYLOCKOPERATION}." == "list." ];
 then
    if [ ! -f ${LOGICAL_LOCK} ];
    then
@@ -437,17 +461,23 @@ then
       # Lockfile data is as below
       # Sun Mar 22 19:00:15 NZDT 2020 - pid 1431396 has the lock
       pidlock=`cat ${LOGICAL_LOCK} | awk {'print $9'}`
-      stillrunning=`ps -ef | awk {'print $2'} | grep "${pidlock}"`
+      stillrunning=`ps -ef | awk {'print $2'} | grep -w "${pidlock}"`
       if [ "${stillrunning}." != "." ];
       then
          echo "Lock file owned by pid ${pidlock}, a process with a pid of ${pidlock} is still running"
          pidfulldata=`cat ${LOGICAL_LOCK}`
          echo "${pidfulldata}"
-         echo "Refusing to remove the lock."
+         if [ "${ONLYLOCKOPERATION}." == "clear." ];
+         then
+            echo "Refusing to remove the lock."
+         fi
       else
          pidfulldata=`cat ${LOGICAL_LOCK}`
-         echo "Lockfile was owned by: ${pidfulldata}"
-         /bin/rm ${LOGICAL_LOCK}
+         echo "Lockfile was owned by: ${pidfulldata}, that process is no longer running"
+         if [ "${ONLYLOCKOPERATION}." == "clear." ];
+         then
+            /bin/rm ${LOGICAL_LOCK}
+         fi
       fi
    fi
    exit 0
@@ -548,7 +578,9 @@ then
    exit 1
 fi
 
+# ------------------------------------------------------------
 # check for an existing processing run in progress
+# ------------------------------------------------------------
 if [ -f ${LOGICAL_LOCK} ];
 then
    lastlock=`cat ${LOGICAL_LOCK}`
@@ -556,10 +588,6 @@ then
    echo "If that is from an aborted/killed process refer to the --clearlock option"
    exit 1
 fi
-# indicate we are the process holding the lock
-timenow=`date`
-mypid=$$
-echo "${timenow} - pid ${mypid} has the lock" > ${LOGICAL_LOCK}
 
 FILES_TO_PROCESS="${testvar}"
 FILES_PROCESSED=0
@@ -708,6 +736,68 @@ marks_banner() {
    echo "${MYNAME} - (c)Mark Dickinson 2004-2020"
    echo "Security auditing toolkit version ${PROCESSING_VERSION}"
 } # end of marks_banner
+
+# -------------------------------------------------------------------------
+# extract_parm_value: search for a keyword and value within a string
+# input parms - 
+#          parm1         : a key to search for
+#          parm2-infinity: a string to search for the key in
+# output: the value of the parm
+#
+# notes: parm and value can be anywhere in the string
+#        value can be bracketed wiith " or ' characters
+#        if value not quoted within the string word1 after key is the value
+#        seperator between key and value can be space, = or :
+#
+# Added this proc in 0.16 (merged from my common libraries) as I needed
+# it for the sudoers checks.
+# -------------------------------------------------------------------------
+extract_parm_value() {
+   parmkey="$1"
+   shift
+   datastr="$*"
+   if [[ $datastr == *"${parmkey}"* ]];    # can only do parsing if the key exists in the string
+   then
+      # rest will contain all data after the matched substring
+      rest=${datastr#*$parmkey}
+      # if pair was key=value or key:value move over the = or :
+      testvar=${rest:0:1}
+      if [ "${testvar}." == "=." -o "${testvar}." == ":." ];
+      then
+         rest=${rest:1:$((${#rest} - 1))}
+      fi
+      # see if value is within " or ' quotes
+      testvar=${rest:0:1}
+      if [ "${testvar}." == "\"." ];        # IF within " quotes
+      then
+         rest=${rest:1:$((${#rest} - 1))}      # drop the " so it is not used in the next test
+         endchar="\""
+         rest=${rest%$endchar*}                # drop all chars after the "
+      elif [ "${testvar}." == "'." ];       # ELSE IF within ' quotes
+      then
+         rest=${rest:1:$((${#rest} - 1))}      # drop the ' so it is not used in the next test
+         endchar="'"
+         rest=${rest%$endchar*}                # drop all chars after the '
+      else                                  # ELSE no quotes so just get first word
+         # if we have the extract_words routine use it, otherwise use a temporary word1 routine
+         typeset -f -F extract_words 2>/dev/null
+         if [ $? -ne 0 ];
+         then
+            word1() {   
+               echo $1
+            }
+            rest=`word1 ${rest}`
+            unset word1
+         else
+            rest=`extract_words 1 --data ${rest}`
+         fi
+      fi
+   else   # If parmkey is not in the string return an empty result
+      rest=""
+   fi
+   # Display result
+   echo "${rest}"
+} # end of extract_parm_value
 
 # ---------------------------------------------------------------
 # Are we adding additional users that may own SYSTEM class files
@@ -4265,8 +4355,10 @@ build_appendix_k() {
 <p>This is normally not a problem as the users do have userids on the system, however
 it does allow users to logon to the system if their passwords have expired without
 needing to change them which may violate password retention standards.</p>
-<p>However the <b>root</b> user must never have ssh keys in use. Always use a seperate admin userid
-if passwordless access is needed to remote access a server.</p>
+<p>However the <b>root</b> user and any user with access to root commands via sudo must never have ssh keys in use.
+The reason for this is simply that unlike passwords SSH keys do not ever expire, so if a admin ssh key is
+stolen whever has it will have access to your systems no matter how many times a password is changed
+until you realise and regenerate the keys (which is why I consider tools such as ansible insecure).</p>
 EOF
       if [ "${authkeysallowed}." == "." ];
       then 
@@ -4281,6 +4373,7 @@ EOF
          then
             echo "<tr bgcolor=\"${colour_alert}\"><td>${username}</td><td>${tempcount}</td>" >> ${htmlfile}
             inc_counter ${hostid} alert_count
+            log_alert_detail ${hostid} "${username} has an authorized_keys file"
          else
             if [ "${authkeysallowed}." == "." ];
             then
@@ -4319,6 +4412,288 @@ EOF
       log_message ".      Skipped Appendix K - No users have authorized_keys files on this server"
    fi
 } # end build_appendix_k
+
+# ------------------------------------------------------------------------
+# Appendix L.
+# L. sudoers entries
+# Report on unsafe entries in the /etc/sudoers file
+# ------------------------------------------------------------------------
+build_appendix_l() {
+   hostid="$1"
+
+   htmlfile="${RESULTS_DIR}/${hostid}/appendix_L.html"
+   log_message ".     Building Appendix L - sudoers file checks"
+   clean_prev_work_files
+   mkdir ${WORKDIR}
+   clear_counter "${hostid}" alert_count
+   clear_counter "${hostid}" warning_count
+
+   cat << EOF > ${htmlfile}
+<html><head><title>Checks on /etc/sudoers for ${hostid}</title></head><body>
+<h1>Appendix L - Checks on /etc/sudoers for ${hostid}</h1>
+<p>Entries in the sudoers files allow some users and groups to issue commands
+with privaleges they would not normally have access to. Some configuration entries
+(or mis-configuration entries) can have unintended consequences so this file
+needs to be periodically checked for issues.</p>
+<p>The checks were performed against /etc/sudoers and any additional files
+configured via '#includedir dirname' directive in that file (default /etc/sudoerd.d).</p>
+EOF
+
+   # Create a seperate smaller file to parse for this section as we re-parse
+   # it a lot. Remove all commented and blank lines.
+   grep "^SUDOERS=" ${SRCDIR}/secaudit_${hostid}.txt | grep -v "^SUDOERS=#" | while read dataline
+   do
+      if [ "${dataline}." != "." ];
+      then
+          dataline=${dataline:8:${#dataline}}
+          echo "${dataline}" >> ${WORKDIR}/sudoers
+      fi
+   done
+   if [ ! -f ${WORKDIR}/sudoers ];
+   then
+      echo "<center><table border=\"1\"><tr bgcolor=\"${colour_alert}\"><td>No sudoers entries, data capture was performed with an old collecter version</td></tr></table>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   fi
+
+   # The following users can issue commands without being attached to 
+   # a TTY session, this allows batch jobs to issue the commands if
+   # also combined with NOPASSWD
+   echo "<h2>L.1 - Users and groups that do not need to use a TTY when using SUDO</h2>" >> ${htmlfile}
+   grep -i "!requiretty" ${WORKDIR}/sudoers 2>/dev/null | while read dataline
+   do
+      echo "${dataline}" >> ${WORKDIR}/appendixL_norequiretty_users.txt
+   done
+   if [ -f ${WORKDIR}/appendixL_norequiretty_users.txt ];
+   then
+      cat << EOF >> ${htmlfile}
+<p>Some users are configured to be able to use 'sudo' without an interactive TTY session.
+This is not recomended. While it may be useful for batch jobs it is recomended that
+batch jobs that require access to privaliged accounts run under the correct account
+and therefore will not need sudoers entries.</p>
+<center><table border="1">
+<tr bgcolor="${colour_banner}"><td>Entries that disable the requirement for TTY</td></tr>
+EOF
+      cat ${WORKDIR}/appendixL_norequiretty_users.txt | while read xx
+      do
+         echo "<tr bgcolor="${colour_warn}"><td>${xx}</td></tr>" >> ${htmlfile} 
+         inc_counter ${hostid} warning_count
+      done
+      echo "</table></center>" >> ${htmlfile}
+      /bin/rm ${WORKDIR}/appendixL_norequiretty_users.txt
+   else
+      echo "<p>No users or groups are configured to be able to use sudo without a TTY, a good setting.</p>" >> ${htmlfile}
+   fi
+
+   # Having users able to sudo without needing to enter a password is a risk.
+   # could be either of the two below formats
+   # nrpe ALL=NOPASSWD: /usr/lib64/nagios/plugins/eventhandlers/nrpe_sudo_wrapper restart_httpd
+   # %ansible	ALL=(ALL)	NOPASSWD: ALL
+   echo "<h2>L.2 - Users and groups that do not need to use a password when using SUDO</h2>" >> ${htmlfile}
+   grep -i "NOPASSWD" ${WORKDIR}/sudoers 2>/dev/null | while read dataline
+   do
+      testvalue=`extract_parm_value "NOPASSWD" "${dataline}"`
+      if [ "${testvalue}." == "ALL." ];
+      then
+         echo "${dataline}" >> ${WORKDIR}/appendixL_nopasswd_users_all.txt
+      else
+         echo "${dataline}" >> ${WORKDIR}/appendixL_nopasswd_users_explicit.txt
+      fi
+   done
+   if [ -f ${WORKDIR}/appendixL_nopasswd_users_all.txt -o -f ${WORKDIR}/appendixL_nopasswd_users_explicit.txt ];
+   then
+      cat << EOF >> ${htmlfile}
+<p>Some users are configured to be able to use 'sudo' without being prompted for a password. This is always a risk.</p>
+<p>It may be required for batch jobs in cases where it is not possible to run a batch job
+under the privaliged userid the sudo command is using but should be avoided wherever possible.</p>
+EOF
+   else
+      echo "<p>No users or groups are configured to be allowed to use 'sudo' without a password, well done.</p>" >> ${htmlfile}
+   fi
+
+   if [ -f ${WORKDIR}/appendixL_nopasswd_users_all.txt ];
+   then
+      cat << EOF >> ${htmlfile}
+<p>The following entries allow the defined users or groups to run any command they
+wish via sudo without being prompted for a password. <b>This should never be allowed</b>.</p>
+<p>For sites that use 'ansible' or 'chef' and have a ansible or chef user configured to use an entry allowing
+this <em>it should still never be allowed</em>, and definately never allowed on servers where the user
+can ssh into the server using ssh keys without a password, as ssh key files are easier to steal than passwords and
+normal ssh keys do not expire like passwords.</p>
+<center><table border="1">
+<tr bgcolor="${colour_banner}"><td>Entries that allow users to run any command they want without password prompting</td></tr>
+EOF
+      cat ${WORKDIR}/appendixL_nopasswd_users_all.txt | while read xx
+      do
+         echo "<tr bgcolor="${colour_alert}"><td>${xx}</td></tr>" >> ${htmlfile} 
+         inc_counter ${hostid} alert_count
+         log_alert_detail "${hostid}" "Insecure sudoers entry NOPASWD:${xx}"
+      done
+      echo "</table></center>" >> ${htmlfile}
+      /bin/rm ${WORKDIR}/appendixL_nopasswd_users_all.txt
+   fi
+   if [ -f ${WORKDIR}/appendixL_nopasswd_users_explicit.txt ];
+   then
+      cat << EOF >> ${htmlfile}
+<p>The following entries allow the defined users or groups to run explicit commands
+via sudo without being prompted for a password.</p>
+<p>Using entries that explicitly lock down the commands that can be run shows you are aware
+of exactly what your applications require, so these are noted for reference only, they are not
+considered issues. You should still review them to make sure they are still required.
+<b>Also note</b> that is these entries are not tied to a specific server but
+unwisely use a servername of 'ALL' warnings will be raised for these further down this report.</p>
+<center><table border="1">
+<tr bgcolor="${colour_banner}"><td>Entries that allow users to run explicit commands without password prompting</td></tr>
+EOF
+      cat ${WORKDIR}/appendixL_nopasswd_users_explicit.txt | while read xx
+      do
+         echo "<tr><td>${xx}</td></tr>" >> ${htmlfile} 
+      done
+      echo "</table></center>" >> ${htmlfile}
+      /bin/rm ${WORKDIR}/appendixL_nopasswd_users_explicit.txt
+   fi
+
+   # Users that can issue any all or explicit commands for any server
+   # The following entries should be set to a 'server' name to only
+   # allow the command to be issued from the server the sudoers file 
+   # is on. ALL= should be replaces by servername= where possible.
+   echo "<h2>L.3 - User and group rules that are not tied to a specific server when using SUDO</h2>" >> ${htmlfile}
+   grep -i "ALL=" ${WORKDIR}/sudoers 2>/dev/null | while read dataline
+   do
+      testall1=`echo "${dataline}" | grep -i "ALL=(ALL"`  # Rhel is ALL=(ALL), Debian is ALL=(ALL:ALL)
+      testall2=`echo "${dataline}" | grep -i "ALL=ALL"`
+      if [ "${testall1}." != "." -o "${testall2}." != "." ];
+      then
+         # Users that can issue any commands they want
+         # The following users or groups can issue any command from any 
+         # server. That is an incredibly bad idea. ALL= should be replaced
+         # by servername= where possible, and (ALL) should be replaced with
+         # entries permitting only the exact commands the user can run.
+         echo "${dataline}" >> ${WORKDIR}/appendixL_allservers_allcommands.txt
+      else
+         # Users that can issue any explicit commands for any server
+         # The following entries should be set to a 'server' name to only
+         # allow the command to be issued from the server the sudoers file 
+         # is on. ALL= should be replaces by servername= where possible.
+         echo "${dataline}" >> ${WORKDIR}/appendixL_allservers_commandmask.txt
+      fi
+   done
+   if [ -f ${WORKDIR}/appendixL_allservers_allcommands.txt -o -f ${WORKDIR}/appendixL_allservers_commandmask.txt ];
+   then
+      cat << EOF >> ${htmlfile}
+<p>There are entries in the sudoers file that allow the sudo command to be issued on 'all' servers.
+This is a risk, you should explicitly identify the server names the commands can be used on.</p>
+<p>This is often seen in environments where sysadmins deploy a common sudoers file across
+multiple servers and are lazy, tools such as 'puppet' can easily be used to create secure custom
+files from simple facter information and templates as well as more complicated string editing rules
+and there should never be an occasion where a file must be deployed with 'ALL' used as a servername
+(however I'm pretty sure tools such as 'ansible' do not have useful templating features that can achieve 
+such results but in that case there should be a deployable file per server, never should 'ALL' be used
+as a server name).</p>
+<p>On newly installed RHEL based servers there will always be by default entries for 
+"root ALL=(ALL) ALL" and "%wheel ALL=(ALL) ALL" as at install time the installed does
+not know what hostname you are giving your server so must use ALL= as a servername;
+that does not excuse you from not changing ALL= to hostname= after installation however.</p>
+<center><table border="1">
+<tr bgcolor="${colour_banner}"><td>Entries that have servername configured unwisely as ALL</td></tr>
+EOF
+      if [ -f ${WORKDIR}/appendixL_allservers_allcommands.txt ];
+      then
+         cat ${WORKDIR}/appendixL_allservers_allcommands.txt | while read xx
+         do
+            userorgroup=`echo "${xx}" | awk {'print $1'}`
+            if [ -f ${CUSTOMFILE} ];
+            then
+               isdowngradeserver=`grep "^SUDOERS_ALLOW_ALL_SERVERS=${userorgroup}" ${CUSTOMFILE}`
+               isdowngradecommand=`grep "^SUDOERS_ALLOW_ALL_COMMANDS=${userorgroup}" ${CUSTOMFILE}`
+            else
+               isdowngradeserver=""
+               isdowngradecommand=""
+            fi
+            if [ "${isdowngradeserver}." == "." -o "${isdowngradecommand}." == "." ];
+            then
+               echo "<tr bgcolor="${colour_alert}"><td>${xx}</td></tr>" >> ${htmlfile} 
+               inc_counter ${hostid} alert_count
+               log_alert_detail "${hostid}" "Insecure sudoers ALL servers entry ALL commands:${xx}"
+            else
+               echo "<tr bgcolor="${colour_warn}"><td>${xx}<br />(downgraded to warning by customfile)</td></tr>" >> ${htmlfile} 
+               inc_counter ${hostid} warning_count
+            fi
+         done
+         /bin/rm ${WORKDIR}/appendixL_allservers_allcommands.txt
+      fi
+      # explicit commands are safer, but should still not allow all servers
+      if [ -f ${WORKDIR}/appendixL_allservers_commandmask.txt ];
+      then
+         cat ${WORKDIR}/appendixL_allservers_commandmask.txt | while read xx
+         do
+            userorgroup=`echo "${xx}" | awk {'print $1'}`
+            if [ -f ${CUSTOMFILE} ];
+            then
+               isdowngradeserver=`grep "^SUDOERS_ALLOW_ALL_SERVERS=${userorgroup}" ${CUSTOMFILE}`
+            else
+               isdowngradeserver=""
+            fi
+            if [ "${isdowngradeserver}." == "." ];
+            then
+               echo "<tr bgcolor="${colour_warn}"><td>${xx}</td></tr>" >> ${htmlfile} 
+               inc_counter ${hostid} warning_count
+            else
+               echo "<tr bgcolor="${colour_OK}"><td>${xx}<br />(downgraded to OK by customfile)</td></tr>" >> ${htmlfile} 
+            fi
+         done
+         /bin/rm ${WORKDIR}/appendixL_allservers_commandmask.txt
+      fi
+      echo "</table></center>" >> ${htmlfile}
+   else
+      echo "<p>There are no entries in the sudoers file using 'ALL' in the allowed servers list. Well done.</p>" >> ${htmlfile}
+   fi
+
+   echo "<h2>L.4 - User and group rules that can issue any command when using SUDO for a specific server</h2>" >> ${htmlfile}
+   # The below syntax will create an empty file, so have to use the do/done syntax
+   # grep -i "(ALL" ${WORKDIR}/sudoers 2>/dev/null | grep -vi "ALL=" >> ${WORKDIR}/appendixL_allcommands.txt
+   grep -i "(ALL" ${WORKDIR}/sudoers 2>/dev/null | grep -vi "ALL=" | while read xx
+   do
+      echo "${xx}" >> ${WORKDIR}/appendixL_allcommands.txt
+   done
+   if [ -f ${WORKDIR}/appendixL_allcommands.txt ];
+   then
+      cat << EOF >> ${htmlfile}
+<p>Entries in this category allow the specified users or groups to run any command they
+wish on the named server; a little safer that ALL servers. However users should be
+limited to only the commands they need to run as all commands in obviously unsafe.</p>
+<center><table border="1">
+<tr bgcolor="${colour_banner}"><td>Entries that can issue all commands, although tied to a servername</td></tr>
+EOF
+      cat ${WORKDIR}/appendixL_allcommands.txt | while read xx
+      do
+         userorgroup=`echo "${xx}" | awk {'print $1'}`
+         if [ -f ${CUSTOMFILE} ];
+         then
+            isdowngradecommand=`grep "^SODOERS_ALLOW_ALL_COMMANDS=${userorgroup}" ${CUSTOMFILE}`
+         else
+            isdowngradecommand=""
+         fi
+         if [ "${isdowngradecommand}." == "." ];
+         then
+            echo "<tr bgcolor="${colour_alert}"><td>${xx}</td></tr>" >> ${htmlfile} 
+            inc_counter ${hostid} alert_count
+            log_alert_detail "${hostid}" "Insecure sudoers one server ALL commands:${xx}"
+         else
+            echo "<tr bgcolor="${colour_warn}"><td>${xx}<br />(downgraded to warning by customfile)</td></tr>" >> ${htmlfile} 
+            inc_counter ${hostid} warning_count
+         fi
+      done
+      echo "</table></center>" >> ${htmlfile}
+      /bin/rm ${WORKDIR}/appendixL_allcommands.txt
+   else
+      echo "<p>There are no sudoers entries in this category.</p>" >> ${htmlfile}
+   fi
+
+   # Close the appendix page
+   write_details_page_exit "${hostid}" "${htmlfile}"
+   # Add a summary of the section to the server index, and total alert & warning counts
+   server_index_addline "${hostid}" "Appendix L - Checks on sudoers" "${htmlfile}"
+} # end build_appendix_l
 
 # ----------------------------------------------------------
 #                      Appendix W.
@@ -4771,8 +5146,9 @@ perform_single_server_processing() {
    build_appendix_i ${hostname}               # iptables checks
    build_appendix_j ${hostname}               # orphans, if any found
    build_appendix_k ${hostname}               # authorized_keys, if any found
+   build_appendix_l ${hostname}               # sudoers checks
 
-   # only create appendix H if the data collection used the option to explicity
+   # only create appendix W if the data collection used the option to explicity
    # isoloate secure web directories from normal system directories
    webcount=`grep "^PERM_WEBSERVER_FILE" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
    if [ ${webcount} -gt 0 ];
@@ -4813,6 +5189,11 @@ perform_all_servers_processing() {
    # And create a new results directory for this run
    mkdir ${RESULTS_DIR}
    chmod 755 ${RESULTS_DIR}
+
+   # as we deleted the results dir recreate the lockfile
+   timenow=`date`
+   mypid=$$
+   echo "${timenow} - pid ${mypid} has the lock" > ${LOGICAL_LOCK}
 
    # In case somebody visits the page frequently show an unavailable
    # message in the index.html so there is something there until the
@@ -4920,7 +5301,10 @@ single_server_sanity_checks() {
       if [ "${testvar}." != "y." -a "${testvar}." != "Y." ];
       then
          echo "Aborting processing at user request."
-         /bin/rm ${LOGICAL_LOCK}
+         if [ -f ${LOGICAL_LOCK} ];
+         then
+            /bin/rm ${LOGICAL_LOCK}
+         fi
          exit 1
       fi
    fi
@@ -4961,10 +5345,6 @@ fi
 if [ "${CHECKCHANGE}." == "list." ];
 then
    check_for_new_files
-   if [ -f ${LOGICAL_LOCK} ];
-   then
-      /bin/rm ${LOGICAL_LOCK}
-   fi
    exit 0
 fi
 
@@ -4972,6 +5352,15 @@ fi
 clean_prev_work_files
 mkdir ${WORKDIR}
 chmod 755 ${WORKDIR}
+
+# ----------------------------------------------------------
+# We ae going to be doing some work, create a lockfile
+# with info recording we own it.
+# ----------------------------------------------------------
+# indicate we are the process holding the lock
+timenow=`date`
+mypid=$$
+echo "${timenow} - pid ${mypid} has the lock" > ${LOGICAL_LOCK}
 
 # ----------------------------------------------------------
 #      Default is still to process all files found
@@ -5041,7 +5430,9 @@ fi
 # we need to clean up the work directory
 clean_prev_work_files
 
-# remove the logical lockfile
+# -----------------------------------------------------------
+# Always remove the logical lockfile when we complete OK
+# -----------------------------------------------------------
 if [ -f ${LOGICAL_LOCK} ];
 then
    /bin/rm ${LOGICAL_LOCK}

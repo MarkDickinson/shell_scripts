@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.15 of the processing script<br />
-Version 0.15 of the data collection script<br />
-Last updated 03 October 2020
+Version 0.16 of the processing script<br />
+Version 0.16 of the data collection script<br />
+Last updated 10 November 2020
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -1382,6 +1382,14 @@ parameter indicates it is OK fir users to have those files and
 suppresses the warnings.<br />
 This does not affect the 'root' user as an alert will always be raised
 if root has ssh keys; that should never be allowed.
+</td></tr>
+<tr><td>SUDOERS_ALLOW_ALL_SERVERS=value<br />SUDOERS_ALLOW_ALL_COMMANDS=value</td><td>
+In all cases 'value' is the user or %group the sudoers rule is for.<br />
+These paramaters can be used to downgrade alert severity levels with the following rules<br />
+* if a rule is for all servers and all commands both parameters must be used to downgrade alert to warning<br />
+* if a rule is for all servers but restricted commands allow_all_servers can downgrade from warning to OK<br />
+* if a rule is for a specific server and all commands can downgrade from alert to warning with allow_all_commands<br />
+At no time will a rule allowing all commands be downgraded below a warning as it is a risk
 </td></tr>
 </table>
 

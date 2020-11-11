@@ -18,7 +18,7 @@ I even have a few servers with zero alerts now.
 
 ## Table of contents
 * [Requirements](#requirements)
-* [Security issues](#security-issues)
+* [Security issues with using this toolkit](#security-issues-with-using-this-toolkit)
 * [Current checks performed](#current-checks-performed)
 * [Processing control features](#processing-control-features)
 * [Directories that must exist for processing](#directories-that-must-exist-for-processing)
@@ -47,7 +47,7 @@ I even have a few servers with zero alerts now.
   by using the --scanlevel on data collection scans instead of
   the default of full scans).
 
-## Security issues
+## Security issues with using this toolkit
 
 The data collection script collects a lot of information from each server,
 including such things as the contents of /etc/passwd and firewall port
@@ -63,6 +63,10 @@ of users permitted to view the data files.
 Also access to view the output should be controlled as the report is
 designed to highlight issues that could be exploited.
 
+The collection scriot must run as the 'root' user in order to have access
+to obtain all the information it needs; as such ensure you have a trusted
+copy of the data collection script and review it to ensure you trust it
+before running it.
 
 ## Current checks performed
 * filesystem checks - checks the permissions of all 'system files' to ensure
@@ -119,6 +123,7 @@ designed to highlight issues that could be exploited.
 * filesystem checks - reports on all orphaned files and directories (those
   not owned by an existing user). This report 'appendix J' is only
   produced if orphans were found
+* checks for common unsafe sudoers configuration entries
 * optional, backs up /etc
 * optional (but default) collect hardware info
 * optional, if 'rpm' is available collect a installed package list
@@ -225,10 +230,10 @@ Most fields are self explainatory, requiring a mention are the points below
 
 ## Planned enhancements
 
-No planned enhancements at this stage. Scope creep was setting in and I was
-starting to add checks for silly things that were more server monitoring
-than security/audit related so I have decided to hold off on future changes
-until I find more security specific checks that _need_ implementing.
-
-Any releases in the next few months will be bugfix, if any are found to correct.
+Planned for version 0.17
+* Use of 'include' files. As individual server files are getting very large,
+  it is intended to permit include files, fr examle a individual server custom
+  file could 'include ssh, include bacula, include common_sudoers etc. to
+  import common file/network/configuration overrides for those applications
+  rather than every individual configuration file needing to have them coded.
 

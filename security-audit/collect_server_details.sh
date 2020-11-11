@@ -125,13 +125,15 @@
 #              Collect selinux config information
 # 2020/10/03 - Updates for version 0.15
 #              now collect some user authorized_keys info
+# 2020/11/10 - Updates for version 0.16
+#              Collect sudoers information for additional AppendixL
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.15"    # capture script version
+EXTRACT_VERSION="0.16"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -1328,6 +1330,7 @@ done
 # ======================================================================
 # Collect the selinux settings.
 # ======================================================================
+timestamp_action "recording selinux information"
 if [ -f /etc/selinux/config ];   # exists if selinux-policy is installed
 then
    echo "SELINUX_INSTALLED=yes" >> ${LOGFILE}
@@ -1342,6 +1345,43 @@ then
    echo "SELINUX_CURRENT_GETENFORCE=${selinux_current}" >> ${LOGFILE}
 else
    echo "SELINUX_INSTALLED=no" >> ${LOGFILE}
+fi
+
+# ======================================================================
+# Record contents of /etc/sudoers, ignoring comments and blank lines.
+# ======================================================================
+if [ -f /etc/sudoers ];
+then
+   timestamp_action "recording sudoers information"
+   # Ignore comments and change tab control characters to spaces while recording these
+   cat /etc/sudoers | grep -v "^#" | sed -e's/\t/ /g' | while read dataline
+   do
+      if [ "${dataline}." != "." ];
+      then
+         echo "SUDOERS=${dataline}" >> ${LOGFILE}
+      fi
+   done
+   # Also append any site specific entries from /etc/sudoers.d and any
+   # other directories configured by the '#includedir /full/dirname' option.
+   grep -i "^#includedir" /etc/sudoers | awk {'print $2'} | while read dirname
+   do
+      if [ -d ${dirname} ];
+      then
+         ls ${dirname} | while read fname
+         do
+            basefname=`basename ${fname}`
+            cat ${dirname}/${basefname} | grep -v "^#" | sed -e's/\t/ /g' | while read dataline
+            do
+               if [ "${dataline}." != "." ];
+               then
+                  echo "SUDOERS=${dataline}" >> ${LOGFILE}
+               fi
+            done
+         done
+      else
+         timestamp_action ".   Warning: directory '#includedir ${dirname}' specified in /etc/sudoers does not exist"
+      fi
+   done
 fi
 
 # ======================================================================
