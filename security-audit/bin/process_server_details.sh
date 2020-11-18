@@ -3079,7 +3079,6 @@ EOF
          then
             inc_counter ${hostid} alert_count
             echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_e_list
-            log_alert_detail ${hostid} "${PERM_CHECK_RESULT}: ${dataline}"
          else
             # Find out if the file is under /var
             testforvar=`echo "${dataline}" | awk -F\/ '{print $2}'`
@@ -3169,13 +3168,11 @@ EOF
                   else # if skipchecks was set we found something we must alert on
                      inc_counter ${hostid} alert_count
                      echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_e_list
-                     log_alert_detail ${hostid} "${PERM_CHECK_RESULT}: ${dataline}"
                   fi
                fi
             else # not in /var
                inc_counter ${hostid} alert_count
                echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_e_list
-               log_alert_detail ${hostid} "${PERM_CHECK_RESULT}: ${dataline}"
             fi # if testforvar = var
          fi # if allowsloppyvar = NO of allowgroupwrite != YES
       fi # if permcheckresult != OK
