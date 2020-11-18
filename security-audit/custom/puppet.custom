@@ -1,0 +1,30 @@
+# DEFAULT customisation file for server PUPPET
+#
+INCLUDE_CUSTOM_RULES=../custom_includes/server_CentOS8
+INCLUDE_CUSTOM_RULES=../custom_includes/network-scripts
+INCLUDE_CUSTOM_RULES=../custom_includes/bacula_client
+INCLUDE_CUSTOM_RULES=../custom_includes/nrpe
+INCLUDE_CUSTOM_RULES=../custom_includes/sendmail
+INCLUDE_CUSTOM_RULES=../custom_includes/chronyd
+INCLUDE_CUSTOM_RULES=../custom_includes/puppet_agent
+INCLUDE_CUSTOM_RULES=../custom_includes/puppet_server
+INCLUDE_CUSTOM_RULES=../custom_includes/ansible
+INCLUDE_CUSTOM_RULES=../custom_includes/sendmail
+#
+# --------------------------------------------------
+# Some overrides of the include files
+# --------------------------------------------------
+# I have cockpit bound to a specific interface
+# ip-address which is tcpip V4 so we need to use that instead
+# of the default tcp v6 all interfaces definition in the
+# server_CentOS file we included.
+TCP_PORTV4_ALLOWED=:9090:Cockpit (service cockpit.socket)
+NETWORK_PORT_NOLISTENER_TCPV6_OK=9090:default on v6 will not be listening
+#
+# Custom directory perms for this directory on this server
+ALLOW_DIRPERM_EXPLICIT=bacula drwxrwx---
+#
+# ---------------------------------------------
+# Additional rules specific to this server
+# ---------------------------------------------
+ADD_SYSTEM_FILE_OWNER=snort

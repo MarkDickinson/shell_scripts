@@ -1,0 +1,10 @@
+#
+# Customisation rules for servers running a bacula director daemon
+# >>> Include File: ../custom_includes/mariadb
+#
+ADD_SYSTEM_FILE_OWNER=mysql
+TCP_PORTV4_ALLOWED=:3306:MySQL server
+ALLOW_DIRPERM_SYSTEM=mysql
+#
+# The below is part of the 'mariadb-server' package on F32
+SUID_ALLOW=/usr/lib64/mariadb/plugin/auth_pam_tool_dir/auth_pam_tool

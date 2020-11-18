@@ -1,0 +1,18 @@
+#
+# Common definitiions needed for bacula_client servers
+# >>> Included File: ../custom_includes/bacula_clients
+#
+# Notes: assumed you have set the bacule client listen address rather than
+#        defaulting to all interfaces. If you let it default there will be a
+#        tcpv6 listener also. Rather than use the :WILD option set a listen
+#        address.
+#
+# Local Network port used
+TCP_PORTV4_ALLOWED=:9102:Bacula FD
+#
+# Permit the below securiry permissions on the /etc/bacula directory
+# if desired.
+ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
+#
+# Firewalls need an outbound rule to contact the baculs-sd servers
+TCP_OUTBOUND_SUPPRESS=:9103:Contact bacula sd

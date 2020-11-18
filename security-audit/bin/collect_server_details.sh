@@ -127,13 +127,16 @@
 #              now collect some user authorized_keys info
 # 2020/11/10 - Updates for version 0.16
 #              Collect sudoers information for additional AppendixL
+# 2020/11/15 - Updates for version 0.17
+#              Updated version number to match processing script version
+#              which had a lot of changes made and was version bumped
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.16"    # capture script version
+EXTRACT_VERSION="0.17"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc

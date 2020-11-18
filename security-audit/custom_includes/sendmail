@@ -1,0 +1,5 @@
+#
+# Common rules for when the sendmail package is installed and running
+#
+SUID_ALLOW=/usr/sbin/sendmail.sendmail
+TCP_PORTV4_ALLOWED=:25:sendmail

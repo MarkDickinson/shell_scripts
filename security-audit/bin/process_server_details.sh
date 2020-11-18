@@ -366,6 +366,14 @@
 #                       the lockfile to manually check at filesys level)
 #                   (4) Bugfix: when processing all servers the lockfile
 #                       was not being used correctly, fixed.
+# MID: 2020/11/15 - Version 0.17
+#                   (1) Added customfile include logic to build a 
+#                       temporary 'master' custom file for a server so
+#                       logical groupings of rules can be maintained
+#                       rather than one large file per server.
+#                   (2) Added EXACT_ALERT_REASON_NOTES customfile parameter
+#                       so notes can be appended to the expected alerts
+#                       report as to why an alert is expected.
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -422,7 +430,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.16"
+PROCESSING_VERSION="0.17"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -705,6 +713,14 @@ update_globals() {
 #                    locate_custom_file
 # Identify any customisation server for the server being
 # processed.
+# We now (since version 0.17) build a 'master' customfile that
+# contains any files identified with INCLUDE_CUSTOM_RULES= lines
+# first, then appends the rest of the custom file to that.
+# All processing has been changed to use 'tail -1' instead of
+# 'head -1' in duplicate suppression checks so building the
+# 'master' file this way ensures entries in the server custom
+# file override any values set in the include files if there are
+# any duplicate definitions as a result of using include files.
 # ---------------------------------------------------------------
 locate_custom_file() {
    serverid="$1"
@@ -726,6 +742,44 @@ locate_custom_file() {
       else
          log_message "Using customisation file ${CUSTOMFILE}"
       fi
+   fi
+   if [ -d ${RESULTS_DIR} ];
+   then
+      # Search for any includes in the custom file, we will build a
+      # seperate 'master' custom file that includes them all.
+      #
+      if [ -f ${RESULTS_DIR}/customfile_merged ];
+      then
+         /bin/rm ${RESULTS_DIR}/customfile_merged
+      fi
+      # Use any custom includes first 
+      grep "^INCLUDE_CUSTOM_RULES=" ${CUSTOMFILE} | while read includeline
+      do
+         includefile=`echo "${includeline}" | awk -F\= {'print $2'} | awk {'print $1'}`
+         if [ -f ${includefile} ];
+         then
+            # merge it with our 'master' custom file for the server...
+            # ... ignoring 'include' commands in include files to prvent any infinate loops
+            grep -v "^INCLUDE_CUSTOM_RULES=" ${includefile} >> ${RESULTS_DIR}/customfile_merged
+            if [ "${suppressmsg}." == "." ];
+            then
+               log_message ".   merged custom file ${includefile}"
+            fi
+            droppedlines=`grep "^INCLUDE_CUSTOM_RULES=" ${includefile} | wc -l`
+            if [ ${droppedlines} -gt 0 ];
+            then
+               log_message ".       *warning* ${droppedlines} include lines in ${includefile} were ignored, recursion is not allowed"
+            fi
+         else
+            log_message ".   ***ERROR*** include file ${includefile} does not exist, skipped"
+         fi
+      done
+      # Then append the server specific customfile
+      grep -v "^INCLUDE_CUSTOM_RULES=" ${CUSTOMFILE} >> ${RESULTS_DIR}/customfile_merged
+      CUSTOMFILE="${RESULTS_DIR}/customfile_merged"
+      # log_message "DEBUG----: switched to custom file ${CUSTOMFILE}"
+   else
+      log_message "DEBUG: *ERROR* locate_custom_file invoked before dir ${RESULTS_DIR} exists, not using include files"
    fi
 } # end of locate_custom_file
 
@@ -820,7 +874,7 @@ update_system_file_owner_list() {
       done
       SYSTEM_FILE_OWNERS=`cat ${WORKDIR}/delme`
       rm -f ${WORKDIR}/delme
-      log_message "Note: System file owners updated to be ${SYSTEM_FILE_OWNERS} by config file"
+      log_message "Note: System file owners updated to be ${SYSTEM_FILE_OWNERS} by custom file"
    fi
 } # end of update_system_file_owner_list
 
@@ -909,7 +963,7 @@ check_homedir_perms() {
        then
           dirname=`echo "${databuffer}" | awk {'print $9'}`
           dirname=`echo "${dirname}" | awk -F\= {'print $1'}`
-          testvar=`grep "^ALLOW_DIRPERM_SYSTEM=${dirname}" ${CUSTOMFILE}`
+          testvar=`grep "^ALLOW_DIRPERM_SYSTEM=${dirname}" ${CUSTOMFILE} | tail -1`
           if [ "${testvar}." != "." ];
           then
              testperm=${saveperm:0:10}
@@ -1028,7 +1082,7 @@ check_file_perms() {
                then
                   # See if we have a FORCE_PERM_OK for this file
                   thefilename=`echo "${databuffer}" | awk -F\= {'print $1'} | awk {'print $9'}`
-                  testvar=`grep "^FORCE_PERM_OK=${thefilename}:" ${CUSTOMFILE}`
+                  testvar=`grep "^FORCE_PERM_OK=${thefilename}:" ${CUSTOMFILE} | tail -1`
                   if [ "${testvar}." == "." ];
                   then
                      PERM_CHECK_RESULT="Bad Permissions"
@@ -1562,7 +1616,7 @@ build_appendix_a() {
    then
       echo "<p>The following users are configured in the custom file ${CUSTOMFILE} are being" >> ${htmlfile}
       echo "permitted to have missing home directories, but these users do not exist on the server being checked." >> ${htmlfile}
-      echo "These entries should be removed from ${CUSTOMFILE}.</p>" >> ${htmlfile}
+      echo "These entries should be removed from the customisation files.</p>" >> ${htmlfile}
       echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\">" >> ${htmlfile}
       echo "<td>Obsolete custom file entries</td></tr><tr><td><b><pre>" >> ${htmlfile}
       cat ${WORKDIR}/homedirmiss_user_missing >> ${htmlfile}
@@ -2476,7 +2530,7 @@ build_appendix_c() {
       ipversion=`echo "${dataline}" | awk {'print $3'}`
       # get details of process using the port if available
       # NETWORK_UDPV4_PORT_portnum or NETWORK_UDPV6_PORT_portnum
-      searchmatch=`grep "^NETWORK_UDPV${ipversion}_PORT_${listenport}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+      searchmatch=`grep "^NETWORK_UDPV${ipversion}_PORT_${listenport}=" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F\= {'print $2'}`
       # -- if no 'ps' returned info in searchmatch, get the netstat truncated process info
       if [ "${searchmatch}." == "." ];
       then
@@ -2575,7 +2629,7 @@ build_appendix_c() {
             listenport=`echo "${listenaddr}" | awk -F: {'print $2'}`
             listenaddr=`echo "${listenaddr}" | awk -F: {'print $1'}`
          fi 
-         programname=`grep "^NETWORK_RAWV${ipversion}_PORT_${listenport}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+         programname=`grep "^NETWORK_RAWV${ipversion}_PORT_${listenport}=" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F\= {'print $2'}`
          # -- if no 'ps' returned info in searchmatch, get the netstat truncated process info
          if [ "${programname}." == "." ];
          then
@@ -2945,16 +2999,20 @@ build_appendix_e() {
 
    echo "<h2>E.1 - system userid list must be valid</h2>" >> ${htmlfile}
    echo "<p>The list of users allowed to own files classed as SYSTEM are <em>${SYSTEM_FILE_OWNERS}</em>.</p>" >> ${htmlfile}
+   # The bad user list will be a multiline list of users
    bad_user_list=`appendix_e_check_system_users ${hostid} ${SYSTEM_FILE_OWNERS}`
    if [ "${bad_user_list}." != "." ];
    then
-      inc_counter ${hostid} alert_count
       echo "<p>There are errors in the system file owners list. The following users do not exist on the server !</p>" >> ${htmlfile}
       echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
       echo "<center>System users in the custom file that do not exist on the server</center></td></tr>" >> ${htmlfile}
-      echo "<tr><td><pre>" >> ${htmlfile}
-      echo "${bad_user_list}" >> ${htmlfile}
-      echo "</pre></td></tr></table>" >> ${htmlfile}
+      echo "${bad_user_list}" | while read missinguser
+      do
+         echo "<tr><td>${missinguser}</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "Obsolete system file owner in customfile:${missinguser}"
+      done
+      echo "</tr></table>" >> ${htmlfile}
    else
       echo "<p>All users identified as system files owners do exist on this server.</p>" >> ${htmlfile}
    fi
@@ -3305,9 +3363,15 @@ EOF
    then
       suppresscount=`cat ${WORKDIR}/appendix_e_snapsuppresslist.txt | wc -l`
       echo "<p><b>The customisation file requested /snap/core* SUID files be suppressed from raising alerts in the report</b>," >> ${htmlfile}
-      echo "${suppresscount} SUID files were suppressed from being reported on for this reason." >> ${htmlfile}
+      echo "${suppresscount} SUID file alerts were altered to a single alert for this reason." >> ${htmlfile}
       /bin/mv ${WORKDIR}/appendix_e_snapsuppresslist.txt ${RESULTS_DIR}/${hostid}/appendix_e_snapsuppresslist.txt
       echo "A list of those files is <a href="appendix_e_snapsuppresslist.txt">available here</a>.</p>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+      log_alert_detail ${hostid} "Unsafe SNAP packages are installed"
+      echo "<table bgcolor=\"${colour_alert}\"><tr><td>SNAP packages are installed. These have their own copies of SUID files" >> ${htmlfile}
+      echo "that can be run by any user (ie: '/snap/core18/1885/bin/su -' works perfectly well) and are inherently unsafe." >> ${htmlfile}
+      echo "There will always be an alert raised if SNAP packages are installed.</td></tr></table>" >> ${htmlfile}
+      echo "<p>Review the list in the link above, and review installed SNAP packages, and remove as many as you can.</p>" >> ${htmlfile}
    else
       if [ "${suppress_snap}." == "yes." ];
       then
@@ -3907,8 +3971,8 @@ EOF
                do
                   # use head as some entries such as ntpd will have multiple entries as they listen on multiple addresses
                   # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-                  #process=`grep "NETWORK_${searchtype}V${ipversion}_PORT_${ipportmin}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
-                  process=`grep "NETWORK_${searchtype}V._PORT_${ipportmin}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+                  #process=`grep "NETWORK_${searchtype}V${ipversion}_PORT_${ipportmin}=" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F\= {'print $2'}`
+                  process=`grep "NETWORK_${searchtype}V._PORT_${ipportmin}=" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F\= {'print $2'}`
                   process=`echo "${process}" | sed 's/ *$//g'`                  # remove trailing spaces
                   # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
                   # isallowed=`grep "${searchtype}_PORTV${ipversion}_ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
@@ -3946,7 +4010,7 @@ EOF
                      else    # else process was not .
                         bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
                         # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-                        procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | head -1 | awk -F\= {'print $2'}`
+                        procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
                         if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
                         then
                            usecolour="${colour_override_insecure}"
@@ -4097,7 +4161,7 @@ EOF
                   do
                      # use head as some entries such as ntpd will have multiple entries as they listen on multiple addresses
                      # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just tcp/ip6//udp so do not use ipversion in test here
-                     process=`grep "NETWORK_${searchtype}V._PORT_${destport}=" ${SRCDIR}/secaudit_${hostid}.txt | head -1 | awk -F\= {'print $2'}`
+                     process=`grep "NETWORK_${searchtype}V._PORT_${destport}=" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F\= {'print $2'}`
                      process=`echo "${process}" | sed 's/ *$//g'`                  # remove trailing spaces
                      # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just ip6/tcp/udp so do not use ipversion in test here
                      # isallowed=`grep "${searchtype}_PORTV${ipversion}_ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
@@ -4133,7 +4197,7 @@ EOF
                         else
                            bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
                            # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-                           procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | head -1 | awk -F\= {'print $2'}`
+                           procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
                            if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
                            then
                               usecolour="${colour_override_insecure}"
@@ -4539,7 +4603,7 @@ via sudo without being prompted for a password.</p>
 <p>Using entries that explicitly lock down the commands that can be run shows you are aware
 of exactly what your applications require, so these are noted for reference only, they are not
 considered issues. You should still review them to make sure they are still required.
-<b>Also note</b> that is these entries are not tied to a specific server but
+<b>Also note</b> that if these entries are not tied to a specific server but
 unwisely use a servername of 'ALL' warnings will be raised for these further down this report.</p>
 <center><table border="1">
 <tr bgcolor="${colour_banner}"><td>Entries that allow users to run explicit commands without password prompting</td></tr>
@@ -4877,7 +4941,7 @@ build_main_index_page() {
          else
             if [ "${CUSTOMFILE}." != "." ];
             then
-               maxalertsallowed=`grep "^EXACT_ALERT_REASON" ${CUSTOMFILE} | wc -l`
+               maxalertsallowed=`grep "^EXACT_ALERT_REASON=" ${CUSTOMFILE} | wc -l`
                if [ ${maxalertsallowed} -ne 0 ];
                then
                   exactalertsfound="yes"
@@ -4890,7 +4954,7 @@ build_main_index_page() {
                   # rebuild was requested just to update the expected alert count.
                   echo "Actual custom file parameter expected alerts lines" > ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
                   echo "--------------------------------------------------" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
-                  grep "^EXACT_ALERT_REASON" ${CUSTOMFILE} >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                  grep "^EXACT_ALERT_REASON=" ${CUSTOMFILE} >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
                   #
                   # 0.15 requires that an expected alert must match a real alert that occurred, needed to prevent
                   # and alert being fixed and an unexpected one occuring but not obviously visible as
@@ -4907,10 +4971,10 @@ build_main_index_page() {
                      echo "---------------------------------" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
                      cat ${RESULTS_DIR}/${dataline}/errorlist_subset.txt >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
                      echo "" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
-                     echo "Actual suppression matches" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
-                     echo "--------------------------" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                     echo "Expected alerts that matched" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                     echo "----------------------------" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
                      # Then the checks
-                     grep "^EXACT_ALERT_REASON" ${CUSTOMFILE} | sed -e's/EXACT_ALERT_REASON=//g' | while read xx
+                     grep "^EXACT_ALERT_REASON=" ${CUSTOMFILE} | sed -e's/EXACT_ALERT_REASON=//g' | while read xx
                      do
                         if [ ${#xx} -gt 29 ];    # if < 30 bytes too short to safely match
                         then
@@ -4925,7 +4989,19 @@ build_main_index_page() {
                            # log if we are ignoring lines so they can be fixed
                            log_message ".     Ignored (too short) custom file  line : EXACT_ALERT_REASON=${xx}"
                         fi
-                     done
+                     done 
+                     # Any additional notes to append to the expected alerts document
+                     notecount=`grep "^EXACT_ALERT_REASON_NOTES=" ${CUSTOMFILE} | wc -l`
+                     if [ ${notecount} -gt 0 ];
+                     then
+                        echo "" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                        echo "Additional notes from the custom file" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                        echo "-------------------------------------" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                        grep "^EXACT_ALERT_REASON_NOTES=" ${CUSTOMFILE} | sed -e's/EXACT_ALERT_REASON_NOTES=//g' | while read xx
+                        do
+                            echo "${xx}" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
+                        done
+                     fi
                   else
                      echo "" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
                      echo "-- There are no alerts for this server that can be overridden with EXACT_ALERT_REASON" >> ${RESULTS_DIR}/${dataline}/expected_alerts_list.txt
@@ -4966,7 +5042,7 @@ build_main_index_page() {
             else
                if [ "${CUSTOMFILE}." != "." ];
                then
-                  daysbeforewarn=`grep "^REFRESH_INTERVAL_EXPECTED=" ${CUSTOMFILE} | head -1 | awk -F\= {'print $2'}`
+                  daysbeforewarn=`grep "^REFRESH_INTERVAL_EXPECTED=" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
                else
                   daysbeforewarn=${DEFAULT_DAYS_BEFORE_SNAPSHOT_WARN}
                fi
@@ -5429,6 +5505,8 @@ fi
 
 # we need to clean up the work directory
 clean_prev_work_files
+# and any merged customfile we left lying about
+delete_file ${RESULTS_DIR}/customfile_merged 
 
 # -----------------------------------------------------------
 # Always remove the logical lockfile when we complete OK

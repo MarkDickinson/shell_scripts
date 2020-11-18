@@ -1,0 +1,10 @@
+#
+# Common rules for clam AV being installed
+# >>> Included File: ../custom_includes/clamav
+#
+#   Packages: clamav, clamav-update
+#
+ADD_SYSTEM_FILE_OWNER=clamupdate
+ALLOW_DIRPERM_SYSTEM=clamupdate
+ALLOW_DIRPERM_SYSTEM=clamav
+FORCE_PERM_OK=/var/log/freshclam.log:-rw-rw-r--

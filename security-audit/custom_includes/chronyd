@@ -1,0 +1,9 @@
+#
+# Common rules for servers using chrony rather than NTP for timesync
+# >>> Included File: ../custom_includes/chronyd
+#
+UDP_PORTV4_ALLOWED=:323:chronyd
+UDP_PORTV6_ALLOWED=:323:chronyd
+ADD_SYSTEM_FILE_OWNER=chrony
+ALLOW_DIRPERM_SYSTEM=chrony
+

@@ -1,0 +1,10 @@
+#
+# Common definitions for running dnsmasq as a local DNS server
+# >>> Included File: ../custom_includes/dnsmaqs_dnsserver
+#
+TCP_PORTV4_ALLOWED=:53:dnsmasq
+TCP_PORTV6_ALLOWED=:53:dnsmasq
+UDP_PORTV4_ALLOWED=:53:dnsmasq
+UDP_PORTV6_ALLOWED=:53:dnsmasq
+UDP_PORTV4_ALLOWED=:67:dnsmasq dhcp used by vibr0
+TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:

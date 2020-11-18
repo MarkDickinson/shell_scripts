@@ -1,0 +1,5 @@
+#
+# Customisations needed if the network-scripts package is installed
+# >>> Included File: ../custom_includes/network-scripts
+#
+SUID_ALLOW=/usr/sbin/usernetctl

@@ -14,6 +14,25 @@ be permitted to alert if older capture files are used rather than add new coding
 for backward compatability. Simply always use the same versions.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.16 and version 0.17 are
+-------------------------------------------------------------------------------------
+(1) Handling for include files in a servers 'custom' file using the parameter
+    INCLUDE_CUSTOM_RULES=filename. This allows common applications to be grouped
+    into discrete files (ie: nrpe, bacula_client, mysql etc.) that can be included
+    rather than having to repeat the paramaters in multiple individual servers
+    custom files. The processing will always be that individual server custom
+    files will override included file parameters in the case of duplicates that
+    may be provided by include files as the individual server custom files should
+    always take precedence. A custom_includes directory has samples.
+    Note: only available from a server main custom file, include files cannot
+    themselves include files as that would raise the possibility of an infinite loop
+(2) Changes handling of parameter SUID_SUPPRESS_SNAP_OVERLAYS=yes to always raise
+    a single alert (while still not raising alerts for the 100s suppressed) as
+    snap packages are dangerous in the way they install copies of setuid programs
+    that any user on the system can run, so at least one alert should always be
+    raised
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.15 and version 0.16 are
 -------------------------------------------------------------------------------------
 additional checks added - so you have new alerts in the report

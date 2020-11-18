@@ -1,0 +1,11 @@
+#
+# Common rules for 'motion' motion activated webcam recording
+# >>> Included File: ../custom_includes/motion
+#
+ADD_SYSTEM_FILE_OWNER=motion
+TCP_PORTV4_ALLOWED=:10080:motion
+TCP_PORTV4_ALLOWED=:10081:motion
+#
+# I do not always have it running (windy days and a tree fill up the filesystem)
+NETWORK_PORT_NOLISTENER_TCPV4_OK=10080:
+NETWORK_PORT_NOLISTENER_TCPV4_OK=10081:

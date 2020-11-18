@@ -1,0 +1,21 @@
+#
+# Custom file rules for servers that provide X11 connectivity via SSH
+# >>> Included File: ../custom_includes/X11_server_clients
+#
+# These ports may be in use if 'gdm' has been installed on the server
+# and users connect ti the server with X11 forwarding enabled allowing them
+# to run X11 programs on the remote server. The ports are only in use
+# during client sessions.
+#
+# Network ports that may be used are 6010 upward, depending on the number of clients.
+# This file assumes no more than two clients will be connected at one time so only
+# includes the first two ports 6010 and 6011; you may wish to add more.
+#
+TCP_PORTV4_ALLOWED=:6010:X11 forwarding port (only active when used)
+TCP_PORTV6_ALLOWED=:6010:X11 forwarding port (only active when used)
+TCP_PORTV4_ALLOWED=:6011:X11 forwarding port (only active when used)
+TCP_PORTV6_ALLOWED=:6011:X11 forwarding port (only active when used)
+NETWORK_PORT_NOLISTENER_TCPV4_OK=6010:X11 ssh forwarding port
+NETWORK_PORT_NOLISTENER_TCPV6_OK=6010:X11 ssh forwarding port
+NETWORK_PORT_NOLISTENER_TCPV4_OK=6011:X11 ssh forwarding port
+NETWORK_PORT_NOLISTENER_TCPV6_OK=6011:X11 ssh forwarding port

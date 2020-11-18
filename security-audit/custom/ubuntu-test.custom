@@ -1,0 +1,47 @@
+#
+# Customisation file fir server ubuntu-test
+#
+# This is a Generic customisation file for an Ubuntu 10.04 server
+# No additional packages have been installed.
+#
+# The results on a vanilla Ubuntu 20.04 install will be five alerts,
+# as in the exact reason entries below. But you should delete
+# roots authorized_keys file and delete the last expected alert entry
+# to make it four alerts expected.
+#
+INCLUDE_CUSTOM_RULES=../custom_includes/server_Ubuntu20.04
+#
+# Test server normally shutdown, alert on main index only if server collection data
+# is over 60 days old (default is 14 days).
+REFRESH_INTERVAL_EXPECTED=60
+#
+# Suppress these warnings, refer to the documentation as to what they do
+NOWARN_ON_MANUALLOGCHECK=YES
+NOWARN_ON_CUSTOMFILE=YES
+ALLOW_SLOPPY_VAR=WARN
+ALLOW_VAR_FILE_GROUPWRITE=YES
+#
+# We expect the below alerts from a default Ubuntu 20.04 install
+EXACT_ALERT_REASON=This server appears to be not running a firewall
+EXACT_ALERT_REASON=SELinux is not installed on this server
+EXACT_ALERT_REASON=Default minimum password length < 6, it is 0 in login.defs and 0 in pwquality.con
+EXACT_ALERT_REASON=Unsafe SNAP packages are installed
+EXACT_ALERT_REASON=root has an authorized_keys file
+#
+# The below text is inserted as is (without the parameter keyword prefix) into the expected
+# alerts documentation file if any EXACT_ALERT_REASON= parameters were used. This is just to
+# allow additional documentation as to why an alert is expected rather than resolved.
+EXACT_ALERT_REASON_NOTES=Neither iptables or netfilter rules are created on a default Ubuntt 20.04 install.
+EXACT_ALERT_REASON_NOTES=
+EXACT_ALERT_REASON_NOTES=On Ubuntu 20.04 /etc/login.defs says pasword minumum length set there is ignored
+EXACT_ALERT_REASON_NOTES=and it must be set in pwquality.conf[.d] files; the default is commented and we
+EXACT_ALERT_REASON_NOTES=do not trust defaults so assume 0.
+EXACT_ALERT_REASON_NOTES=
+EXACT_ALERT_REASON_NOTES=On a default Ubuntu 20.04 server install an empty authorized_keys file for the
+EXACT_ALERT_REASON_NOTES=root user is created; you should delete it as root should not use ssh keys.
+EXACT_ALERT_REASON_NOTES=Ubuntu uses SNAP packages, there are inherently unsafe as they install a lot
+EXACT_ALERT_REASON_NOTES=of setuid to root files in the snap directories that any user is able to run
+EXACT_ALERT_REASON_NOTES=(ie: if you lock down access to '/bin/su' there will be lots of other copies
+EXACT_ALERT_REASON_NOTES=of 'su' on the system any user can run quite happily). Worse users can install
+EXACT_ALERT_REASON_NOTES=user only snap files with the same issues. If snap files are installed there
+EXACT_ALERT_REASON_NOTES=will always be alerts raised.

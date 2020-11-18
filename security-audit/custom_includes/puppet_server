@@ -1,0 +1,7 @@
+#
+# Common rules for a puppetserver application
+# >>> Include File: ../custom_includes/puppet_server
+#
+TCP_PORTV4_ALLOWED=:8140:puppetserver
+ADD_SYSTEM_FILE_OWNER=puppet
+ALLOW_DIRPERM_EXPLICIT=puppetserver drwxrwx---

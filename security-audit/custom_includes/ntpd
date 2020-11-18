@@ -1,0 +1,19 @@
+#
+# Custom rules for servers that use NTP instead of CHRONY
+# >>> Included File: ../custom_includes/ntpd
+#
+UDP_PORTV4_ALLOWED=:123:NTP
+UDP_PORTV6_ALLOWED=:123:NTP
+#
+# Additional users that can be considered system file owners
+ADD_SYSTEM_FILE_OWNER=ntp
+#
+# Directory ownership overrides as required
+ALLOW_OWNER_ROOT=ntp
+#
+# Directory permission overrides for shared system directories
+# These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
+ALLOW_DIRPERM_SYSTEM=ntp
+#
+# Firewalls need to permit outbound traffic on 123 to contact remote ntp servers
+TCP_OUTBOUND_SUPPRESS=:123:outbound to remote ntp servers

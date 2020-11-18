@@ -1,0 +1,8 @@
+#
+# Common rules for servers running the docker-ce toolkit
+# >>> Included File: ../custom_includes/docker_server
+#
+ALLOW_OWNER_ROOT=dockerroot
+ALLOW_DIRPERM_EXPLICIT=dockerroot drwx--x--x
+SUID_SUPPRESS_DOCKER_OVERLAYS=yes
+

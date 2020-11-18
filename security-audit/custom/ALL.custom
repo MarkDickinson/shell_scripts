@@ -1,0 +1,28 @@
+#
+# DEFAULT customisation file for all servers that do not have their
+# own personalised configuration file.
+#
+# For server checks you need to select one of the include files below.
+#
+# The below will handle most default installs of the selected Server OS
+# Select the appropriate OS for your server farm.
+#INCLUDE_CUSTOM_RULES=../custom_includes/server_Fedora32
+INCLUDE_CUSTOM_RULES=../custom_includes/server_Fedora33
+#INCLUDE_CUSTOM_RULES=../custom_includes/server_CentOS8
+#INCLUDE_CUSTOM_RULES=../custom_includes/server_Ubuntu20.04
+#
+# If you have the 'network-scripts' package installed on Fedora or CentOS8
+# use this include file as well.
+#INCLUDE_CUSTOM_RULES=../custom_includes/network-scripts
+#
+# -----------------------------------------------------------
+# When copied to a servername.custom file use the below also. 
+# -----------------------------------------------------------
+# On a Gnome Desktop server you will need the following...
+# ...however it is servername specific so you will need a custom file
+#    per desktop Gnome install, below example is for server phoenix.
+#NETWORK_UDPV4_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]
+#NETWORK_UDPV6_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]
+#
+# Include additional application rules as needed
+# Include additional coded rules as needed

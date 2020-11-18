@@ -1,0 +1,16 @@
+# 
+# Common options for servers with 'ansible' installed
+# >>> Included File: ../custom_includes/ansible
+#
+SSHD_SUBSYSTEM_ALLOW=sftp:/usr/libexec/openssh/sftp-server:
+SERVER_IS_ANSIBLE_NODE=yes
+SUDOERS_ALLOW_ALL_SERVERS=%ansible
+SUDOERS_ALLOW_ALL_COMMANDS=%ansible
+#
+EXACT_ALERT_REASON=Insecure sudoers entry NOPASWD:%ansible ALL=(ALL) NOPASSWD: ALL
+# And add some notes to append to the expected alert report.
+EXACT_ALERT_REASON_NOTES=The quick-start documentation for using ansible recoemnds using
+EXACT_ALERT_REASON_NOTES=a dangerous sudoers entry which will always alert. You should
+EXACT_ALERT_REASON_NOTES=code explicit rules for only the commands the ansible group
+EXACT_ALERT_REASON_NOTES=needs to use and should use the servername not ALL as a servername
+EXACT_ALERT_REASON_NOTES=in sudoers entries.

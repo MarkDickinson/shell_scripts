@@ -1,0 +1,6 @@
+#
+# Common rules for servers running CUPS to provide printing services
+# >>> Included File: ../custom_includes/cupsd
+#
+TCP_PORTV4_ALLOWED=:631:cupsd
+TCP_PORTV6_ALLOWED=:631:cupsd

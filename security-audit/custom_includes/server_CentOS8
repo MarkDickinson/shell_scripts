@@ -1,0 +1,128 @@
+#
+# These are the common definitions for a CentOS8 server
+# >>> Include File: ../custom_includes/server_CentOS8
+#
+TCP_PORTV4_ALLOWED=:22:ssh
+TCP_PORTV4_ALLOWED=:111:systemd portmapper
+TCP_PORTV6_ALLOWED=:111:systemd portmapper
+TCP_PORTV4_ALLOWED=:5355:systemd-resolved
+TCP_PORTV6_ALLOWED=:5355:systemd-resolved
+TCP_PORTV6_ALLOWED=:9090:Cockpit
+UDP_PORTV4_ALLOWED=:53:systemd-resolved
+UDP_PORTV4_ALLOWED=:111:systemd portmapper
+UDP_PORTV6_ALLOWED=:111:systemd portmapper
+UDP_PORTV4_ALLOWED=:323:chronyd
+UDP_PORTV6_ALLOWED=:323:chronyd
+UDP_PORTV4_ALLOWED=:5355:systemd-resolved
+UDP_PORTV6_ALLOWED=:5355:systemd-resolved
+RAW_PORTV6_ALLOWED=:58:NetworkManager
+# For some reason portmapper only runs on some of my servers, not all
+NETWORK_PORT_NOLISTENER_TCPV4_OK=111:portmapper
+NETWORK_PORT_NOLISTENER_TCPV6_OK=111:portmapper
+NETWORK_PORT_NOLISTENER_UDPV4_OK=111:portmapper
+NETWORK_PORT_NOLISTENER_UDPV6_OK=111:portmapper
+#
+# Directory ownership overrides as required
+ADD_SYSTEM_FILE_OWNER=chrony
+ADD_SYSTEM_FILE_OWNER=sssd unbound setroubleshoot postfix smmsp 
+#
+ALLOW_OWNER_ROOT=bin
+ALLOW_OWNER_ROOT=sbin
+ALLOW_OWNER_ROOT=daemon
+ALLOW_OWNER_ROOT=lpd
+ALLOW_OWNER_ROOT=sync
+ALLOW_OWNER_ROOT=shutdown
+ALLOW_OWNER_ROOT=halt
+ALLOW_OWNER_ROOT=rpm
+ALLOW_OWNER_ROOT=nfs
+ALLOW_OWNER_ROOT=postfix
+ALLOW_OWNER_ROOT=mail
+ALLOW_OWNER_ROOT=mqueue
+ALLOW_OWNER_ROOT=smmsp
+ALLOW_OWNER_ROOT=sshd
+ALLOW_OWNER_ROOT=dev
+ALLOW_OWNER_ROOT=fs
+ALLOW_OWNER_ROOT=gdm
+ALLOW_OWNER_ROOT=adm
+ALLOW_OWNER_ROOT=httpd
+ALLOW_OWNER_ROOT=dnsmasq
+ALLOW_OWNER_ROOT=pcp
+ALLOW_OWNER_ROOT=root
+ALLOW_OWNER_ROOT=ftp
+ALLOW_OWNER_ROOT=unbound
+#
+# Directory permission overrides for shared system directories
+# These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
+ALLOW_DIRPERM_SYSTEM=bin
+ALLOW_DIRPERM_SYSTEM=sbin
+ALLOW_DIRPERM_SYSTEM=adm
+ALLOW_DIRPERM_SYSTEM=lpd
+ALLOW_DIRPERM_SYSTEM=backuppc
+ALLOW_DIRPERM_SYSTEM=sshd
+ALLOW_DIRPERM_SYSTEM=mysql
+ALLOW_DIRPERM_SYSTEM=rpcuser
+ALLOW_DIRPERM_SYSTEM=nfsnobody
+ALLOW_DIRPERM_SYSTEM=dnsmasq
+ALLOW_DIRPERM_SYSTEM=unbound
+ALLOW_DIRPERM_SYSTEM=nagios
+ALLOW_DIRPERM_SYSTEM=httpd
+ALLOW_DIRPERM_SYSTEM=postfix
+ALLOW_DIRPERM_SYSTEM=chrony
+ALLOW_DIRPERM_SYSTEM=ftp
+ALLOW_DIRPERM_SYSTEM=unbound
+#
+ALLOW_DIRPERM_EXPLICIT=root dr-xr-x---
+ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwxr-x
+ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T
+ALLOW_DIRPERM_EXPLICIT=exim drwxr-x---
+#
+# Allow a whole lot of files to have the suid bit set
+SUID_ALLOW=/usr/sbin/sendmail.sendmail
+SUID_ALLOW=/usr/bin/lockfile
+SUID_ALLOW=/usr/bin/sudo
+SUID_ALLOW=/usr/bin/crontab
+SUID_ALLOW=/usr/bin/gpasswd
+SUID_ALLOW=/usr/bin/newgrp
+SUID_ALLOW=/usr/bin/screen
+SUID_ALLOW=/usr/bin/write
+SUID_ALLOW=/usr/bin/passwd
+SUID_ALLOW=/usr/libexec/openssh/ssh-keysign
+SUID_ALLOW=/usr/libexec/utempter/utempter
+SUID_ALLOW=/usr/libexec/cockpit-session
+SUID_ALLOW=/usr/libexec/openssh/ssh-keysign
+SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper
+SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1
+SUID_ALLOW=/usr/bin/mount
+SUID_ALLOW=/usr/bin/su
+SUID_ALLOW=/usr/bin/umount
+SUID_ALLOW=/usr/sbin/pam_timestamp_check
+SUID_ALLOW=/usr/sbin/unix_chkpwd
+SUID_ALLOW=/usr/bin/pkexec
+SUID_ALLOW=/usr/bin/chage
+SUID_ALLOW=/usr/sbin/postdrop
+SUID_ALLOW=/usr/sbin/postqueue
+SUID_ALLOW=/usr/sbin/grub2-set-bootflag
+#
+FORCE_OWNER_OK=/etc/tcsd.conf:tss
+FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
+FORCE_PERM_OK=/var/log/btmp:-rw-rw----
+#
+# Blasted pci devices randonly generated
+FORCE_ANYFILE_OK=remove --w--w----
+FORCE_ANYFILE_OK=rescan --w--w----
+#
+ALLOW_VAR_FILE_GROUPWRITE=YES
+#
+HOMEDIR_MISSING_OK=tss:
+HOMEDIR_MISSING_OK=cockpit-ws:
+HOMEDIR_MISSING_OK=cockpit-wsinstance:
+HOMEDIR_MISSING_OK=saslauth:
+#HOMEDIR_MISSING_OK=rpc:     this user is not created on a fresh C8 install
+HOMEDIR_MISSING_OK=rngd:
+#
+SUDOERS_ALLOW_ALL_SERVERS=root
+SUDOERS_ALLOW_ALL_COMMANDS=root
+SUDOERS_ALLOW_ALL_SERVERS=%wheel
+SUDOERS_ALLOW_ALL_COMMANDS=%wheel

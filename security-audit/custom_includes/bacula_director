@@ -1,0 +1,7 @@
+#
+# Customisation rules for servers running a bacula director daemon
+# >>> Include File: ../custom_includes/bacula_director
+#
+ADD_SYSTEM_FILE_OWNER=bacula
+TCP_PORTV4_ALLOWED=:9101:Bacula Director
+ALLOW_DIRPERM_SYSTEM=bacula

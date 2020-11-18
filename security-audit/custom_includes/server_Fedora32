@@ -1,0 +1,181 @@
+# 
+# Common settings for a Fedora32 server install with no additional products installed
+# >>> Included File: ../custom_includes/server_Fedora32
+#
+# The following three are also in ../custom_include/httpd, but Fedora will always
+# install httpd/apache on  a server or desktop install whether you want it or not
+# so they also need to be in the commaon Fedora33 file. It you actually start it
+# you will need the httpd file for the network port rules.
+ADD_SYSTEM_FILE_OWNER=apache
+ALLOW_OWNER_ROOT=www
+ALLOW_DIRPERM_SYSTEM=www
+#
+# Common network ports used by F32 in a default install
+TCP_PORTV4_ALLOWED=:22:ssh
+TCP_PORTV6_ALLOWED=:9090:Cockpit
+RAW_PORTV6_ALLOWED=:58:NetworkManager
+#
+# From F32 onward these are started by default by NetworkManager
+TCP_PORTV6_ALLOWED=:546:dhcpv6-client
+UDP_PORTV4_ALLOWED=:547:dhcpv6-server
+# However may be manually disabled by the admin by disabling ipv6 completely
+# so allow for them not being active.
+NETWORK_PORT_NOLISTENER_TCPV6_OK=546:dhcpv6-client
+NETWORK_PORT_NOLISTENER_UDPV4_OK=547:dhcpv6-server
+#
+#
+# Additional users that can be considered system file owners
+ADD_SYSTEM_FILE_OWNER=rpcuser smmsp unbound colord abrt
+ADD_SYSTEM_FILE_OWNER=gdm logcheck
+#
+# Directory ownership overrides as required
+ALLOW_OWNER_ROOT=journal
+ALLOW_OWNER_ROOT=bin
+ALLOW_OWNER_ROOT=sbin
+ALLOW_OWNER_ROOT=daemon
+ALLOW_OWNER_ROOT=lpd
+ALLOW_OWNER_ROOT=sync
+ALLOW_OWNER_ROOT=shutdown
+ALLOW_OWNER_ROOT=halt
+ALLOW_OWNER_ROOT=rpm
+ALLOW_OWNER_ROOT=nfs
+ALLOW_OWNER_ROOT=postfix
+ALLOW_OWNER_ROOT=mail
+ALLOW_OWNER_ROOT=mqueue
+ALLOW_OWNER_ROOT=smmsp
+ALLOW_OWNER_ROOT=sshd
+ALLOW_OWNER_ROOT=dev
+ALLOW_OWNER_ROOT=fs
+ALLOW_OWNER_ROOT=gdm
+ALLOW_OWNER_ROOT=adm
+ALLOW_OWNER_ROOT=httpd
+ALLOW_OWNER_ROOT=dnsmasq
+ALLOW_OWNER_ROOT=pcp
+ALLOW_OWNER_ROOT=root
+ALLOW_OWNER_ROOT=unbound
+ALLOW_OWNER_ROOT=ftp
+ALLOW_OWNER_ROOT=proc
+ALLOW_OWNER_ROOT=games
+ALLOW_OWNER_ROOT=abrt
+ALLOW_OWNER_ROOT=saned
+#
+# Directory permission overrides for shared system directories
+# These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
+ALLOW_DIRPERM_SYSTEM=bin
+ALLOW_DIRPERM_SYSTEM=sbin
+ALLOW_DIRPERM_SYSTEM=adm
+ALLOW_DIRPERM_SYSTEM=lpd
+ALLOW_DIRPERM_SYSTEM=backuppc
+ALLOW_DIRPERM_SYSTEM=sshd
+ALLOW_DIRPERM_SYSTEM=mysql
+ALLOW_DIRPERM_SYSTEM=rpcuser
+ALLOW_DIRPERM_SYSTEM=nfsnobody
+ALLOW_DIRPERM_SYSTEM=usage
+ALLOW_DIRPERM_SYSTEM=dnsmasq
+ALLOW_DIRPERM_SYSTEM=unbound
+ALLOW_DIRPERM_SYSTEM=httpd
+ALLOW_DIRPERM_SYSTEM=postfix
+ALLOW_DIRPERM_SYSTEM=ftp
+ALLOW_DIRPERM_SYSTEM=games
+ALLOW_DIRPERM_SYSTEM=smolt
+ALLOW_DIRPERM_SYSTEM=oprofile
+ALLOW_DIRPERM_SYSTEM=abrt
+ALLOW_DIRPERM_SYSTEM=colord
+ALLOW_DIRPERM_SYSTEM=saned
+ALLOW_DIRPERM_SYSTEM=chrony
+ALLOW_DIRPERM_SYSTEM=logcheck
+#
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwxr-x
+ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T
+ALLOW_DIRPERM_EXPLICIT=squid drwxr-x---
+ALLOW_DIRPERM_EXPLICIT=root dr-xr-x---
+ALLOW_DIRPERM_EXPLICIT=proc dr-xr-xr-x
+ALLOW_DIRPERM_EXPLICIT=journal drwxr-sr-x
+ALLOW_DIRPERM_EXPLICIT=gluster drwxrwxr-x
+ALLOW_DIRPERM_EXPLICIT=BackupPC drwxr-x---
+ALLOW_DIRPERM_EXPLICIT=gdm drwxrwx--T
+ALLOW_DIRPERM_EXPLICIT=chrony drwxr-x---
+# /var/log/journal has the suid bit set
+ALLOW_DIRPERM_EXPLICIT=journal drwxr-sr-x
+# The below two are probably Fedora specific, some system userids
+# are defined with the home directories below, which are actually
+# symbolic links so will always fail checks.
+ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
+#
+# SUID files on a Fedora 33 server install KVM system
+SUID_ALLOW=/usr/sbin/sendmail.sendmail
+SUID_ALLOW=/usr/sbin/userhelper
+SUID_ALLOW=/usr/bin/lockfile
+SUID_ALLOW=/usr/bin/sudo
+SUID_ALLOW=/usr/bin/crontab
+SUID_ALLOW=/usr/bin/gpasswd
+SUID_ALLOW=/usr/bin/at
+SUID_ALLOW=/usr/bin/locate
+SUID_ALLOW=/usr/bin/newgrp
+SUID_ALLOW=/usr/bin/screen
+SUID_ALLOW=/usr/bin/chage
+SUID_ALLOW=/usr/bin/write
+SUID_ALLOW=/usr/bin/passwd
+SUID_ALLOW=/usr/libexec/openssh/ssh-keysign
+SUID_ALLOW=/usr/libexec/utempter/utempter
+SUID_ALLOW=/usr/libexec/cockpit-session
+SUID_ALLOW=/usr/bin/mount
+SUID_ALLOW=/usr/bin/su
+SUID_ALLOW=/usr/bin/umount
+SUID_ALLOW=/usr/bin/pkexec
+SUID_ALLOW=/usr/sbin/pam_timestamp_check
+SUID_ALLOW=/usr/sbin/mount.nfs
+SUID_ALLOW=/usr/sbin/unix_chkpwd
+SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1
+SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper
+SUID_ALLOW=/usr/sbin/mtr-packet
+SUID_ALLOW=/usr/sbin/grub2-set-bootflag
+SUID_ALLOW=/usr/sbin/lockdev
+SUID_ALLOW=/usr/libexec/qemu-bridge-helper
+SUID_ALLOW=/usr/libexec/abrt-action-install-debuginfo-to-abrt-cache
+SUID_ALLOW=/usr/libexec/Xorg.wrap
+SUID_ALLOW=/usr/bin/fusermount
+SUID_ALLOW=/usr/bin/fusermount-glusterfs
+SUID_ALLOW=/usr/libexec/spice-gtk-x86_64/spice-client-glib-usb-acl-helper
+# The below were on some of my servers but not others ?.
+#   installed by package package util-linux-user
+SUID_ALLOW=/usr/bin/chsh
+SUID_ALLOW=/usr/bin/chfn
+#   installed by package fuse3
+SUID_ALLOW=/usr/bin/fusermount3
+#   installed by package kf5-kdesu
+SUID_ALLOW=/usr/libexec/kf5/kdesud
+#
+# Force explicit files as OK when checked, full path is needed
+# /etc/dumpdates is normally also writeable by group disk
+FORCE_PERM_OK=/etc/dumpdates:-rw-rw-r--
+FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
+FORCE_PERM_OK=/var/log/btmp:-rw-rw----
+FORCE_PERM_OK=/var/log/lastlog:-rw-rw-r--
+#
+# Allow a file of this name to be forced OK under any directory if
+# it fails initial default checks.
+# A risk, but Fedora now generates lots of dynamic PCI bus entries
+# under the /sys/devices/pciNNNN:NN path as --w--w----. we do not
+# want them generating false alerts.
+# Risk is minimised be specifying the only permitted value.
+FORCE_ANYFILE_OK=remove --w--w----
+FORCE_ANYFILE_OK=rescan --w--w----
+#
+HOMEDIR_MISSING_OK=cockpit-ws:
+HOMEDIR_MISSING_OK=cockpit-wsinstance:
+HOMEDIR_MISSING_OK=tss:
+HOMEDIR_MISSING_OK=rpc:
+HOMEDIR_MISSING_OK=saslauth:
+HOMEDIR_MISSING_OK=rpc:
+HOMEDIR_MISSING_OK=pulse:
+HOMEDIR_MISSING_OK=pipewire:
+HOMEDIR_MISSING_OK=clevis:
+#
+# The below two entries (root and the group %wheel) are added by
+# default to /etc/sudoers when F33 is installed.
+SUDOERS_ALLOW_ALL_SERVERS=root
+SUDOERS_ALLOW_ALL_COMMANDS=root
+SUDOERS_ALLOW_ALL_SERVERS=%wheel
+SUDOERS_ALLOW_ALL_COMMANDS=%wheel

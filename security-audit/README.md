@@ -22,10 +22,8 @@ I even have a few servers with zero alerts now.
 * [Current checks performed](#current-checks-performed)
 * [Processing control features](#processing-control-features)
 * [Directories that must exist for processing](#directories-that-must-exist-for-processing)
-* [Example install using required directories](#example-install-using-required-directories)
 * [Using the scripts](#using-the-scripts)
 * [Example of the main index produced from processing](#example-of-the-main-index-produced-from-processing)
-* [Planned enhancements](#planned-enhancements)
 
 
 ## Requirements
@@ -149,36 +147,16 @@ The below directory structure is expected for the processing script to work.
 If obtained using git clone the directory structures will be in place.
 
 ```
-   somedir                    - the root of where you install the toolkit
-   somedir/bin                 - location of the processing script (expected by example RUN file)
-   somedir/custom              - place all custom files in here
-   somedir/results             - all reporting results are placed here
+   somedir                   - the root of where you install the toolkit
+   somedir/bin               - location of the processing script (expected by example RUN file)
+   somedir/custom            - place all server custom files in here
+   somedir/custom_includes   - shared custom files that can be 'included' in server custom files
+   somedir/results           - all reporting results are placed here
  - the directory containing the data to be processed that was collected by the
    collect_server_details.sh script must be supplied by parameter
    (I prefer somedir/rawdatafiles)
 - any result archive directory must be parameter supplied
    (I prefer somedir/archive)
-```
-
-## Example install using required directories
-
-As this toolkit is bundled under my shell scripts package these are the steps
-needed to install the toolkit and cleanup unused files.
-_You cannot_ leave it in the cloned directory as the underscore in the shell_scripts
-directory name will prevent the processing script running correctly.
-
-```
-cd /some/app/dir/you/use
-git clone https://github.com/MarkDickinson/shell_scripts.git
-cd shell_scripts/security-audit
-mkdir bin custom results archive rawdatafiles
-mv *sh bin
-mv ALL.custom custom
-cd ../..
-rm README.txt common_functions.bash makepdf.bash nagios_submit_passive_update.sh
-cd ..
-mv shell_scripts/security-audit .
-rmdir shell_scripts
 ```
 
 ## Using the scripts
@@ -227,13 +205,4 @@ Most fields are self explainatory, requiring a mention are the points below
   processing server, default is 14 days before considered obsolete but may be overidden on a per
   server basis with number of days actually configured in the custom file as (N) shown after the
   snapshot date
-
-## Planned enhancements
-
-Planned for version 0.17
-* Use of 'include' files. As individual server files are getting very large,
-  it is intended to permit include files, fr examle a individual server custom
-  file could 'include ssh, include bacula, include common_sudoers etc. to
-  import common file/network/configuration overrides for those applications
-  rather than every individual configuration file needing to have them coded.
 
