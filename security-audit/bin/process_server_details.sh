@@ -374,6 +374,21 @@
 #                   (2) Added EXACT_ALERT_REASON_NOTES customfile parameter
 #                       so notes can be appended to the expected alerts
 #                       report as to why an alert is expected.
+# MID: 2020/12/19 - Version 0.17 (no version change, just minor changes)
+#       for clarity (1) Changed 'Alerts found > 30' message to include
+#                       the server name as during index rebuild users
+#                       would have no idea what server it was refering to.
+#      major bugfix (2) In iptables checks changed a == to != where checking
+#                       if nolisten ok was in the custom file to get the
+#                       correct behavior (oops, my error, bugfix here).
+#    display bugfix (3) In netfilter checks where type is a keyword like 'meta' 
+#                       rather than tcp or udp we now extract the type from the
+#                       l4proto field (note: where multitype
+#                       such as { icmp, ipv6-icmp, tcp, udp } we skip
+#                       processing the line as in multitype I have not
+#                       yet got around to putting in yet another loop to
+#                       process them all. Only corrects report page as
+#                       now it will correctly have tcp/udp rather than 'meta'
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -4030,7 +4045,7 @@ EOF
                      else                           # isallowed but no process is using it
                         # permitted to be not in use by customfile entry ?
                         isallowed=`grep "^NETWORK_PORT_NOLISTENER_${searchtype}V._OK=${ipportmin}:" ${CUSTOMFILE}`
-                        if [ "${isallowed}." == "." ];
+                        if [ "${isallowed}." != "." ];
                         then
                            # must have a port allowed entry to reach here, use that description 
                            ovdesc=`grep "${searchtype}_PORTV._ALLOWED=:${ipportmin}:" ${CUSTOMFILE} | awk -F: {'print $3'}`
@@ -4111,20 +4126,56 @@ EOF
          done
       } # end get_dport
 
+      get_proto() {
+         while [[ $# -gt 0 ]];
+         do
+            testval="$1"
+            if [ "${testval}." == "l4proto." ];
+            then
+               retdata="$2"         # values can be a list like '{ icmp, ipv6-icmp }'
+               if [ "${retdata}." == '{.' ];
+               then
+                  retdata=""
+                  testdata=""
+                  shift
+                  while [ $# -gt 0 -a "${testdata}." != '}.' ]
+                  do
+                     testdata="$2"
+                     if [ "${testdata}." != '}.' ];
+                     then
+                        retdata="${retdata}${testdata}"
+                     fi
+                     shift
+                  done
+               fi
+               echo "${retdata}"
+               return
+            fi
+            shift
+         done
+      } # end get_proto
+
       echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
       echo "<tr><td colspan=\"8\"><center>Firewall port accept information <b>managed by netfilter tables</b></center></td></tr>" >> ${htmlfile}
       echo "<tr><td>Type</td><td>destination</td><td>rule details</td><td>port</td><td>Process</td></tr>" >> ${htmlfile}
 
       grep "^NFTABLES_FULLDATA=" ${SRCDIR}/secaudit_${hostid}.txt | grep -i accept | awk -F\= {'print $2'} | while read dataline
       do
+         iptype=`echo "${dataline}" | awk {'print $1'}`
+         # Used to check if "${iptype}." == "meta." but other start-words are possible, so
+         # if not a known type as value1 parse all strings for a l4proto field, will
+         # return "" is no field exists which is also what we want.
+         if [ "${iptype}." != "tcp." -a "${iptype}." != "udp." -a "${iptype}." != "icmp." -a "${iptype}." != "ipv6-icmp." ];
+         then
+            iptype=`get_proto ${dataline}` 
+         fi
          usecolour="white"
          process=""
          hasdport=`echo "${dataline}" | grep -i "dport"`
          if [ "${hasdport}." == "." ];
          then
-            echo "<tr bgcolor=\"${usecolour}\"><td></td><td></td><td>${dataline}</td><td></td><td></td></tr>" >> ${htmlfile}
+            echo "<tr bgcolor=\"${usecolour}\"><td>${iptype}</td><td></td><td>${dataline}</td><td></td><td></td></tr>" >> ${htmlfile}
          else
-            iptype=`echo "${dataline}" | awk {'print $1'}`
             destaddr=`get_daddr ${dataline}`
             destport=`get_dport ${dataline}`
             if [ "${iptype}." == "ip6." -o "${iptype}." == "tcp" ];
@@ -4934,7 +4985,7 @@ build_main_index_page() {
          echo "${matchedalerts}" > ${RESULTS_DIR}/${dataline}/workfile_alcount
          if [ ${alerts} -gt 30 ];
          then
-            log_message ".     Alerts found > 30 so ignoring any custom file reason entries"
+            log_message ".     Alerts found > 30 for server ${dataline} so ignoring any custom file reason entries"
          else
             if [ "${CUSTOMFILE}." != "." ];
             then

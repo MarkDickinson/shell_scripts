@@ -24,6 +24,7 @@ I even have a few servers with zero alerts now.
 * [Directories that must exist for processing](#directories-that-must-exist-for-processing)
 * [Using the scripts](#using-the-scripts)
 * [Example of the main index produced from processing](#example-of-the-main-index-produced-from-processing)
+* [Planned Enhancements](#planned-enhancements)
 
 
 ## Requirements
@@ -206,3 +207,13 @@ Most fields are self explainatory, requiring a mention are the points below
   server basis with number of days actually configured in the custom file as (N) shown after the
   snapshot date
 
+## Planned Enhancements
+
+This will not affect most of you, but on servers running OpenStack it generates a
+lot of complicated firewall rules such as 'dports nnnn,nnnn,nnnn:nnnn,nnnn (yes,
+a range can be imbedded in a list as well as unique ports). To complicate even
+further 'dports' is used in iptables with a : range seperator and 'dport' in netfilter
+with a - range seperator.
+
+Complicated rules such as that are not handled in V0.17. Changes to handle those
+are being implemented into V0.18.
