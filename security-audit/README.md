@@ -2,7 +2,7 @@
 
 These scripts Check for common security issues _on Linux Servers_ not normally checked on a regular
 basis by system administrators. It is designed for Fedora/CentOS/RHEL servers although with a few
-exceptions works perfectly well on debian based servers like Ubuntu and Kali.
+exceptions works perfectly well on Debian based servers like Ubuntu and Kali.
 
 Using the scripts the checks can be automated to provide one place check results can be viewed.
 Additionally automating the processing runs allows you to periodically archive the processing results (an
@@ -15,6 +15,13 @@ Detailed documentation on all the customisation parameters available is in the f
 Be warned, the fisrt run against a server will most likely find hundreds of issues to be resolved.
 But it is possible to get them down to only a few warnings (there will probably always be warnings) and
 I even have a few servers with zero alerts now.
+
+These scripts are _slow_ to run and cpu intensive as they are bash shell scripts.
+While I did consider moving some of the processing functions to C utilities as these
+are a work in progress it is easier to tweak a shell script for new functionality
+or even minor tweaks; plus if you want to tweak the utility for your own use it
+would be easier for you in script. In future should some of the checks be considered as 
+static and never to be changed those portions may become C to speed things up a little.
 
 ## Table of contents
 * [Requirements](#requirements)
@@ -32,7 +39,9 @@ I even have a few servers with zero alerts now.
 * processing scripts must be installed under a directory path that contains no underscore ( _ ) character, that is used as a parsing delimiter
 * only runs on Linux servers [tested on Fedora/CentOS/Kali/Ubuntu]
 * the 'netstat' command must be available on all the servers and must support the '-p' option, for collecting information
-  on tcp/tcp6/udp/udp6/raw/raw6 ports and the unix sockets open on the server and what is using them
+  on tcp/tcp6/udp/udp6/raw/raw6 ports plus the unix sockets open on the server and what is using them. where the
+  netstat version supports it active bluetooth connections (if you have a wireless card in the server) are also
+  collected and reported on
 * the 'iptables' command should be available on all servers, for checking iptables firewall rules against open ports
 * the 'nft' command should be available on all servers, for checking netfilter firewall rules against open ports
 * both 'dmidecode' and 'lshw' should be installed to record the server hardware details
@@ -79,7 +88,7 @@ before running it.
 * filesystem checks - report on all suid files that are not explicitly defined
   in the customisation file as being permitted/expected to exist (reports
   on all suid files but only alerts on unexpected ones). Notes: can suppress
-  alerts for docker/overlay2 and snap/core* suid files as these are pretty
+  alerts for docker/overlay2 and snap/core\* suid files as these are pretty
   much randonly placed for every docker container and snap application, but
   they are still listed in the report for review
 * read only files checks (additional for my use) - checks all files under explicitly
@@ -214,6 +223,12 @@ lot of complicated firewall rules such as 'dports nnnn,nnnn,nnnn:nnnn,nnnn (yes,
 a range can be imbedded in a list as well as unique ports). To complicate even
 further 'dports' is used in iptables with a : range seperator and 'dport' in netfilter
 with a - range seperator.
+Complicated rules such as that are not handled in V0.17. Changes to handle some of that
+were implemented into V0.18 but it is still a work in progress.
 
-Complicated rules such as that are not handled in V0.17. Changes to handle those
-are being implemented into V0.18.
+A future enhancement will also be to allow custom file rules to contain port ranges
+rather than specifying individual ports as some suppied firewalld rules open a range
+of ports for an application rather than a single port and it is a pain to have to
+code them all, which will be trival now due to the way I have implemented the
+include files :-).
+

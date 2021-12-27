@@ -3,13 +3,26 @@ Known issues with the current release
 * Nowhere in the directory path of the processing script can there be an underscore</b> ( _ )
   character used, the underscore character is used by the script for parsing and having it
   in the directory path will cause problems. Not really an issue, just do not do it
-* if you ^C or kill a running processing scriot the lockfile remains, you must use the
+* if you ^C or kill a running processing script the lockfile remains, you must use the
   processing script --clearlock option to remove it. However a lockfile is required as we
   do not want to permit batch and interactive runs to conflict; and if you have a lot
   of servers a full run may take over 24hrs (althought will take a few hundred servers
   and you should have split out processing by then).
   Maybe one day if there are enough complaints I will implement a trap handler, but I
   do not consider this a bug 
+* A REAL BUG: when processing a capture with a large number of files _SOMETIMES_ an error is thrown
+  "bin/process_server_details.sh: line 4422: ----------------------------------: command not found"
+  which is not the contents of line 4422. A rerun with no changes does not have the same issue.
+  Ocurrence is completely random so hard to track down. Does not affect any results produced
+* >>> Updates to support Debian more fully are still in progress as I only started running
+  a Debian server recently; and the scripts were origionally designed for the RHEL family.
+
+Current Limitations with the current release
+============================================
+* performance - on an 8cpu system with 32Gb of memory it takes 2hrs+14mins to process
+  634902 file checks (a single server full scan data collection), so using the default
+  full scan data collection should be done infrequently
+  (refer to the '--scanlevel=N' directive to limit scan data collection)
 * reprocessing logic skip, when a single server is selected for processing any additional
   servers are also selected to be reprocessed if they must be including for processing
   version changes, OK as interactive. This has been deliberately skipped in the checkchanged
@@ -43,13 +56,27 @@ Known issues with the current release
   on Fedora/CentOS/RHEL systems. _On Ubuntu servers comments in login.defs indicate minlen
   is set in files in /etc/pam.d but as I can find no examples of this Ubuntu servers will
   always raise an alert saying minlen is 0_ which as I don't use Ubuntu other than testing
-  this script so am unlikely to spend time resolving.
+  this script so am unlikely to spend time resolving (Note: Debian10/Debian11 are correctly
+  using these files also, the issue is only with Ubuntu [which has become so different from Debian
+  it can no longer be considered as based on Debian)
   Commented values would be ignored so ensure they are set. authconfig is depreciated on fedora in favor of authselect
   and god knows what tools ubuntu use so as every system will have different management tools
   cannot use those to query values so rely
   on values set in the files _and ignore commented defaults_ as defaults change
+* Does not yet distinguish between an firewall inbound rule and an outbound rule. It WILL in a
+  future release as I need that but currently if you have an outbound rule for a port
+  number and that port is also listening on the local server it treats it as expected
+  when it should not do; likewise if no listening port is on the server for it it
+  will raise an error expecting one. Temporarily the toolkit allows a 
+  TCP|UDP_OUTBOUND_SUPPRESS parameter to suppress the later case but thats just a
+  temporary workaround
 * server firewall rule checks - no attempt is made to follow firewall chains or determine zones,
-  any rule to open a port is considered an open port
+  any rule to open a port is considered an open port. This is needed to cleanly fix the above which
+  is why fixing the above will take some time
+* server firewall rule checks - currently only handles iptables or netfilter (iptables and nft commands)
+
+Irritations caused by environments
+==================================
 * servers running NetworkManager will have firewall ports opened that users may not expect,
   _This is not an issue with this toolkit_ but
   with a lack of control over what NetworkManager decides to open; prior to version 0.12 any
@@ -61,13 +88,9 @@ Known issues with the current release
   but the following ports have firewall rules opening the ports, udp 67(/usr/lib/firewalld/services/dhcp.xml),
   udp 68(/usr/lib/firewalld/services/RH-Satellite-6.xml),udp 69(/usr/lib/firewalld/services/tftp.xml);
   _and worse_ some processes that use dynamic ports will occasionally use those ports so unexpected apps are exposed
-* BUG: when processing a capture with a large number of files _SOMETIMES_ an error is thrown
-  "bin/process_server_details.sh: line 4422: ----------------------------------: command not found"
-  which is not the contents of line 4422. A rerun with no changes does not have the same issue.
-  Ocurrence is completely random so hard to track down. Does not affect any results produced
-* Only handles simple firewall rules. Does not handle complex firewall rules such as the
-  iptables entries below 
-      multiport dports 8773,8774,8775,8778 /* 001 nova api
-      multiport dports 5900:5999 /* 001 nova compute
-      multiport dports 16509,49152:49215 /* 001 nova qemu
-
+  Also Fedora is a pain, at some point (in F33?) cupsd ('ipp' and 'ipp-client' firewalld rules) repo supplied
+  firewalld services changed from opening ports 631 on tcp and tcpv6 to opening on
+  631 tcp and tcpv6 plus udp, but cups does not use the udp port so this toolkit
+  will correctly raise an alert for a open firewall port that is not in use but you
+  are at the mercy of random changes like that (I have overrides for almost every
+  firewalld service I use to prevent that now but it will affect all other users)

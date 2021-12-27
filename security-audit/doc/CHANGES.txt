@@ -14,6 +14,41 @@ be permitted to alert if older capture files are used rather than add new coding
 for backward compatability. Simply always use the same versions.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.18 and version 0.19 are
+-------------------------------------------------------------------------------------
+(1) Bugfix: the expected allowed alerts link mapped to the work directory rather
+    than a URL, corrected
+(2) Bugfix: orphaned files were being reported multiple times, should be fixed
+(3) report section C.1.3 moved to C.1.4, added a new C.1.3 for bluetooth active connections.
+(4) Added as netstat run on OS Rocky8 on a laptop I have now reports on active bluetooth
+    sessions on the wireless interface (which I never saw with Fedora netstat); only usefull
+    if you have a laptop or server with a wireless card and an appropriate version
+    of netstat on the machine. All bluetooth connections default to reporting as alerts
+    as I consider them unexpected on a server. Can be downgraded to warnings with
+    a new BLUETOOTH_ALERT_TO_WARN=yes customisation file flag but will never be
+    permitted to be considered OK as servers should not be doing this
+(*) No version bump !. A minor bugfix merged into 0.19 on 27Dec2021 was that I
+    noticed Debian in /etc/sudoers used '@includedir' and the script origionally
+    designed for rhel family server only followed '#includedir' statements in
+    the data collection script; it now handles both
+
+-------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.17 and version 0.18 are
+-------------------------------------------------------------------------------------
+(1) Some bug fixes since 0.17 tag base have been included to correct firewall check 
+    reports and a incorrect logic check (where == should have been != in a rather
+    important place in firewall rule checks).
+(2) Added handling (and a lot of code cleanup as a result) for complicated iptables
+    and netfilter rules openstack uses (such as 'nnn,nnn,nnn:nnn,nnn-nnn,nnn)
+    where lists of comma seperated ports, including ranges can be intermingled).
+    This results in more ports defined in firewall rules being checked so you may get
+    some additional alerts (especially if you use something like kdeconnect that opens
+    50 ports with its default firewalld rules [/usr/lib/firewalld/services/kdeconnectd.xml]),
+    the location of firewalld services mentioned as you really should review/edit some
+    of the defaults and place custom copies in /etc/firewalld/services directory to
+    override bad defaults.
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.16 and version 0.17 are
 -------------------------------------------------------------------------------------
 (1) Handling for include files in a servers 'custom' file using the parameter

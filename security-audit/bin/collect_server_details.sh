@@ -130,13 +130,31 @@
 # 2020/11/15 - Updates for version 0.17
 #              Updated version number to match processing script version
 #              which had a lot of changes made and was version bumped
+# 2020/12/22 - Updates for version 0.18
+#              Updated version number to match processing script version
+#              which had a lot of changes made and was version bumped
+#              Altered test of network port pid search that records
+#              details of the process holding a port open to record
+#              an unknown (kernel?) opener where netstat reports a
+#              pid of '-' (or any non-numeric pid) rather than record
+#              nothing as with no entry recorded the processing script
+#              raises alerts as it expects an open port to have an entry.
+# 2021/10/03 - Updates for version 0.19
+#              BugFix for orphaned file collection.
+#              Record any active bluetooth connections (a wireless card
+#              on my laptop started reporting these after replacing
+#              centos8 with rocky, and need to be audited.
+#              Version bump to match processing script.
+# 2021/12/27 - In /etc/sudoers Debian uses @includedir (rhel uses #includedir)
+#              so includes were not being checked for debian, now that
+#              is checked for also. No version bump as no extra functionality.
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.17"    # capture script version
+EXTRACT_VERSION="0.19"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -144,6 +162,7 @@ BACKUP_RPMLIST="no"       # default is NOT to create a rpm package list
 DO_HWLIST="yes"           # default is to create the hardware listing
 WEBPATHFILE=""            # default is no file of special webserver directories
 WEBPATHEXCLUDE=""         # only set if above parm is used
+WORKDIR=`pwd`             # where to store temporary files
 
 PARM_ERRORS="no"
 while [[ $# -gt 0 ]];
@@ -180,7 +199,7 @@ do
                          echo "*error* the --record-packages value provided is not yes or no"
                          PARM_ERRORS="yes"
                       fi
-                      DO_HWLIST="${value}"
+                      BACKUP_RPMLIST="${value}"
                       shift
                       ;;
       "--hwlist")     if [ "${value}." != "yes." -a "${value}." != "no." ];
@@ -254,7 +273,7 @@ then
    exit 1
 fi
 
-echo "$0 collector version is ${EXTRACT_VERSION}"
+echo "$0 collector script version is ${EXTRACT_VERSION}"
 timenow=`date`
 echo "Start time: ${timenow}"
 
@@ -416,7 +435,7 @@ find_file_perm_nolog() {
    key="$1"
    fname="$2"
    expected_owner="$3"
-   optdata="$4"
+   optdata="$4"    # Note: may be "NA" but must be passed as we check for unset variables now
    resultdata=""
    if [ -d ${fname} ];
    then
@@ -584,6 +603,8 @@ identify_network_listening_processes() {
             if [ "${listenprocess}." != "." ]
             then
                echo "NETWORK_UDPV6_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+            else
+               echo "NETWORK_UDPV6_PORT_${listenport}=(no pid available for pid \"${pid}\", kernel?)" >> ${LOGFILE}
             fi
          else
             listenaddr=`echo "${xx}" | awk {'print $4'}`
@@ -594,6 +615,8 @@ identify_network_listening_processes() {
             if [ "${listenprocess}." != "." ]
             then
                echo "NETWORK_UDPV4_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+            else
+               echo "NETWORK_UDPV4_PORT_${listenport}=(no pid available for pid \"${pid}\", kernel?)" >> ${LOGFILE}
             fi
          fi
       fi
@@ -665,6 +688,12 @@ identify_network_listening_processes() {
             fi
          fi
       fi
+      # 0.19 capture bluetooth connections also (a Rocky laptop with a wireless card started showing these)
+      testvar=`echo "${xx}" | egrep "^l2cap|^rfcomm"`
+      if [ "${testvar}." != "." ];
+      then
+         echo "ACTIVE_BLUETOOTH_CONNECTION=${xx}" >> ${LOGFILE}
+      fi
    done
    /bin/rm identify_network_listening_processes.wrk
 } # end of identify_network_listening_processes
@@ -704,6 +733,7 @@ get_PAM_pwminlen() {
    else
       pamminlen=""
    fi
+   echo "${pamminlen}"   # return value to the caller
 } # end of get_PAM_pwminlen
 
 # **********************************************************************
@@ -806,7 +836,7 @@ done
 # ======================================================================
 # Collect perms of key files.
 # ======================================================================
-find_file_perm PERM_SHADOW_FILE /etc/shadow "root"
+find_file_perm PERM_SHADOW_FILE /etc/shadow "root" "NA"
 
 # N/A, I use postfix, users may use many different mail setups
 # find_file_perm PERM_SENDMAIL_FILE /etc/sendmail.cf
@@ -830,7 +860,7 @@ find_orphans() {
 }
 extract_as_unique_lines ${ALL_DIR_LIST} | while read extractdirname
 do
-   find_orphans "${dirname}"
+   find_orphans "${extractdirname}"
 done
 
 # ======================================================================
@@ -1121,22 +1151,22 @@ record_file HOSTS_DENY /etc/hosts.deny
 # --- Any equiv files on the server ? ---
 if [ -f /etc/hosts.equiv ];
 then
-   find_file_perm PERM_HOSTS_EQIV_SYSTEM "/etc/hosts.equiv" "root"
+   find_file_perm PERM_HOSTS_EQIV_SYSTEM "/etc/hosts.equiv" "root" "NA"
    record_file HOSTS_EQIV /etc/hosts.equiv
 fi
 if [ -f /etc/ssh/shosts.equiv ];
 then
-   find_file_perm PERM_HOSTS_EQIV_SYSTEM "/etc/ssh/shosts.equiv" "root"
+   find_file_perm PERM_HOSTS_EQIV_SYSTEM "/etc/ssh/shosts.equiv" "root" "NA"
    record_file HOSTS_EQIV /etc/ssh/shosts.equiv
 fi
 find / -name ".rhosts" 2>/dev/null | while read dataline
 do
-   find_file_perm PERM_HOSTS_EQIV_USER "${dataline}" "NA"
+   find_file_perm PERM_HOSTS_EQIV_USER "${dataline}" "NA" "NA"
    record_file HOSTS_EQIV ${dataline}
 done
 find / -name ".shosts" 2>/dev/null | while read dataline
 do
-   find_file_perm PERM_HOSTS_EQIV_USER "${dataline}" "NA"
+   find_file_perm PERM_HOSTS_EQIV_USER "${dataline}" "NA" "NA"
    record_file HOSTS_EQIV ${dataline}
 done
 
@@ -1144,7 +1174,7 @@ done
 timestamp_action "checking for exported filesystems"
 if [ -f /etc/exports ];
 then
-   find_file_perm PERM_ETC_EXPORTS "/etc/exports" "root"
+   find_file_perm PERM_ETC_EXPORTS "/etc/exports" "root" "NA"
    record_file ETC_EXPORTS_DATA /etc/exports
    cat /etc/exports | while read dataline
    do
@@ -1275,7 +1305,7 @@ fi
 # ======================================================================
 timestamp_action "collecting motd and ssh-banner information"
 record_file MOTD_DATA /etc/motd
-find_file_perm PERM_ETC_MOTD "/etc/motd" "root"
+find_file_perm PERM_ETC_MOTD "/etc/motd" "root" "NA"
 # MID: 2008/07/03 added sshd config and banner capture
 if [ -f /etc/ssh/sshd_config ];
 then
@@ -1383,6 +1413,27 @@ then
          done
       else
          timestamp_action ".   Warning: directory '#includedir ${dirname}' specified in /etc/sudoers does not exist"
+      fi
+   done
+   # REPEAT for Debian - debian11 uses @includedir rather than #includedir
+   # repeat the whole lot, so not want a wildcard match on character 1
+   grep -i "^@includedir" /etc/sudoers | awk {'print $2'} | while read dirname
+   do
+      if [ -d ${dirname} ];
+      then
+         ls ${dirname} | while read fname
+         do
+            basefname=`basename ${fname}`
+            cat ${dirname}/${basefname} | grep -v "^#" | sed -e's/\t/ /g' | while read dataline
+            do
+               if [ "${dataline}." != "." ];
+               then
+                  echo "SUDOERS=${dataline}" >> ${LOGFILE}
+               fi
+            done
+         done
+      else
+         timestamp_action ".   Warning: directory '@includedir ${dirname}' specified in /etc/sudoers does not exist"
       fi
    done
 fi

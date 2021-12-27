@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eu     # fail if unset variables are used
 # !!! WILL ONLY WORK WITH BASH !!! - needs bash substring facility
 # ======================================================================
 #
@@ -71,7 +72,8 @@
 #   C. Network Connectivity
 #      C.1.1 - compare listening ports against allowed ports (tcp/tcp6/udp/udp6/raw)
 #      C.1.2 - check for obsolete custom entries (ports in custom file no longer in use on server)
-#      C.1.3 - details of network sockets in use
+#      C.1.3 - active bluetooth connections in use
+#      C.1.4 - details of unix network sockets in use
 #   D. Cron security
 #      D.1 - cron.allow and cron.deny checks
 #      D.2 - check all cronjob script files secured tightly, to correct owner
@@ -378,18 +380,42 @@
 #       for clarity (1) Changed 'Alerts found > 30' message to include
 #                       the server name as during index rebuild users
 #                       would have no idea what server it was refering to.
-#      major bugfix (2) In iptables checks changed a == to != where checking
+#       bugfix      (2) In iptables checks changed a == to != where checking
 #                       if nolisten ok was in the custom file to get the
 #                       correct behavior (oops, my error, bugfix here).
-#    display bugfix (3) In netfilter checks where type is a keyword like 'meta' 
-#                       rather than tcp or udp we now extract the type from the
-#                       l4proto field (note: where multitype
+#       enhance     (3) In netfilter checks where type is 'meta' rather 
+#                       than tcp or udp we now extract the type from the
+#                       meta rule l4proto field (note: where multitype
 #                       such as { icmp, ipv6-icmp, tcp, udp } we skip
 #                       processing the line as in multitype I have not
 #                       yet got around to putting in yet another loop to
-#                       process them all. Only corrects report page as
-#                       now it will correctly have tcp/udp rather than 'meta'
-#
+#                       process them all. Hmm, actually if any non-expected
+#                       type search for l4proto as there are other types
+#                       than just meta.
+# MID: 2020/09/18 - Version 0.18 
+#                   (1) In iptables checks allow for complicated
+#                       multiport rules like 'dports nnn,nnn,nnn:nnn,nnn
+#                       (mixed ports and ranges or ports) that openstack
+#                       likes to create.
+#                   (2) Iptables backward compatability with collector
+#                       version 0.09 removed
+#                   (3) In cron job checks a warning was raised without
+#                       the report using a warning table color making
+#                       it hard to see what the warning was for. Now
+#                       uses the correct color.
+#                   (4) When suppressing suid alerts under /val/lib/docker/overlay2
+#                       now also suppress under /var/lib/docker/volumes
+#                       as minikube installs itself using volumes so
+#                       other tools might also
+# MID: 2020/10/03 - Version 0.19 
+#                   (1) Fixed reference to expected_alerts.txt in index
+#                       page, made it a URL reference rather than
+#                       filesystem path.
+#                   (2) Was only handling /var/spool/mail (rhel) for
+#                       mail file checks, now also allow for /var/mail (debian)
+#                   (3) Added bluetooth report in the network (C) section
+#                       as C.1.3 (what was C.1.3 becomes C.1.4 which
+#                       is the info only unixsocket list)
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
 SRCDIR=""           # where are the raw datafiles to process (required)
@@ -445,7 +471,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.17"
+PROCESSING_VERSION="0.19"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -625,6 +651,19 @@ log_message() {
    echo "${logtime} - ${textmsg}"
 } # log_message
 
+# ---------------------------------------------------------------
+# Added in 0.15 to create a log of alerts that can be matched
+# against expected denies.
+# ---------------------------------------------------------------
+log_alert_detail() {
+   hostid="$1"
+   msgtext="$2"
+   echo "${msgtext}" >> ${RESULTS_DIR}/${hostid}/errorlist_subset.txt
+} # log_alert_detail
+
+# ---------------------------------------------------------------
+# Misc cleanup routines
+# ---------------------------------------------------------------
 clean_prev_work_files() {
    if [ -d ${WORKDIR} ];
    then
@@ -640,6 +679,9 @@ delete_file() {
    fi
 } # delete_file
 
+# ---------------------------------------------------------------
+# Number and counter helpers.
+# ---------------------------------------------------------------
 # wc -l puts spaces in front of the number returned
 # this will chop it off.
 get_num_only() {
@@ -660,7 +702,6 @@ must_be_number() {
    fi
 } # must_be_number
 
-# ---------------------------------------------------------------
 # Routines to update counter files in server specific directories
 clear_counter() {
    hostid="$1"
@@ -694,17 +735,6 @@ inc_counter() {
    delete_file ${WORKDIR}/${hostid}_all_ok
 } # inc_counter
 
-# ---------------------------------------------------------------
-# Added in 0.15 to create a log of alerts that can be matched
-# against expected denies.
-# ---------------------------------------------------------------
-log_alert_detail() {
-   hostid="$1"
-   msgtext="$2"
-   echo "${msgtext}" >> ${RESULTS_DIR}/${hostid}/errorlist_subset.txt
-} # log_alert_detail
-
-# ---------------------------------------------------------------
 # Used to update counter files in the global resutls
 # directory (previous procs are specific to host names)
 update_globals() {
@@ -723,6 +753,79 @@ update_globals() {
    testvar=$((${testvar} + ${num}))
    echo "${testvar}" > ${filename}
 } # update_globals
+
+# ---------------------------------------------------------------
+# Helper routines for working out firewall rule port numbers
+# ---------------------------------------------------------------
+# Can be passed a number, or a number range as nnn-nnn or nnn:nnn
+# A single number if non-numeric will just write out the data passed
+# A number range will write out the numbers in the range
+range_to_list() {
+   rangelist="$1"
+   minnum=""
+   maxnum=""
+   xx=`echo "${rangelist}" | grep ":"`   # is the field a range ?
+   if [ "${xx}." != "." ];
+   then 
+      minnum=`echo "${rangelist}" | awk -F: {'print $1'}`
+      maxnum=`echo "${rangelist}" | awk -F: {'print $2'}`
+   else
+      xx=`echo "${rangelist}" | grep "-"`   # is the field a range ?
+      if [ "${xx}." != "." ];
+      then 
+         minnum=`echo "${rangelist}" | awk -F\- {'print $1'}`
+         maxnum=`echo "${rangelist}" | awk -F\- {'print $2'}`
+      fi
+   fi
+   if [ "${minnum}." == "." -o "${maxnum}." == "." ];  # no range, just returm what we were passed
+   then
+      echo "${rangelist}"
+   else
+      minnum=`must_be_number ${minnum}`
+      maxnum=`must_be_number ${maxnum}`
+      if [ "${minnum}." == "0." -o "${maxnum}." == "0." ];   # not a numeric range, just returm what we were passed
+      then
+         echo "${rangelist}"
+      else
+         while [ ${minnum} -le ${maxnum} ];                  # else returm all numbers in the range
+         do
+            echo "${minnum}"
+            minnum=$((${minnum} + 1))
+         done
+      fi
+   fi
+} # end of range_to_list
+
+# When passed a list of comma seperated values will return them
+# as a multipline list so the invoking script can process them
+# as individual entries rather than a list.
+commas_to_list() {
+   datastr="$1"
+   parmkey=","
+   while [ ${#datastr} -gt 0 ];
+   do
+      if [[ $datastr == *"${parmkey}"* ]];    # can only do parsing if the key exists in the string
+      then
+         parm1=`echo "${datastr}" | awk -F, {'print $1'}`   # can't remember bash internal syntax for this one
+         datastr=${datastr#*$parmkey}    # rest will contain all data after the matched comma (,)
+         echo "${parm1}"
+      else
+         echo "${datastr}"
+         datastr=""
+      fi
+   done
+} # end of commas to list
+
+# A Wrapper around commas_to_list and range_to_list
+# When passed a list of firewall rules such as nnnn,nnnn,nnnn-nnnn,nnnn,nnnn:nnnn,nnnn
+# it will pass the list through commas_to_list and then range_to_list so the script
+# that calls this routine just gets a multiline list of all the numbers.
+build_a_range_list() {
+   commas_to_list "$1" | while read dataresp
+   do
+      range_to_list "${dataresp}"
+   done
+} # end of build_a_range_list
 
 # ---------------------------------------------------------------
 #                    locate_custom_file
@@ -802,8 +905,8 @@ locate_custom_file() {
 # because I can
 # ---------------------------------------------------------------
 marks_banner() {
-   echo "${MYNAME} - (c)Mark Dickinson 2004-2020"
-   echo "Security auditing toolkit version ${PROCESSING_VERSION}"
+   echo "${MYNAME} - (c)Mark Dickinson 2004-2022"
+   echo "Security auditing toolkit processing script version ${PROCESSING_VERSION}"
 } # end of marks_banner
 
 # -------------------------------------------------------------------------
@@ -816,7 +919,8 @@ marks_banner() {
 # notes: parm and value can be anywhere in the string
 #        value can be bracketed wiith " or ' characters
 #        if value not quoted within the string word1 after key is the value
-#        seperator between key and value can be space, = or :
+#        seperator between key and value can be space = or : (not , as
+#        I need to extract values such as A,B,C,D as one value.
 #
 # Added this proc in 0.16 (merged from my common libraries) as I needed
 # it for the sudoers checks.
@@ -868,6 +972,80 @@ extract_parm_value() {
    echo "${rest}"
 } # end of extract_parm_value
 
+# Same as the above but
+#     allow : to be part of the parm value
+#     allow {} as value wrapper to be treated as quotes also
+#     a couple of extra echos to remove leading spaces
+# changes were needed to handle parsing some firewall rules
+extract_parm_value_not_colon() {
+   parmkey="$1"
+   shift
+   datastr="$*"
+   if [[ $datastr == *"${parmkey}"* ]];    # can only do parsing if the key exists in the string
+   then
+      # rest will contain all data after the matched substring
+      rest=${datastr#*$parmkey}
+      rest=`echo ${rest}`       # remove imbedded leading spaces
+      # see if value is within " or ' quotes or btacketed by {}
+      testvar=${rest:0:1}
+      if [ "${testvar}." == "\"." ];        # IF within " quotes
+      then
+         rest=${rest:1:$((${#rest} - 1))}      # drop the " so it is not used in the next test
+         endchar="\""
+         rest=${rest%$endchar*}                # drop all chars after the "
+      elif [ "${testvar}." == "'." ];       # ELSE IF within ' quotes
+      then
+         rest=${rest:1:$((${#rest} - 1))}      # drop the ' so it is not used in the next test
+         endchar="'"
+         rest=${rest%$endchar*}                # drop all chars after the '
+      elif [ "${testvar}." == '{.' ];       # ELSE IF within ' quotes
+      then
+         rest=${rest:1:$((${#rest} - 1))}      # drop the ' so it is not used in the next test
+         endchar='}'
+         rest=${rest%$endchar*}                # drop all chars after the }
+      else                                  # ELSE no quotes so just get first word
+         # if we have the extract_words routine use it, otherwise use a temporary word1 routine
+         typeset -f -F extract_words 2>/dev/null
+         if [ $? -ne 0 ];
+         then
+            word1() {  
+               echo $1
+            }
+            rest=`word1 ${rest}`
+            unset word1
+         else
+            rest=`extract_words 1 --data ${rest}`
+         fi
+      fi
+   else   # If parmkey is not in the string return an empty result
+      rest=""
+   fi
+   # Display result
+   rest=`echo ${rest}`       # remove imbedded leading spaces
+   echo "${rest}"
+} # end of extract_parm_value_not_colon
+
+# return an entire data field that begins with the search
+# string provided.
+extract_data_field() {
+   parmkey="$1"
+   shift
+   datastr="$*"
+   if [[ $datastr == *"${parmkey}"* ]];    # can only do parsing if the key exists in the string
+   then
+      # rest will contain all data after the matched substring
+      rest=${datastr#*$parmkey}
+      # drop anything after the field
+      rest=`echo "${rest}" | awk {'print $1'}`
+      # as we want the entire field return the search parm as well
+      rest="${parmkey}${rest}"
+   else   # If parmkey is not in the string return an empty result
+      rest=""
+   fi
+   # Display result
+   echo "${rest}"
+} # end of extract_data_field
+
 # ---------------------------------------------------------------
 # Are we adding additional users that may own SYSTEM class files
 # If additional users are to be added to that list do that here
@@ -878,7 +1056,7 @@ update_system_file_owner_list() {
    # Space seperated list of users that can own files of class SYSTEM.
    # Additional users can be added on a per server basis from the server
    # customisation file with ADD_SYSTEM_FILE_OWNER=xx
-   SYSTEM_FILE_OWNERS="root bin lp tss"
+   SYSTEM_FILE_OWNERS="root bin lp"
    if [ "${CUSTOMFILE}." != "." ];
    then
       echo "${SYSTEM_FILE_OWNERS}" > ${WORKDIR}/delme
@@ -1740,13 +1918,15 @@ build_appendix_a() {
    testvar=`grep "^PERM_SHADOW_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
    shadowperms=`echo "${testvar}" | awk '{print $1'}`
    # 0.12 for Debian add test for -rw-r----- (debian has no trailing . either)
-   if [ "${shadowperms}." != "----------.." -a "${shadowperms}." != "-r--------.." -a "${shadowperms}." != "-rw-r-----." ];
+   # 0.19 for debian check for trailing . now, as I have installed selinux on all my debian systems now
+   # 0.19 except for the Lali one that does not so last entry is for a Debian non-selinux system with no trailing dot
+   if [ "${shadowperms}." != "----------.." -a "${shadowperms}." != "-r--------.." -a "${shadowperms}." != "-rw-r-----.." -a "${shadowperms}." != "-rw-r-----." ];
    then
       echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>" >> ${htmlfile}
       echo "<p>The /etc/shadow file is badly secured.<br /><b>It should be -r-------- or ---------- and owned by root:root for RHEL systems</b>.<br />" >> ${htmlfile}
       echo "Debian based systems such as Ubuntu and Kali expect -rw-r----- and owned by root:shadow<br />" >> ${htmlfile}
       echo "Actual: ${testvar}<br>" >> ${htmlfile}
-      echo "${PERM_CHECK_RESULT}." >> ${htmlfile}
+      echo "${PERM_CHECK_RESULT}.<br />" >> ${htmlfile}
       echo "Log up to root and resecure this file correctly <b>immediately</b>.</p>" >> ${htmlfile}
       echo "</td></tr></table>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
@@ -1763,7 +1943,8 @@ build_appendix_a() {
       echo "<h3>A.6 User default attributes file</h3>" >> ${htmlfile}
       echo "<p>The default attributes used when adding a new user need to be set to" >> ${htmlfile}
       echo "reasonable values, the defaults are generally unaceptable. These are" >> ${htmlfile}
-      echo "the values in /etc/login.defs for server ${hostid}.</p>" >> ${htmlfile}
+      echo "the values obtained from /etc/login.defs, /etc/security/pwquality.conf and /etc/security/pwquality.conf.d/*.conf files</p>" >> ${htmlfile} 
+      echo "if they exist for server ${hostid} (pwquality.conf files are used on PAM systems).</p>" >> ${htmlfile} 
       # Get and ensure values exist for the data being checked
       maxdays=`grep "^PASS_MAX_DAYS" ${WORKDIR}/login.defs | awk {'print $2'}`
       mindays=`grep "^PASS_MIN_DAYS" ${WORKDIR}/login.defs | awk {'print $2'}`
@@ -1810,7 +1991,7 @@ build_appendix_a() {
       # minlen can be set in the system login.defs or the pam pwquality.conf
       if [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -lt ${NEEDPWLEN} ];
       then
-         echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf</td></tr>" >> ${htmlfile}
+         echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf (or missing/defaulting)</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
          log_alert_detail ${hostid} "Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf"
       elif [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -eq 0 ]; 
@@ -1819,7 +2000,7 @@ build_appendix_a() {
          echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
          log_alert_detail ${hostid} "Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs"
-      elif [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -ne 0 ]; 
+      elif [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -lt ${NEEDPWLEN} ]; 
       then
          if [ ${minlen} -eq 0 ];
          then
@@ -2241,7 +2422,7 @@ appendix_c_check_unused_process_port() {
 appendix_c_unix_socket_port_report() {
    hostid="$1"
 
-   echo "<h1>C.1.3 - Unix Socket ports open on the server</h1>" >> ${htmlfile}
+   echo "<h1>C.1.4 - Unix Socket ports open on the server</h1>" >> ${htmlfile}
    # ADD THE UNIX port checks
    echo "<p>Unix domain sockets will always be present, and" >> ${htmlfile}
    echo "it would be a hell of a job to spot possible security" >> ${htmlfile}
@@ -2299,6 +2480,66 @@ appendix_c_unix_socket_port_report() {
    fi
    echo "</table>" >> ${htmlfile}
 } # end appendix_c_unix_socket_port_report
+
+# ----------------------------------------------------------
+# ----------------------------------------------------------
+appendix_c_bluetooth_report() {
+   hostid="$1"
+
+   # see if we are treating bluetooth connections as the default of alerting
+   # of it there is an override to make them warnings.
+   iswarning=`grep -i "BLUETOOTH_ALERT_TO_WARN=yes" ${CUSTOMFILE}`
+   if [ "${iswarning}." != "." ];
+   then
+      usecolour=${colour_warn}
+      usecounter="warning_count"
+   else
+      usecolour=${colour_alert}
+      usecounter="alert_count"
+   fi
+
+   echo "<h1>C.1.3 - Active bluetooth connections</h1>" >> ${htmlfile}
+   linecounter1=`grep "^ACTIVE_BLUETOOTH_CONNECTION=l2cap" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   linecounter2=`grep "^ACTIVE_BLUETOOTH_CONNECTION=rfcomm" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   if [ ${linecounter1} -gt 0 -o ${linecounter2} -gt 0 ];
+   then
+      cat << EOF >> ${htmlfile}
+<p>If you have a wireless card on your laptop it is probably allowing bluetooth
+connections.
+I discovered it by accident when installing Rocky to replace CentOS8, Rocky reported
+on them via netstat where CentOS did not.
+As it is a security hole (I did not know I had active listening bluetooth connections)
+it is reported on here for those servers that capture the information.
+</p>
+EOF
+      if [ ${linecounter1} -gt 0 ];
+      then
+         echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td><pre>" >> ${htmlfile}
+         echo "Proto  Destination       Source            State         PSM DCID   SCID      IMTU    OMTU Security" >> ${htmlfile}
+         echo "</pre></td></tr><tr bgcolor=\"${usecolour}\"><td><pre>" >> ${htmlfile}
+         grep "^ACTIVE_BLUETOOTH_CONNECTION=l2cap" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read yyy
+         do
+            echo "${yyy}" >> ${htmlfile}
+            inc_counter ${hostid} ${usecounter}
+         done
+         echo "</pre></td></tr></table>" >> ${htmlfile}
+      fi
+      if [ ${linecounter2} -gt 0 ];
+      then
+         echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td><pre>" >> ${htmlfile}
+         echo "Proto  Destination       Source            State     Channel" >> ${htmlfile}
+         echo "</pre></td></tr><tr bgcolor=\"${usecolour}\"><td><pre>" >> ${htmlfile}
+         grep "^ACTIVE_BLUETOOTH_CONNECTION=rfcomm" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read yyy
+         do
+            echo "${yyy}" >> ${htmlfile}
+            inc_counter ${hostid} ${usecounter}
+         done
+         echo "</pre></td></tr></table>" >> ${htmlfile}
+      fi
+   else
+      echo "<p>There does not appear to be any bluetooth connectivity on this server. Probably no wireless card on this server.</p>" >> ${htmlfile}
+   fi
+} # end appendix_c_bluetooth_report
 
 # ----------------------------------------------------------
 # This routine checks that all custom file parameters 
@@ -2721,6 +2962,7 @@ build_appendix_c() {
    # however as we do not in this release check processes using sockets
    # so they are just informative, for now move the custom check above it
    appendix_c_check_unused_custom "${hostid}"
+   appendix_c_bluetooth_report "${hostid}"
    appendix_c_unix_socket_port_report "${hostid}"
 
    # Close the appendix page
@@ -2936,7 +3178,7 @@ build_appendix_d() {
          crontabowner=`echo "${dataline}" | awk -F: {'print $1'}`
          crontabdata=`echo "${dataline}" | awk -F@ {'print $2'}`
          crontabcmd=`echo "${dataline}" | awk -F@ {'print $3'}`
-         echo "<tr><td>${crontabowner}</td><td>${crontabdata}</td><td>${crontabcmd}<br />(in ignore list)</td></tr>" >> ${htmlfile}
+         echo "<tr bgcolor=\"${colour_warn}\"><td>${crontabowner}</td><td>${crontabdata}</td><td>${crontabcmd}<br />(in ignore list)</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} warning_count
       done
       echo "</table>" >> ${htmlfile}
@@ -3100,11 +3342,12 @@ EOF
             if [ "${testforvar}." == "var." ];
             then
                SKIPCHECKS="NO"
-               # special checks for files under mail directory /var/spool/mail
+	       # special checks for files under mail directory /var/spool/mail (rhel)
+	       # special checks for files under mail directory /var/mail (debian)
                # if filename matched file owner and group is mail then OK
-               testforspool=`echo "${dataline}" | awk -F\/ '{print $3}'`
-               spoolsubdir=`echo "${dataline}" | awk -F\/ '{print $4}'`
-               if [ "${testforspool}." == "spool." -a "${spoolsubdir}." == "mail." ];
+	       ismaildir_rhel=`echo "${dataline}" | grep "\/var\/spool\/mail"`
+	       ismaildir_debian=`echo "${dataline}" | grep "\/var\/mail"`
+               if [ "${ismaildir_rhel}." != "." -o "${ismaildir_debian}." != "." ];
                then
                   basefilename=`echo "${dataline}" | awk '{print $9}' | awk -F\= {'print $1'}`
                   basefilename=`basename ${basefilename}`
@@ -3258,6 +3501,27 @@ EOF
    # ---------------------------------------------------------------------------
    suppress_docker="no"
    suppress_snap="no"
+   # Make sure no work files exist
+   if [ -f ${WORKDIR}/suid_allow_list ];
+   then
+      /bin/rm ${WORKDIR}/suid_allow_list 
+   fi
+   if [ -f ${WORKDIR}/suid_file_list ];
+   then
+      /bin/rm ${WORKDIR}/suid_file_list 
+   fi
+   if [ -f ${WORKDIR}/suid_alerts ];
+   then
+      /bin/rm ${WORKDIR}/suid_alerts 
+   fi
+   if [ -f ${WORKDIR}/appendix_e_dockersuppresslist.txt ];
+   then
+      /bin/rm ${WORKDIR}/appendix_e_dockersuppresslist.txt
+   fi
+   if [ -f ${WORKDIR}/appendix_e_snapsuppresslist.txt ];
+   then
+      /bin/rm ${WORKDIR}/appendix_e_snapsuppresslist.txt
+   fi
    if [ "${CUSTOMFILE}." != "." ];
    then
       # save the allowed suid files now as well
@@ -3307,8 +3571,8 @@ EOF
             fi
          done
       else
-         # same as above, but omitting /var/lib/docker/overlay2 and /snap/core* entries
-         cat ${WORKDIR}/suid_file_list | grep -v "\/var\/lib\/docker\/overlay2\/" | grep -v "\/snap\/core" | grep -v "\/snap\/snapd\/" | while read dataline
+         # same as above, but omitting /var/lib/docker/overlay2, /var/lib/docker/volumes and /snap/core* entries
+         cat ${WORKDIR}/suid_file_list | grep -v "\/var\/lib\/docker\/overlay2\/" | grep -v "\/var\/lib\/docker\/volumes\/" | grep -v "\/snap\/core" | grep -v "\/snap\/snapd\/" | while read dataline
          do
             fname=`echo "${dataline}" | awk '{print $9}'`
             # check for override
@@ -3321,6 +3585,10 @@ EOF
          done
          # record the suppressed docker overlay files
          cat ${WORKDIR}/suid_file_list | grep "\/var\/lib\/docker\/overlay2\/" | while read dataline
+         do
+            echo "${dataline}" >> ${WORKDIR}/appendix_e_dockersuppresslist.txt
+         done
+         cat ${WORKDIR}/suid_file_list | grep "\/var\/lib\/docker\/volumes\/" | while read dataline
          do
             echo "${dataline}" >> ${WORKDIR}/appendix_e_dockersuppresslist.txt
          done
@@ -3752,6 +4020,9 @@ build_appendix_f() {
       fi
       lowercasevar1=`grep "^SELINUXTYPE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
       case "${lowercasevar1}" in
+         "default")   # debian uses 'default' instead of 'targeted' or 'strict' used by rhel
+		 echo "<tr bgcolor=\"${colour_OK}\" border=\"1\"><td>SELinux is using targeted (debian default) mode</td></tr>" >> ${htmlfile}
+            ;;
          "mls"|"targeted")  
             echo "<tr bgcolor=\"${colour_OK}\" border=\"1\"><td>SELinux is using targeted or mls protection mode</td></tr>" >> ${htmlfile}
             ;;
@@ -3825,6 +4096,113 @@ build_appendix_g() {
 #                      Appendix H.
 #   H. iptables and netfilter information
 # ----------------------------------------------------------
+
+# As we need to check single ports, multiports as start:end,
+# and multiports as port,port,port the logic in the mainline
+# was getting cluttered. So move the actual checks here and
+# just leave the mainline clutter as determing what port number
+# we will check here.
+# Parms passed are the values that were being used in the mainline
+# that we still need to know about (the last two serverruns... are
+# passed as we do not want to grep for them in every invocation
+# of this routine).
+iptables_check_logic() {
+   hostid="$1"
+   searchtype="$2"
+   ipversion="$3"
+   ipportmin="$4"
+   htmlfile="$5"
+   linedata="$6"
+   serverrunsnetmanager="$7"
+   serverrunsfirewalld="$8"
+
+   ipportmin=`must_be_number ${ipportmin}`          # sanity check to ensure I have not messed up parm order
+   if [ "${ipportmin}." == "0." -o "${linedata}." == "." ];
+   then
+      log_message ".   ***processing script error*** bad parms passed to iptables_check_logic"
+      return
+   fi
+
+   # use head as some entries such as ntpd will have multiple entries as they listen on multiple addresses
+   # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
+   #process=`grep "NETWORK_${searchtype}V${ipversion}_PORT_${ipportmin}=" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F\= {'print $2'}`
+   process=`grep "NETWORK_${searchtype}V._PORT_${ipportmin}=" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F\= {'print $2'}`
+   process=`echo "${process}" | sed 's/ *$//g'`                  # remove trailing spaces
+   # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
+   # isallowed=`grep "${searchtype}_PORTV${ipversion}_ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
+   isallowed=`grep "${searchtype}_PORTV._ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
+   if [ "${isallowed}." == "." ];
+   then
+      if [ "${process}." == "." ];     # not allowed and no process using the port
+      then
+         isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${ipportmin}:" ${CUSTOMFILE}`
+         if [ "${isoutbound}." == "." ];
+         then
+            # 0.12 inserted test for downgrading ports added by networkmanager or firewalld to warnings; only if
+            #       networkmanager or firewalld are running on the server
+            # Do we have a networkmanager/firewalld downgrade parm for it ?
+            isdowngrade=`grep "^${searchtype}_NETWORKMANAGER_FIREWALL_DOWNGRADE=:${ipportmin}:" ${CUSTOMFILE}`
+            if [ "${isdowngrade}." != "." ];
+            then
+               if [ "${serverrunsnetmanager}." != "." -o "${serverrunsfirewalld}." != "." ];
+               then
+                  process="Documented as Firewalld or NetworkManager generated"
+                  usecolour="${colour_warn}"
+                  inc_counter ${hostid} warning_count
+               else
+                  usecolour="${colour_alert}"
+                  inc_counter ${hostid} alert_count
+               fi
+            else
+               usecolour="${colour_alert}"
+               inc_counter ${hostid} alert_count
+            fi
+         else
+            process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
+            usecolour="${colour_note}"
+         fi
+      else    # else process was not .
+         bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
+         # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
+         procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
+         if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
+         then
+            usecolour="${colour_override_insecure}"
+         else
+            isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${ipportmin}:" ${CUSTOMFILE}`
+            if [ "${isoutbound}." == "." ];
+            then
+               usecolour="${colour_alert}"
+               inc_counter ${hostid} alert_count
+            else
+               process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
+               usecolour="${colour_note}"
+            fi
+         fi
+      fi   # process was != .
+   else
+      if [ "${process}." != "." ];   # isallowed, and a process is using it
+      then
+         usecolour="${colour_OK}"
+      else                           # isallowed but no process is using it
+         # permitted to be not in use by customfile entry ?
+         isallowed=`grep "^NETWORK_PORT_NOLISTENER_${searchtype}V._OK=${ipportmin}:" ${CUSTOMFILE}`
+         if [ "${isallowed}." != "." ];
+         then
+            # must have a port allowed entry to reach here, use that description 
+            ovdesc=`grep "${searchtype}_PORTV._ALLOWED=:${ipportmin}:" ${CUSTOMFILE} | awk -F: {'print $3'}`
+            process="Not listening, permitted by customfile : ${ovdesc}"  # re-use empty process field as description 
+            usecolour="${colour_warn}"
+            inc_counter ${hostid} warning_count
+         else
+            usecolour="${colour_alert}"
+            inc_counter ${hostid} alert_count
+         fi
+      fi
+   fi
+   echo "<tr bgcolor=\"${usecolour}\">${linedata}<td>${ipportmin}</td><td>${process}</td></tr>" >> ${htmlfile}
+} # end of iptables_check_logic
+
 build_appendix_h() {
    hostid="$1"
    clean_prev_work_files
@@ -3912,29 +4290,23 @@ EOF
    totalcount=0
    echo "${totalcount}" > ${WORKDIR}/iptables_totals_count
    countlines1=`grep "^IPTABLES_FULLDATA=" ${SRCDIR}/secaudit_${hostid}.txt | grep ACCEPT | grep -v "=Chain" | wc -l`   # V0.10 and above
-   countlines2=`grep "^IPTABLES_ACCEPT=" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`                                      # V0.09 and below
    countlines3=`grep "^NFTABLES_FULLDATA=" ${SRCDIR}/secaudit_${hostid}.txt | grep -i accept | wc -l`                   # V0.10 and above
-   if [ ${countlines1} -gt 0 -o ${countlines2} -gt 0 ];
+   if [ ${countlines1} -gt 0 ];
    then
       echo "<table border=\"1\" bgcolor=\"${colour_banner}\">" >> ${htmlfile}
       echo "<tr><td colspan=\"8\"><center>Firewall port accept information <b>managed by iptables</b></center></td></tr>" >> ${htmlfile}
       echo "<tr><td>Type</td><td>input<br />interface</td><td>output<br />interface</td><td>source</td>" >> ${htmlfile}
       echo "<td>destination</td><td>rule details</td><td>port</td><td>Process</td></tr>" >> ${htmlfile}
-      if [ ${countlines1} -gt 0 ];
-      then
-         cmdtorun="grep '^IPTABLES_FULLDATA=' ${SRCDIR}/secaudit_${hostid}.txt | grep ACCEPT | grep -v '=Chain' | awk -F\= {'print $2'}"
-      else
-         cmdtorun="grep '^IPTABLES_ACCEPT=' ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}"
-      fi
       # below needs eval to work
-      eval ${cmdtorun} | while read dataline
+      grep '^IPTABLES_FULLDATA=' ${SRCDIR}/secaudit_${hostid}.txt | grep ACCEPT | grep -v '=Chain' | awk -F\= {'print $2'} | while read dataline
       do
          totalcount=$((${totalcount} + 1))
          echo "${totalcount}" > ${WORKDIR}/iptables_totals_count
          usecolour="white"
          process=""
          iprules=`echo "${dataline}" | awk '{print $10" "$11" "$12" "$13" "$14" "$15" "$16}'`
-         ipruletype=`echo "${iprules}" | awk {'print $1'}`
+         # ipruletype=`echo "${iprules}" | awk {'print $1'}`      USE THE BELOW INSTEAD, or we get multitype in many cases
+         ipruletype=`echo "${dataline}" | awk '{print $4}'`
          # everything excecpt leading tr and trailng process field and terminating tr
          linedata=`echo "${dataline}" | awk '{print "<td>"$4"</td><td>"$6"</td><td>"$7"</td><td>"$8"</td><td>"$9"</td>"}'`
          linedata="${linedata}<td>${iprules}</td>"   # cannot expand var inside awk above, so append seperately
@@ -3952,119 +4324,53 @@ EOF
             else
                searchtype="UDP"
             fi
-            xx=`echo "${iprules}" | awk {'print $2'}`
-            yy=`echo "${xx}" | grep "dpt"`
-            if [ "${yy}." == "." ];
-            then
-               xx=`echo "${iprules}" | awk {'print $3'}`
+            #
+            # checking for dpt:nnnn
+            #
+            yy=`extract_parm_value "dpt:" ${iprules}`             # dpt:nnnn
+            if [ "${yy}." != "." ];
+            then   # only one port
+               iptables_check_logic "${hostid}" "${searchtype}" "${ipversion}" "${yy}" \
+                   "${htmlfile}" "${linedata}" "${serverrunsnetmanager}" "${serverrunsfirewalld}"
             fi
-            yy=`echo "${xx}" | grep "dpt"`
-            if [ "${yy}." == "." ];
-            then
-               xx=`echo "${iprules}" | awk {'print $4'}`
-            fi
-            yy=`echo "${xx}" | grep "dpt"`
-            if [ "${yy}." == "." ];
-            then
-               xx=`echo "${iprules}" | awk {'print $5'}`
-            fi
+            #
+            # checking for dpts:nnnn:nnnn and dpts:nnnn-nnnn
+            # must extract entire field as if dpts:nnn:nnn we would not
+            # want to chop of the second part of the data range if extracting
+            # a value (the second part of the value would be treated an another field)
+            #
+            yy=`extract_data_field "dpts:" ${iprules}`  # dpts:nnnn:nnnn and dpts:nnnn-nnnn
             if [ "${yy}." != "." ];
             then
-               yy=`echo "${xx}" | grep "dpts:"`
-               if [ "${yy}." == "." ];
-               then   # only one port
-                  ipportmin=`echo "${xx}" | awk -F: {'print $2'}`
-                  ipportmax="${ipportmin}"
-               else   # else multiple ports as min:max range
-                  ipportmin=`echo "${xx}" | awk -F: {'print $2'}`
-                  ipportmax=`echo "${xx}" | awk -F: {'print $3'}`
-               fi
-               while [ ${ipportmin} -le ${ipportmax} ];
+               yy=${yy:5:100}             # chop off the dpts: part
+               build_a_range_list "${yy}" | while read ipportmin
                do
-                  # use head as some entries such as ntpd will have multiple entries as they listen on multiple addresses
-                  # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-                  #process=`grep "NETWORK_${searchtype}V${ipversion}_PORT_${ipportmin}=" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F\= {'print $2'}`
-                  process=`grep "NETWORK_${searchtype}V._PORT_${ipportmin}=" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F\= {'print $2'}`
-                  process=`echo "${process}" | sed 's/ *$//g'`                  # remove trailing spaces
-                  # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-                  # isallowed=`grep "${searchtype}_PORTV${ipversion}_ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
-                  isallowed=`grep "${searchtype}_PORTV._ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
-                  if [ "${isallowed}." == "." ];
-                  then
-                     if [ "${process}." == "." ];     # not allowed and no process using the port
-                     then
-                        isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${ipportmin}:" ${CUSTOMFILE}`
-                        if [ "${isoutbound}." == "." ];
-                        then
-                           # 0.12 inserted test for downgrading ports added by networkmanager or firewalld to warnings; only if
-                           #       networkmanager or firewalld are running on the server
-                           # Do we have a networkmanager/firewalld downgrade parm for it ?
-                           isdowngrade=`grep "^${searchtype}_NETWORKMANAGER_FIREWALL_DOWNGRADE=:${ipportmin}:" ${CUSTOMFILE}`
-                           if [ "${isdowngrade}." != "." ];
-                           then
-                              if [ "${serverrunsnetmanager}." != "." -o "${serverrunsfirewalld}." != "." ];
-                              then
-                                 process="Documented as Firewalld or NetworkManager generated"
-                                 usecolour="${colour_warn}"
-                                 inc_counter ${hostid} warning_count
-                              else
-                                 usecolour="${colour_alert}"
-                                 inc_counter ${hostid} alert_count
-                              fi
-                           else
-                              usecolour="${colour_alert}"
-                              inc_counter ${hostid} alert_count
-                           fi
-                        else
-                           process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
-                           usecolour="${colour_note}"
-                        fi
-                     else    # else process was not .
-                        bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
-                        # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-                        procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
-                        if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
-                        then
-                           usecolour="${colour_override_insecure}"
-                        else
-                           isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${ipportmin}:" ${CUSTOMFILE}`
-                           if [ "${isoutbound}." == "." ];
-                           then
-                              usecolour="${colour_alert}"
-                              inc_counter ${hostid} alert_count
-                           else
-                              process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
-                              usecolour="${colour_note}"
-                           fi
-                        fi
-                     fi   # process was != .
-                  else
-                     if [ "${process}." != "." ];   # isallowed, and a process is using it
-                     then
-                        usecolour="${colour_OK}"
-                     else                           # isallowed but no process is using it
-                        # permitted to be not in use by customfile entry ?
-                        isallowed=`grep "^NETWORK_PORT_NOLISTENER_${searchtype}V._OK=${ipportmin}:" ${CUSTOMFILE}`
-                        if [ "${isallowed}." != "." ];
-                        then
-                           # must have a port allowed entry to reach here, use that description 
-                           ovdesc=`grep "${searchtype}_PORTV._ALLOWED=:${ipportmin}:" ${CUSTOMFILE} | awk -F: {'print $3'}`
-                           process="Not listening, permitted by customfile : ${ovdesc}"  # re-use empty process field as description 
-                           usecolour="${colour_warn}"
-                           inc_counter ${hostid} warning_count
-                        else
-                           usecolour="${colour_alert}"
-                           inc_counter ${hostid} alert_count
-                        fi
-                     fi
-                  fi
-                  echo "<tr bgcolor=\"${usecolour}\">${linedata}<td>${ipportmin}</td><td>${process}</td></tr>" >> ${htmlfile}
-                  ipportmin=$(( ${ipportmin} + 1 ))
+                  iptables_check_logic "${hostid}" "${searchtype}" "${ipversion}" "${ipportmin}" \
+                      "${htmlfile}" "${linedata}" "${serverrunsnetmanager}" "${serverrunsfirewalld}"
                done
-            else # no dpt field
-               # note: empty proces field in this condition
-               echo "<tr bgcolor=\"${usecolour}\">${linedata}<td>*</td><td></td></tr>" >> ${htmlfile}
             fi
+            #
+            # checking for dports entries
+            # now the messay 'multiport dports' which can be
+            #    dports nnnn:nnnn
+            #    dports nnnn,nnnn,nnnn,....
+            # or a mix like   dports nnnn,nnnn,nnnn:nnnn,nnnn,nnnn:nnnn  (embedded ranges)
+            # also... dports can be replaced by dport (no s) in the rules as well
+            # with the same syntax just to make it more complicated
+            yy=`extract_parm_value_not_colon "dports" ${iprules}`  # dports nnnn:nnnn or dports nnnn,nnnn,nnn:nnn,nnn,...
+            build_a_range_list "${yy}" | while read ipportmin
+            do
+               iptables_check_logic "${hostid}" "${searchtype}" "${ipversion}" "${ipportmin}" \
+                   "${htmlfile}" "${linedata}" "${serverrunsnetmanager}" "${serverrunsfirewalld}"
+            done
+            #
+            # same as above block but looking for dport instaead of dports keyword
+            yy=`extract_parm_value_not_colon "dport" ${iprules}`  # dports nnnn:nnnn or dports nnnn,nnnn,nnn:nnn,nnn,...
+            build_a_range_list "${yy}" | while read ipportmin
+            do
+               iptables_check_logic "${hostid}" "${searchtype}" "${ipversion}" "${ipportmin}" \
+                   "${htmlfile}" "${linedata}" "${serverrunsnetmanager}" "${serverrunsfirewalld}"
+            done
          else
             # note: empty process field or port in this condition
             echo "<tr bgcolor=\"${usecolour}\">${linedata}<td></td><td></td></tr>" >> ${htmlfile}
@@ -4088,7 +4394,9 @@ EOF
          echo "</td></tr></table><br /><br />" >> ${htmlfile}
       else
          echo "<table bgcolor=\"${colour_alert}\"><tr><td>Neither iptables or netfilter tables with accept rules exist on this server." >> ${htmlfile}
-         echo "<b>This server appears to be not running a firewall !</b></td></tr></table><br /><br />" >> ${htmlfile}
+         echo "<b>This server appears to be not running a firewall !</b>, or no rules are configured</td></tr></table><br /><br />" >> ${htmlfile}
+	 echo "<p>On rhel family servers you should install package \"firewalld\" which will install firewalld and nftables, or as I prefer just install iptables and do it all by hand although iptables has been depreciated in favour of nftables</p>" >> ${htmlfile}
+	 echo "<p>On debian servers you should install package \"firewalld\" which will install firewalld, nftables (nft command) and iptables (iptables command)</p>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
          log_alert_detail ${hostid} "This server appears to be not running a firewall"
       fi
@@ -4112,19 +4420,6 @@ EOF
             shift
          done
       } # end get_daddr
-
-      get_dport() {
-         while [[ $# -gt 0 ]];
-         do
-            testval="$1"
-            if [ "${testval}." == "dport." ];
-            then
-               echo "$2"
-               return
-            fi
-            shift
-         done
-      } # end get_dport
 
       get_proto() {
          while [[ $# -gt 0 ]];
@@ -4177,7 +4472,7 @@ EOF
             echo "<tr bgcolor=\"${usecolour}\"><td>${iptype}</td><td></td><td>${dataline}</td><td></td><td></td></tr>" >> ${htmlfile}
          else
             destaddr=`get_daddr ${dataline}`
-            destport=`get_dport ${dataline}`
+            destport=`extract_parm_value_not_colon "dport" ${dataline}`
             if [ "${iptype}." == "ip6." -o "${iptype}." == "tcp" ];
             then
                searchtype="TCP"
@@ -4190,94 +4485,78 @@ EOF
             if [ "${destport}." != "." ];
             then
                # allow for "dport NUM" and a range "dport NUM-NUM"
-               destportmax=`echo "${destport}" | awk -F\- {'print $2'}`
-               if [ "${destportmax}." != "." ];
-               then
-                  destport=`echo "${destport}" | awk -F\- {'print $1'}`
-               else
-                  destportmax=${destport}
-               fi
-               destport=`must_be_number ${destport}`
-               destportmax=`must_be_number ${destportmax}`
-               if [ "${destport}." != "0." ];
-               then
-                  if [ "${destportmax}." == "0." ];
+               tempdata="${destport}"
+               build_a_range_list "${tempdata}" | while read destport
+               do
+                  # use head as some entries such as ntpd will have multiple entries as they listen on multiple addresses
+                  # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just tcp/ip6//udp so do not use ipversion in test here
+                  process=`grep "NETWORK_${searchtype}V._PORT_${destport}=" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F\= {'print $2'}`
+                  process=`echo "${process}" | sed 's/ *$//g'`                  # remove trailing spaces
+                  # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just ip6/tcp/udp so do not use ipversion in test here
+                  # isallowed=`grep "${searchtype}_PORTV${ipversion}_ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
+                  isallowed=`grep "${searchtype}_PORTV._ALLOWED=:${destport}:" ${CUSTOMFILE}`
+                  if [ "${isallowed}." == "." ];
                   then
-                     destportmax=${destport}
-                  fi
-                  while [ ${destport} -le ${destportmax} ];
-                  do
-                     # use head as some entries such as ntpd will have multiple entries as they listen on multiple addresses
-                     # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just tcp/ip6//udp so do not use ipversion in test here
-                     process=`grep "NETWORK_${searchtype}V._PORT_${destport}=" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F\= {'print $2'}`
-                     process=`echo "${process}" | sed 's/ *$//g'`                  # remove trailing spaces
-                     # WORKAROUND - nft reports tcp/tcp6/udp/udp6 as just ip6/tcp/udp so do not use ipversion in test here
-                     # isallowed=`grep "${searchtype}_PORTV${ipversion}_ALLOWED=:${ipportmin}:" ${CUSTOMFILE}`
-                     isallowed=`grep "${searchtype}_PORTV._ALLOWED=:${destport}:" ${CUSTOMFILE}`
-                     if [ "${isallowed}." == "." ];
+                     if [ "${process}." == "." ];     # not allowed and no process using the port
                      then
-                        if [ "${process}." == "." ];     # not allowed and no process using the port
+                        isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${destport}:" ${CUSTOMFILE}`
+                        if [ "${isoutbound}." == "." ];
                         then
-                           isoutbound=`grep "${searchtype}_OUTBOUND_SUPPRESS=:${destport}:" ${CUSTOMFILE}`
-                           if [ "${isoutbound}." == "." ];
+                           # 0.12 inserted test for downgrading ports added by networkmanager to warnings
+                           isdowngrade=`grep "^${searchtype}_NETWORKMANAGER_FIREWALL_DOWNGRADE=:${destport}:" ${CUSTOMFILE}`
+                           if [ "${isdowngrade}." != "." ];
                            then
-                              # 0.12 inserted test for downgrading ports added by networkmanager to warnings
-                              isdowngrade=`grep "^${searchtype}_NETWORKMANAGER_FIREWALL_DOWNGRADE=:${destport}:" ${CUSTOMFILE}`
-                              if [ "${isdowngrade}." != "." ];
+                              if [ "${serverrunsfirewalld}." != "." -o "${serverrunsnetmanager}." != "." ];
                               then
-                                 if [ "${serverrunsfirewalld}." != "." -o "${serverrunsnetmanager}." != "." ];
-                                 then
-                                    process="Documented as Firewalld or NetworkManager generated"
-                                    usecolour="${colour_warn}"
-                                    inc_counter ${hostid} warning_count
-                                 else
-                                    usecolour="${colour_alert}"
-                                    inc_counter ${hostid} alert_count
-                                 fi
+                                 process="Documented as Firewalld or NetworkManager generated"
+                                 usecolour="${colour_warn}"
+                                 inc_counter ${hostid} warning_count
                               else
                                  usecolour="${colour_alert}"
                                  inc_counter ${hostid} alert_count
                               fi
                            else
-                              process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
-                              usecolour="${colour_note}"
+                              usecolour="${colour_alert}"
+                              inc_counter ${hostid} alert_count
                            fi
                         else
-                           bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
-                           # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-                           procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
-                           if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
-                           then
-                              usecolour="${colour_override_insecure}"
-                           else
-                              usecolour="${colour_alert}"
-                              inc_counter ${hostid} alert_count
-                           fi
+                           process=`echo "${isoutbound}" | awk -F: {'print "Outbound rule for - "$3'}`
+                           usecolour="${colour_note}"
                         fi
-                     else   # else an allow was matched on the port
-                        if [ "${process}." != "." ];   # isallowed, and a process is using it
+                     else
+                        bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
+                        # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
+                        procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
+                        if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
                         then
-                           usecolour="${colour_OK}"
-                        else                           # isallowed but no process is using it
-                           # permitted to be not in use by customfile entry ?
-                           isallowed=`grep "^NETWORK_PORT_NOLISTENER_${searchtype}V._OK=${destport}:" ${CUSTOMFILE}`
-                           if [ "${isallowed}." != "." ];   # data found
-                           then
-                              # must have a port allowed entry to reach here, use that description 
-                              ovdesc=`grep "${searchtype}_PORTV._ALLOWED=:${destport}:" ${CUSTOMFILE} | awk -F: {'print $3'}`
-                              process="Not listening, permitted by customfile : ${ovdesc}"  # re-use empty process field as description
-                              usecolour="${colour_warn}"
-                              inc_counter ${hostid} warning_count
-                           else
-                              usecolour="${colour_alert}"
-                              inc_counter ${hostid} alert_count
-                           fi
+                           usecolour="${colour_override_insecure}"
+                        else
+                           usecolour="${colour_alert}"
+                           inc_counter ${hostid} alert_count
                         fi
                      fi
-                     echo "<tr bgcolor=\"${usecolour}\"><td>${iptype}</td><td>${destaddr}</td><td>${dataline}</td><td>${destport}</td><td>${process}</td></tr>" >> ${htmlfile}
-                     destport=$((${destport} + 1))
-                  done
-               fi
+                  else   # else an allow was matched on the port
+                     if [ "${process}." != "." ];   # isallowed, and a process is using it
+                     then
+                        usecolour="${colour_OK}"
+                     else                           # isallowed but no process is using it
+                        # permitted to be not in use by customfile entry ?
+                        isallowed=`grep "^NETWORK_PORT_NOLISTENER_${searchtype}V._OK=${destport}:" ${CUSTOMFILE}`
+                        if [ "${isallowed}." != "." ];   # data found
+                        then
+                           # must have a port allowed entry to reach here, use that description 
+                           ovdesc=`grep "${searchtype}_PORTV._ALLOWED=:${destport}:" ${CUSTOMFILE} | awk -F: {'print $3'}`
+                           process="Not listening, permitted by customfile : ${ovdesc}"  # re-use empty process field as description
+                           usecolour="${colour_warn}"
+                           inc_counter ${hostid} warning_count
+                        else
+                           usecolour="${colour_alert}"
+                           inc_counter ${hostid} alert_count
+                        fi
+                     fi
+                  fi
+                  echo "<tr bgcolor=\"${usecolour}\"><td>${iptype}</td><td>${destaddr}</td><td>${dataline}</td><td>${destport}</td><td>${process}</td></tr>" >> ${htmlfile}
+               done    # end processing range list
             else   # if destport not empty
                echo "<tr bgcolor=\"${usecolour}\"><td>${iptype}</td><td>${destaddr}</td><td>${dataline}</td><td>${destport}</td><td>${process}</td></tr>" >> ${htmlfile}
             fi   # if destport not empty
@@ -4285,7 +4564,6 @@ EOF
       done
       echo "</table>" >> ${htmlfile}
       unset get_daddr
-      unset get_dport
       grep "^NFTABLES_FULLDATA=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read dataline
       do
          echo "${dataline}" >> ${nftables_file}
@@ -4294,7 +4572,6 @@ EOF
    fi
 
    # If both iptables and netfilter have rules this is an issue
-   countlines1=$((${countlines1} + ${countlines2}))
    if [ ${countlines1} -gt 0 -a ${countlines3} -gt 0 ];
    then
       echo "<br /><br /><table bgcolor=\"${colour_warn}\"><tr><td>Additional alert raised: <b>Both iptables and netfilter rules are in use on this server</b>." >> ${htmlfile}
@@ -4616,7 +4893,7 @@ EOF
       cat << EOF >> ${htmlfile}
 <p>Some users are configured to be able to use 'sudo' without being prompted for a password. This is always a risk.</p>
 <p>It may be required for batch jobs in cases where it is not possible to run a batch job
-under the privaliged userid the sudo command is using but should be avoided wherever possible.</p>
+under the privaliged userid however in those cases explicit commands should be coded rather than allowing ALL commands.</p>
 EOF
    else
       echo "<p>No users or groups are configured to be allowed to use 'sudo' without a password, well done.</p>" >> ${htmlfile}
@@ -4625,12 +4902,14 @@ EOF
    if [ -f ${WORKDIR}/appendixL_nopasswd_users_all.txt ];
    then
       cat << EOF >> ${htmlfile}
-<p>The following entries allow the defined users or groups to run any command they
-wish via sudo without being prompted for a password. <b>This should never be allowed</b>.</p>
+<p>The following entries allow the defined users or groups to run <b>any command they
+wish via sudo without being prompted for a password. This should never be allowed</b>.</p>
 <p>For sites that use 'ansible' or 'chef' and have a ansible or chef user configured to use an entry allowing
 this <em>it should still never be allowed</em>, and definately never allowed on servers where the user
-can ssh into the server using ssh keys without a password, as ssh key files are easier to steal than passwords and
-normal ssh keys do not expire like passwords.</p>
+can ssh into the server using ssh keys without a password such as ansible, as ssh key files are easier to steal than passwords and
+normal ssh keys do not expire like passwords. If you use ansible you should identify exactly what commands it
+neds to run and code explicit command entries for it, do not use ALL (and if you do not know what commands
+ansible is running as root you should not permit it to be used).</p>
 <center><table border="1">
 <tr bgcolor="${colour_banner}"><td>Entries that allow users to run any command they want without password prompting</td></tr>
 EOF
@@ -5068,7 +5347,7 @@ build_main_index_page() {
                alertdata="<span style=\"color:green;\">${alerts}</span>"      # all good just show the number
             else
                                                                               # else flag (C) to show customfile override used and link to reasons
-               alertdata="<span style=\"color:green;\">${alerts} (<a href=\"${RESULTS_DIR}/${dataline}/expected_alerts_list.txt\">${maxalertsallowed}</a>)</span>" 
+               alertdata="<span style=\"color:green;\">${alerts} (<a href=\"${dataline}/expected_alerts_list.txt\">${maxalertsallowed}</a>)</span>" 
             fi
          else
             if [ "${exactalertsfound}." == "no." ];        # no custom override
@@ -5076,7 +5355,7 @@ build_main_index_page() {
                alertdata="<span style=\"color:red;\">${alerts}</span>"           # else non-zero and no override so red
             else
                                                                                  # else override but not a match so still red and link to reasons
-               alertdata="<span style=\"color:red;\">${alerts} (<a href=\"${RESULTS_DIR}/${dataline}/expected_alerts_list.txt\">${maxalertsallowed}</a>)</span>"
+               alertdata="<span style=\"color:red;\">${alerts} (<a href=\"${dataline}/expected_alerts_list.txt\">${maxalertsallowed}</a>)</span>"
             fi
          fi
          echo "<tr><td><a href=\"${dataline}/index.html\">${dataline}</a></td><td>${alertdata}</td><td>${warns}</td>" >> ${htmlfile}
@@ -5130,7 +5409,7 @@ build_main_index_page() {
    alerts=`cat ${RESULTS_DIR}/global_alert_totals`
    warns=`cat ${RESULTS_DIR}/global_warn_totals`
    echo "<tr bgcolor=\"${colour_banner}\"><td>TOTALS:</td><td>${alerts}</td><td>${warns}</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2020</small></td>" >> ${htmlfile}
+   echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2022</small></td>" >> ${htmlfile}
    if [ "${INDEXKERNEL}." == "yes." ];
    then
       echo "<td colspan=\"3\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}
