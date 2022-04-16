@@ -1,5 +1,4 @@
 #!/bin/bash
-set -eu     # fail if unset variables are used
 # !!! WILL ONLY WORK WITH BASH !!! - needs bash substring facility
 # ======================================================================
 #
@@ -72,8 +71,8 @@ set -eu     # fail if unset variables are used
 #   C. Network Connectivity
 #      C.1.1 - compare listening ports against allowed ports (tcp/tcp6/udp/udp6/raw)
 #      C.1.2 - check for obsolete custom entries (ports in custom file no longer in use on server)
-#      C.1.3 - active bluetooth connections in use
-#      C.1.4 - details of unix network sockets in use
+#      C.1.3 - details of network sockets in use
+#      C.1.4 - active bluetooth connections in use
 #   D. Cron security
 #      D.1 - cron.allow and cron.deny checks
 #      D.2 - check all cronjob script files secured tightly, to correct owner
@@ -414,8 +413,6 @@ set -eu     # fail if unset variables are used
 #                   (2) Was only handling /var/spool/mail (rhel) for
 #                       mail file checks, now also allow for /var/mail (debian)
 #                   (3) Added bluetooth report in the network (C) section
-#                       as C.1.3 (what was C.1.3 becomes C.1.4 which
-#                       is the info only unixsocket list)
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
 SRCDIR=""           # where are the raw datafiles to process (required)
@@ -906,7 +903,7 @@ locate_custom_file() {
 # ---------------------------------------------------------------
 marks_banner() {
    echo "${MYNAME} - (c)Mark Dickinson 2004-2022"
-   echo "Security auditing toolkit processing script version ${PROCESSING_VERSION}"
+   echo "Security auditing toolkit version ${PROCESSING_VERSION}"
 } # end of marks_banner
 
 # -------------------------------------------------------------------------
@@ -2422,7 +2419,7 @@ appendix_c_check_unused_process_port() {
 appendix_c_unix_socket_port_report() {
    hostid="$1"
 
-   echo "<h1>C.1.4 - Unix Socket ports open on the server</h1>" >> ${htmlfile}
+   echo "<h1>C.1.3 - Unix Socket ports open on the server</h1>" >> ${htmlfile}
    # ADD THE UNIX port checks
    echo "<p>Unix domain sockets will always be present, and" >> ${htmlfile}
    echo "it would be a hell of a job to spot possible security" >> ${htmlfile}
@@ -2481,24 +2478,14 @@ appendix_c_unix_socket_port_report() {
    echo "</table>" >> ${htmlfile}
 } # end appendix_c_unix_socket_port_report
 
+FRED C.1.4 active bluetooth connections
+# ----------------------------------------------------------
 # ----------------------------------------------------------
 # ----------------------------------------------------------
 appendix_c_bluetooth_report() {
    hostid="$1"
 
-   # see if we are treating bluetooth connections as the default of alerting
-   # of it there is an override to make them warnings.
-   iswarning=`grep -i "BLUETOOTH_ALERT_TO_WARN=yes" ${CUSTOMFILE}`
-   if [ "${iswarning}." != "." ];
-   then
-      usecolour=${colour_warn}
-      usecounter="warning_count"
-   else
-      usecolour=${colour_alert}
-      usecounter="alert_count"
-   fi
-
-   echo "<h1>C.1.3 - Active bluetooth connections</h1>" >> ${htmlfile}
+   echo "<h1>C.1.4 - Active bluetooth connections</h1>" >> ${htmlfile}
    linecounter1=`grep "^ACTIVE_BLUETOOTH_CONNECTION=l2cap" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
    linecounter2=`grep "^ACTIVE_BLUETOOTH_CONNECTION=rfcomm" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
    if [ ${linecounter1} -gt 0 -o ${linecounter2} -gt 0 ];
@@ -2516,11 +2503,11 @@ EOF
       then
          echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td><pre>" >> ${htmlfile}
          echo "Proto  Destination       Source            State         PSM DCID   SCID      IMTU    OMTU Security" >> ${htmlfile}
-         echo "</pre></td></tr><tr bgcolor=\"${usecolour}\"><td><pre>" >> ${htmlfile}
-         grep "^ACTIVE_BLUETOOTH_CONNECTION=l2cap" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read yyy
+         echo "</pre></td></tr><tr bgcolor=\"${colour_warn}\"><td><pre>" >> ${htmlfile}
+         grep "^ACTIVE_BLUETOOTH_CONNECTION=l2cap" ${SRCDIR}/secaudit_${hostid}.txt | while read yyy
          do
-            echo "${yyy}" >> ${htmlfile}
-            inc_counter ${hostid} ${usecounter}
+            echo "${yyy}<br />" >> ${htmlfile}
+            inc_counter ${hostid} warning_count
          done
          echo "</pre></td></tr></table>" >> ${htmlfile}
       fi
@@ -2528,11 +2515,11 @@ EOF
       then
          echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td><pre>" >> ${htmlfile}
          echo "Proto  Destination       Source            State     Channel" >> ${htmlfile}
-         echo "</pre></td></tr><tr bgcolor=\"${usecolour}\"><td><pre>" >> ${htmlfile}
-         grep "^ACTIVE_BLUETOOTH_CONNECTION=rfcomm" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read yyy
+         echo "</pre></td></tr><tr bgcolor=\"${colour_warn}\"><td><pre>" >> ${htmlfile}
+         grep "^ACTIVE_BLUETOOTH_CONNECTION=rfcomm" ${SRCDIR}/secaudit_${hostid}.txt | while read yyy
          do
-            echo "${yyy}" >> ${htmlfile}
-            inc_counter ${hostid} ${usecounter}
+            echo "${yyy}<br />" >> ${htmlfile}
+            inc_counter ${hostid} warning_count
          done
          echo "</pre></td></tr></table>" >> ${htmlfile}
       fi
@@ -2962,8 +2949,8 @@ build_appendix_c() {
    # however as we do not in this release check processes using sockets
    # so they are just informative, for now move the custom check above it
    appendix_c_check_unused_custom "${hostid}"
-   appendix_c_bluetooth_report "${hostid}"
    appendix_c_unix_socket_port_report "${hostid}"
+   appendix_c_bluetooth_report "${hostid}"
 
    # Close the appendix page
    write_details_page_exit "${hostid}" "${htmlfile}"
@@ -5409,7 +5396,7 @@ build_main_index_page() {
    alerts=`cat ${RESULTS_DIR}/global_alert_totals`
    warns=`cat ${RESULTS_DIR}/global_warn_totals`
    echo "<tr bgcolor=\"${colour_banner}\"><td>TOTALS:</td><td>${alerts}</td><td>${warns}</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2022</small></td>" >> ${htmlfile}
+   echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2020</small></td>" >> ${htmlfile}
    if [ "${INDEXKERNEL}." == "yes." ];
    then
       echo "<td colspan=\"3\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}
