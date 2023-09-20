@@ -1413,6 +1413,24 @@ override values in the shared files in the cases where duplicate entries may res
 Downgrade bluetooth activity in the network checks from alerts to warnings
 if bluetooth active sessions were found to be reported on
 </td></tr>
+<tr><td>ALLOW_OWNER_OVERRIDE=dirname:realowner:</td><td>
+Only used in home directory checks where a shared directory is owned by someone
+other than root. This was added for Debian11 where the sendmail director is a shared
+home directory not owned by root. <b>The trailing : is required</b>.
+Example of what is used in my 'include' common file
+for Debian11 is<br />
+ALLOW_OWNER_OVERRIDE=sendmail:smmta:
+</td></tr>
+<tr><td>DOCKER_ORPHANS_SUPPRESS=YES</td><td>
+On servers running docker containers the UID and GID of directories and files
+created are completely up to the creator of the container image.
+Any well designed application container will avoid at all costs any UID/GID
+that may already exist on the system. This does mean they show up as alerts
+in the orpjaned file report.
+Using this parameter in a customisation file will suppress alerts for
+any orphan files (files not owned by a existing system user) in 
+docker container overlay directories
+</td></tr>
 </table>
 
 <hr>
@@ -1506,8 +1524,10 @@ There are also lots of critical alerts plus lots of warning generated on systems
 running containers as in the docker overlay2 directory it keeps copies of setuid files for each container; plus with my
 docker containers I keep the userid numbers well away from 'real' users on the host so there are
 'bad ownership' alerts logged for user numbers as those numbers do not exist as valid users on the docker host.<br />
-A customisation file entry exists to suppress these suid file alerts, it will however still generate a list of all
+A customisation file entry exists to suppress the suid file alerts, it will however still generate a list of all
 suid files that were suppressed from alerting so you can manually review them.<br />
+A customisation file parameter also exists to suppress 'bad ownership' alerts for files under
+'docker' directories if you get sick of seeing those.
 </p>
 <p>
 There are also lots of critical alerts for Ubuntu distributions as these now supply many applications

@@ -148,13 +148,14 @@
 # 2021/12/27 - In /etc/sudoers Debian uses @includedir (rhel uses #includedir)
 #              so includes were not being checked for debian, now that
 #              is checked for also. No version bump as no extra functionality.
+# 2022/06/04 - RVersion bump to match processing script version change
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.19"    # capture script version
+EXTRACT_VERSION="0.20"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc

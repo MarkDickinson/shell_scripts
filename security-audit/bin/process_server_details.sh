@@ -413,6 +413,24 @@
 #                   (2) Was only handling /var/spool/mail (rhel) for
 #                       mail file checks, now also allow for /var/mail (debian)
 #                   (3) Added bluetooth report in the network (C) section
+# MID: 2022/05/15 - Version 0.20 
+#                   (1) Added ALLOW_OWNER_OVERRIDE=dirname:realowner:
+#                       for home directory ownership checks specifically
+#                       as it is needed for debian where the homedir
+#                       of smmsp (sendmail) is owned by smtma as they
+#                       share that homedir. Made it generic for future
+#                       similar cases.
+#                   (2) Added DOCKER_ORPHANS_SUPPRESS=YES
+#                       to stop files used by docker images/containers
+#                       being reported as alerts in the orphaned 
+#                       directories and files lists. The UID and GID of
+#                       files used in those containers is entirely up
+#                       to whoever creates the container and in most cases
+#                       should not match existing system users.
+# MID: 2023/06/04 - Version 0.20 --- No version change, minor tweak I need
+#                   (1) Added "Docker containers expected, none are running"
+#                       as an expected alert (only affects the main menu
+#                       display extected alert (Nvalue) if in custom file).
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
 SRCDIR=""           # where are the raw datafiles to process (required)
@@ -468,7 +486,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.19"
+PROCESSING_VERSION="0.20"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -902,7 +920,7 @@ locate_custom_file() {
 # because I can
 # ---------------------------------------------------------------
 marks_banner() {
-   echo "${MYNAME} - (c)Mark Dickinson 2004-2022"
+   echo "${MYNAME} - (c)Mark Dickinson 2004-2023"
    echo "Security auditing toolkit version ${PROCESSING_VERSION}"
 } # end of marks_banner
 
@@ -1198,6 +1216,12 @@ check_homedir_perms() {
             else 
                testvar=""
             fi
+	    # Can ownership be another user ? - 2022/05/15 change
+            if [ "${testvar}." == "." -a "${CUSTOMFILE}." != "." ];
+            then
+               testvar=`grep "^ALLOW_OWNER_OVERRIDE=${dirname}:${realowner}:" ${CUSTOMFILE}`
+            fi
+            #
             if [ "${testvar}." == "." ];
             then
                # Original processing, an error
@@ -1208,8 +1232,18 @@ check_homedir_perms() {
                   PERM_CHECK_RESULT="${PERM_CHECK_RESULT}<br>Bad Ownership ${realowner}, should be ${neededowner}"
                fi
             else
-               # Owner is allowed to be root
-               if [ "${realowner}." != "root." ];
+               if [ "${CUSTOMFILE}." != "." ];
+               then
+                  owneroverride=`grep "^ALLOW_OWNER_OVERRIDE=${dirname}:${realowner}:" ${CUSTOMFILE} | awk -F: {'print $2'}`
+               else
+                  owneroverride=""
+               fi
+               if [ "${owneroverride}." == "." ];
+               then
+                  owneroverride="XXXX"
+               fi
+               # Owner is allowed to be root of a specific user
+               if [ "${realowner}." != "root." -a "${realowner}." != "${owneroverride}." ];
                then
                   if [ "${PERM_CHECK_RESULT}." == "OK." ];
                   then
@@ -2478,7 +2512,7 @@ appendix_c_unix_socket_port_report() {
    echo "</table>" >> ${htmlfile}
 } # end appendix_c_unix_socket_port_report
 
-FRED C.1.4 active bluetooth connections
+# C.1.4 active bluetooth connections    - now what was I doing here, FRED (search keyword to find where I was)
 # ----------------------------------------------------------
 # ----------------------------------------------------------
 # ----------------------------------------------------------
@@ -3620,8 +3654,11 @@ EOF
    else
       if [ "${suppress_docker}." == "yes." ];
       then
+         # Log the detail, this can be a valid expected error
+         log_alert_detail "${hostid}" "Docker containers expected, none are running"
          echo "<br /><table bgcolor=\"${colour_alert}\"><tr><td>The value SUID_SUPPRESS_DOCKER_OVERLAYS=yes was set in ${CUSTOMFILE} but" >> ${htmlfile}
-         echo "no docker overlay2 suid files are on this server. You should remove the override.</td></tr></table>" >> ${htmlfile}
+         echo "no docker overlay2 suid files are on this server. You should remove the override." >> ${htmlfile}
+         echo "(note: this can be the case if no containers are defined so this may be OK)</td></tr></table>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
       fi
    fi
@@ -4638,8 +4675,22 @@ EOF
 # ----------------------------------------------------------
 build_appendix_j() {
    hostid="$1"
-   orphancount=`grep "^ORPHAN_" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
-   if [ ${orphancount} -gt 0 ];
+   if [ -f ${CUSTOMFILE} ];
+   then
+      ignoredocker=`grep "^DOCKER_ORPHANS_SUPPRESS=YES" ${CUSTOMFILE}`
+   else
+      ignoredocker=""
+   fi
+   if [ "${ignoredocker}." != "." ];
+   then
+      orphancount=`grep "^ORPHAN_" ${SRCDIR}/secaudit_${hostname}.txt | grep -v "docker" | wc -l`
+   else
+      orphancount=`grep "^ORPHAN_" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
+   fi
+   # Seperate counter so we know there are some even if we suppress socker alerts
+   # so we can check those later in this block rather than messing about with the 'else' block
+   orphantotal=`grep "^ORPHAN_" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
+   if [ ${orphantotal} -gt 0 ];
    then
       htmlfile="${RESULTS_DIR}/${hostid}/appendix_I.html"
       log_message ".     Building Appendix I - process snapshot at capture time, ${tempcount} processes"
@@ -4662,38 +4713,92 @@ uid number and end up owning files they should not have access to.
 </p>
 <h2>Orphaned directories</h2>
 EOF
-      orphancount=`grep "^ORPHAN_DIR=" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
+      if [ "${ignoredocker}." != "." ];
+      then
+         orphancount=`grep "^ORPHAN_DIR=" ${SRCDIR}/secaudit_${hostname}.txt | grep -v "docker" | wc -l`
+      else
+         orphancount=`grep "^ORPHAN_DIR=" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
+      fi
       if [ ${orphancount} -gt 0 ];
       then
          echo "<p>The below are a list of directories that do not belong to a valid user.</p>" >> ${htmlfile}
          echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
          echo "<center>Orphaned directories</center></td></tr>" >> ${htmlfile}
          echo "<tr><td><pre>" >> ${htmlfile}
-         grep "^ORPHAN_DIR=" ${SRCDIR}/secaudit_${hostname}.txt | awk -F\= {'print $2'} | while read dataline
-         do
-            echo "${dataline}" >> ${htmlfile}
-            inc_counter ${hostid} alert_count
-         done
+         if [ "${ignoredocker}." != "." ];
+         then
+            grep "^ORPHAN_DIR=" ${SRCDIR}/secaudit_${hostname}.txt | grep -v "docker" | awk -F\= {'print $2'} | while read dataline
+            do
+               echo "${dataline}" >> ${htmlfile}
+               inc_counter ${hostid} alert_count
+            done
+         else
+            grep "^ORPHAN_DIR=" ${SRCDIR}/secaudit_${hostname}.txt | awk -F\= {'print $2'} | while read dataline
+            do
+               echo "${dataline}" >> ${htmlfile}
+               inc_counter ${hostid} alert_count
+            done
+         fi
          echo "</pre></td></tr></table>" >> ${htmlfile}
       else
          echo "<p>There are no orphaned directories in the fiesystems searched on the server.</p>" >> ${htmlfile}
       fi
 
-      orphancount=`grep "^ORPHAN_FILE=" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
+      echo "<h2>Orphaned files</h2>" >> ${htmlfile}
+      if [ "${ignoredocker}." != "." ];
+      then
+         orphancount=`grep "^ORPHAN_FILE=" ${SRCDIR}/secaudit_${hostname}.txt | grep -v "docker" | wc -l`
+      else
+         orphancount=`grep "^ORPHAN_FILE=" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
+      fi
       if [ ${orphancount} -gt 0 ];
       then
          echo "<p>The below are a list of files that do not belong to a valid user.</p>" >> ${htmlfile}
          echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
          echo "<center>Orphaned files</center></td></tr>" >> ${htmlfile}
          echo "<tr><td><pre>" >> ${htmlfile}
-         grep "^ORPHAN_FILE=" ${SRCDIR}/secaudit_${hostname}.txt | awk -F\= {'print $2'} | while read dataline
-         do
-            echo "${dataline}" >> ${htmlfile}
-            inc_counter ${hostid} alert_count
-         done
-         echo "</pre></td></tr></table>" >> ${htmlfile}
+         if [ "${ignoredocker}." != "." ];
+         then
+            grep "^ORPHAN_FILE=" ${SRCDIR}/secaudit_${hostname}.txt | grep -v "docker" | awk -F\= {'print $2'} | while read dataline
+            do
+               echo "${dataline}" >> ${htmlfile}
+               inc_counter ${hostid} alert_count
+            done
+            echo "</pre></td></tr></table>" >> ${htmlfile}
+         else
+            grep "^ORPHAN_FILE=" ${SRCDIR}/secaudit_${hostname}.txt | awk -F\= {'print $2'} | while read dataline
+            do
+               echo "${dataline}" >> ${htmlfile}
+               inc_counter ${hostid} alert_count
+            done
+            echo "</pre></td></tr></table>" >> ${htmlfile}
+         fi
       else
          echo "<p>There are no orphaned files in the fiesystems searched on the server.</p>" >> ${htmlfile}
+      fi
+
+      # If we have suppressed a lot of docker alerts list them
+      if [ "${ignoredocker}." != "." ];
+      then
+         suppresscount=`grep "^ORPHAN_" ${SRCDIR}/secaudit_${hostname}.txt | grep "docker" | wc -l`
+         if [ ${suppresscount} -gt 0 ];
+         then
+            cat << EOF >> ${htmlfile}
+<h2>Suppressed alerts for Docker</h2>
+<p>The configuration file for this server requested orphan directories and files placed on the system
+by docker images/containers not be reported as alerts. There were ${suppresscount} alerts suppressed.
+A list of the suppressed files is below and should be reviewed.
+EOF
+            echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
+            echo "<center>Suppressed Docker orphaned directories and files</center></td></tr>" >> ${htmlfile}
+            echo "<tr><td><pre>" >> ${htmlfile}
+
+            grep "^ORPHAN_" ${SRCDIR}/secaudit_${hostname}.txt | grep "docker" | awk -F\= {'print $2'} | while read dataline
+            do
+               echo "${dataline}" >> ${htmlfile}
+            done
+            echo "</pre></td></tr></table>" >> ${htmlfile}
+         fi
       fi
 
       # Close the appendix page
@@ -5396,7 +5501,7 @@ build_main_index_page() {
    alerts=`cat ${RESULTS_DIR}/global_alert_totals`
    warns=`cat ${RESULTS_DIR}/global_warn_totals`
    echo "<tr bgcolor=\"${colour_banner}\"><td>TOTALS:</td><td>${alerts}</td><td>${warns}</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2020</small></td>" >> ${htmlfile}
+   echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2023</small></td>" >> ${htmlfile}
    if [ "${INDEXKERNEL}." == "yes." ];
    then
       echo "<td colspan=\"3\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}

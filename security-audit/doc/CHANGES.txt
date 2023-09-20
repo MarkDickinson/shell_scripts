@@ -14,6 +14,17 @@ be permitted to alert if older capture files are used rather than add new coding
 for backward compatability. Simply always use the same versions.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.19 and version 0.20 are
+-------------------------------------------------------------------------------------
+(1) New custom file parameters 
+    For home directory ownership checks allow a shared directory to be owned by
+    a non-root user without raising an alert
+    ALLOW_OWNER_OVERRIDE=dirname:username:
+    For systems running docker where container files are owned by UIDs not on
+    the system suppress 'orphan' files under docker directories from alerting
+    DOCKER_ORPHANS_SUPPRESS=YES
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.18 and version 0.19 are
 -------------------------------------------------------------------------------------
 (1) Bugfix: the expected allowed alerts link mapped to the work directory rather

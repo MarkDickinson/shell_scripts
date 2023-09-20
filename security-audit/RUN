@@ -45,3 +45,11 @@ bash bin/process_server_details.sh --datadir=rawdatafiles --archivedir=archive
 #--------------------------------------------------------------------------------
 #echo "To see what is going on 'tail -f debug.log' while I am debugging"
 #bash -x bin/process_server_details.sh --datadir=rawdatafiles > debug.log 2>&1
+#
+#--------------------------------------------------------------------------------
+# If the server is rebooted, or the script is broken out of, the lockfile will
+# hand around and prevent future runs, so I added these to make removing the
+# lockfile easier.
+#--------------------------------------------------------------------------------
+#bash bin/process_server_details.sh --listlock
+#bash bin/process_server_details.sh --clearlock
