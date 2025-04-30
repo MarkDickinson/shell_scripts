@@ -1,3 +1,17 @@
+Known Bugs with the current release that need fixing
+====================================================
+* when processing a capture with a large number of files _SOMETIMES_ an error is thrown
+  "bin/process_server_details.sh: line 4422: ----------------------------------: command not found"
+  which is not the contents of line 4422. A rerun with no changes does not have the same issue.
+  Ocurrence is completely random so hard to track down. Does not affect any results produced
+* if process one server is passed a servername no data file exists for it does not clear the
+  lockfile; need to add that one line between the error msg and the script exit (minor, no hurry)
+
+TODOs
+=====
+The OSVERSION flag I have always set as the kernel value. I will put that in a OSKERNEL value and
+use OSVERSION for the value from /etc/os-release as that would make more sense, not a bud, a todo.
+
 Known issues with the current release
 =====================================
 * Nowhere in the directory path of the processing script can there be an underscore</b> ( _ )
@@ -10,12 +24,8 @@ Known issues with the current release
   and you should have split out processing by then).
   Maybe one day if there are enough complaints I will implement a trap handler, but I
   do not consider this a bug 
-* A REAL BUG: when processing a capture with a large number of files _SOMETIMES_ an error is thrown
-  "bin/process_server_details.sh: line 4422: ----------------------------------: command not found"
-  which is not the contents of line 4422. A rerun with no changes does not have the same issue.
-  Ocurrence is completely random so hard to track down. Does not affect any results produced
-* >>> Updates to support Debian more fully are still in progress as I only started running
-  a Debian server recently; and the scripts were origionally designed for the RHEL family.
+* >>> Updates to support Debian more fully are still in progress, I have started migrating
+  servers from RHEL to Debian so a work in progress.
 
 Current Limitations with the current release
 ============================================
@@ -33,7 +43,7 @@ Current Limitations with the current release
   the normal behaviour. If you are batching grouos of servers to be processed they will
   all eventually be precessed by the latest version and you can always manually do a 
   full processing run if needed
-* cron job checks - only cron jobs have securiry permissions checked, not anacron files
+* cron job checks - only cron jobs have security permissions checked, not anacron files
   or any queued 'at' jobs
 * cron job checks - stacked commands are able to be tested if seperated by ';' '&&' '|',
   the '||' syntax is not supported yet.

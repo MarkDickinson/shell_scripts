@@ -63,11 +63,14 @@
 #      A.4 - check users against ftpuser deny entries, no system users should be omitted
 #            (yes, A.3 should be in B.3, but we need the files from A so 'so be it'.
 #      A.5 - /etc/shadow must be tightly secured
+#      A.6 - check password age and length settings
+#      A.7 - no additional users in root group
 #   B. Network access
 #      B.1 - check system host equivalences files
 #      B.2 - check user host equivalences files and security of
 #      B.3 - check NFS file shares
 #      B.4 - check SAMBA
+#      B.5 - check hosts.allow and hosts.deny sshd settings
 #   C. Network Connectivity
 #      C.1.1 - compare listening ports against allowed ports (tcp/tcp6/udp/udp6/raw)
 #      C.1.2 - check for obsolete custom entries (ports in custom file no longer in use on server)
@@ -431,6 +434,22 @@
 #                   (1) Added "Docker containers expected, none are running"
 #                       as an expected alert (only affects the main menu
 #                       display extected alert (Nvalue) if in custom file).
+# MID: 2023/11/24 - Version 0.21 
+#                   (1) Kernel version now stored in label TITLE_OSKERNEL,
+#                       and I have reused TITLE_OSVERSION to hold the
+#                       'pretty' OS version from /etc/os-release.
+#                       The --kernelversion index option will now display
+#                       both of those on the main index is used (in the same
+#                       field with a line break for now). As all TITLE_ 
+#                       fields are displayed in the server summary display
+#                       page it is displayed there also.
+#                   (2) Added checks for SSHD entries existing in the
+#                       hosts.allow and hosts.deny files
+# MID: 2024/09/01 - Version 0.21 (unchanged)
+#                   (1) Just a text update in password minlen check desc
+#                       to say in deb12 systems this is now supposedly
+#                       set in /etc/pam.d files somewhere; not checked for.
+#
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
 SRCDIR=""           # where are the raw datafiles to process (required)
@@ -486,7 +505,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.20"
+PROCESSING_VERSION="0.21"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -1974,8 +1993,9 @@ build_appendix_a() {
       echo "<h3>A.6 User default attributes file</h3>" >> ${htmlfile}
       echo "<p>The default attributes used when adding a new user need to be set to" >> ${htmlfile}
       echo "reasonable values, the defaults are generally unaceptable. These are" >> ${htmlfile}
-      echo "the values obtained from /etc/login.defs, /etc/security/pwquality.conf and /etc/security/pwquality.conf.d/*.conf files</p>" >> ${htmlfile} 
-      echo "if they exist for server ${hostid} (pwquality.conf files are used on PAM systems).</p>" >> ${htmlfile} 
+      echo "the values obtained from /etc/login.defs, /etc/security/pwquality.conf and /etc/security/pwquality.conf.d/*.conf files," >> ${htmlfile} 
+      echo "if they exist for server ${hostid} (pwquality.conf files are used on PAM systems)." >> ${htmlfile} 
+      echo "<br>Note: a Debian12 new install has comments in login.defs saying the minlen is now set in /etc/pam.d files, but I cannot find anything relevent in those fles yet to check.</p>" >> ${htmlfile} 
       # Get and ensure values exist for the data being checked
       maxdays=`grep "^PASS_MAX_DAYS" ${WORKDIR}/login.defs | awk {'print $2'}`
       mindays=`grep "^PASS_MIN_DAYS" ${WORKDIR}/login.defs | awk {'print $2'}`
@@ -2224,6 +2244,43 @@ build_appendix_b() {
       echo "<p>Samba and Netbios Services were not running on the server at the time the snapshot" >> ${htmlfile}
       echo "was taken, so no remedial actions or checking are required.</p>" >> ${htmlfile}
       echo "</td></tr></table>" >> ${htmlfile}
+   fi
+
+   # 2023/11/24 - Added the below hosts.deny|allow checks
+   echo "<h2>B.5 - Allowed hosts checks</h2>" >> ${htmlfile}
+   cat << EOF >> ${htmlfile}
+<p>To limit who has SSH access to the server you should have a hosts.deny file
+that be default prevents any access via ssh to the server ( [ sshd : all ] ).</p>
+<p>You may then use the hosts.allow file to add subnets or individual ip addresses
+for the clients that you wish to have access to the server. This can help prevent
+any random unexpected machine trying to connect to your server via ssh from being able
+to do so.</p>
+<p>There are many other connection type you can limit with these files, this
+toolkit currently only checks ssh access.</p>
+EOF
+   hostsdeny=`grep "ETC_HOSTS_DENY" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   if [ ${hostsdeny} -lt 1 ];
+   then
+      echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
+      echo "<p>Ether there is no /etc/hosts.deny or it is empty.</p>" >> ${htmlfile}
+      echo "</td></tr></table>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   else
+      hostsdeny=`grep "ETC_HOSTS_DENY" ${SRCDIR}/secaudit_${hostid}.txt | grep "sshd" | grep -i "all" | wc -l`
+      if [ ${hostsdeny} -lt 1 ];
+      then
+         echo "<table bgcolor=\"${colour_warn}\"><tr><td>" >> ${htmlfile}
+         echo "<p>There is no deny all sshd entry in /etc/hosts.deny. There should be with explicit allows in hosts.allow</p>" >> ${htmlfile}
+         echo "</td></tr></table>" >> ${htmlfile}
+         inc_counter ${hostid} warning_count
+      fi
+   fi
+   hostsallow=`grep "ETC_HOSTS_ALLOW" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   if [ ${hostsallow} -gt 0 ];
+   then
+      echo "<p>The following entries are in /etc/hosts.allow and should be reviewed.</p><pre>" >> ${htmlfile}
+      grep "ETC_HOSTS_ALLOW" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} >> ${htmlfile}
+      echo "</pre>" >> ${htmlfile}
    fi
 
    # Close the appendix page
@@ -5326,7 +5383,14 @@ build_main_index_page() {
                   captepoc=0
                fi
             fi
-            kernelversion=`grep "TITLE_OSVERSION" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+            osversion=`grep "TITLE_OSVERSION" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+            kernelversion=`grep "TITLE_OSKERNEL" ${SRCDIR}/secaudit_${dataline}.txt | awk -F\= {'print $2'}`
+
+            if [ "${kernelversion}." == "." ];   # backward compatability check, kernel used to be in reused osversion
+            then
+               kernelversion="${osversion}"
+               osversion="old collector version was used"
+            fi
          fi
          if [ -f ${RESULTS_DIR}/${dataline}/last_processing_date ];
          then
@@ -5483,7 +5547,7 @@ build_main_index_page() {
          fi
          if [ "${INDEXKERNEL}." == "yes." ];
          then
-            echo "<td>${lastprocdate}</td><td>${scanlevel}</td><td>V${extractversion}</td><td>${kernelversion}</td></tr>" >> ${htmlfile}
+            echo "<td>${lastprocdate}</td><td>${scanlevel}</td><td>V${extractversion}</td><td>${kernelversion}<br />${osversion}</td></tr>" >> ${htmlfile}
          else
             echo "<td>${lastprocdate}</td><td>${scanlevel}</td><td>Collector V${extractversion}</td></tr>" >> ${htmlfile}
          fi

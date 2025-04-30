@@ -119,7 +119,7 @@ for keeping file systems secure as while they can manage products/classes
 they know about they cannot manage all the wild things users can
 get up to outside those parameters. This toolkit is designed 
 to capture everything, especially the applications and badly secured
-files users may put in system directotries outside managed infrastructure.
+files users may put in system directories outside managed infrastructure.
 </p>
 <p>
 The reports produced are in HTML format. A master index
@@ -158,12 +158,18 @@ global, or per server basis.
 Basic file structure of the toolkit is
   ../bin
   ../custom
+  ../custom_includes
   ../doc
-  ../results  
+  ../results 
+  ../archive [optional, if use use the --archivedir flag with that dir]
 </pre>
 <ul>
 <li>The bin directory contains the scripts.</li>
 <li>The custom directory is where you customise processing rules for a server.</li>
+<li>The custom_includes directory has common sets of files that can be "included" in
+	a server custom file (ie: include server_Debian12 or server_RHEL8|9 and applications
+	like mariadb, nrpe, bacula-fd etc) so common files and network ports for each only have to be created once and
+	a include line used in each server custom file rather than having to be replicated in each server custom file</li>
 <li>The doc directory has this documentation.</li>
 <li>The results directory is only created after you have performed a processing run,
 it is important to note that on a "full" processing run the results directory

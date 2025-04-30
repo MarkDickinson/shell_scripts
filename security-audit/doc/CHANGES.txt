@@ -14,6 +14,14 @@ be permitted to alert if older capture files are used rather than add new coding
 for backward compatability. Simply always use the same versions.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.20 and version 0.21 are
+-------------------------------------------------------------------------------------
+(1) Checks that sshd entries exist in hosts.allow and hosts.deny but as if you use
+    ssh you would already use those so you probably won't notice, if you don't
+    have them setup a new alert check
+(2) display only change, extra field on the server summary page
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.19 and version 0.20 are
 -------------------------------------------------------------------------------------
 (1) New custom file parameters 

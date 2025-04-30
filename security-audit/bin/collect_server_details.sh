@@ -148,14 +148,20 @@
 # 2021/12/27 - In /etc/sudoers Debian uses @includedir (rhel uses #includedir)
 #              so includes were not being checked for debian, now that
 #              is checked for also. No version bump as no extra functionality.
-# 2022/06/04 - RVersion bump to match processing script version change
+# 2022/06/04 - Version bump to match processing script version change
+# 2023/11/24 - TITLE_OSKERNEL now used to store kernel version, the   
+#              origional TITLE_OSVERSION is now instead used to store the
+#              'pretty name' of the OS obtained from /etc/os-release
+#              if it exists in that file. Version now 0.21 to match the
+#              version bump in the processing script to cope with the change.
+#              Also now record whats in hosts.allow and hosts.deny
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.20"    # capture script version
+EXTRACT_VERSION="0.21"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -746,11 +752,22 @@ get_PAM_pwminlen() {
 myhost=`hostname`
 mydate=`date +"%Y/%m/%d %H:%M"`
 mydate2=`date +"%s"`
-osversion=`uname -r`
+oskernel=`uname -r`
 ostype=`uname -s`
+if [ -f /etc/os-release  ];
+then
+   osversion=`grep "PRETTY_NAME" /etc/os-release | awk -F\= {'print $2'} | sed -e 's/"//g'`
+   if [ "${osversion}." == "." ];
+   then
+      osversion="No PRETTY_NAME in /etc/os-release"
+   fi
+else
+   osversion="unknown"
+fi
 echo "TITLE_HOSTNAME=${myhost}" >> ${LOGFILE}
 echo "TITLE_CAPTUREDATE=${mydate}" >> ${LOGFILE}
 echo "TITLE_OSVERSION=${osversion}" >> ${LOGFILE}
+echo "TITLE_OSKERNEL=${oskernel}" >> ${LOGFILE}
 echo "TITLE_OSTYPE=${ostype}" >> ${LOGFILE}
 echo "TITLE_FileScanLevel=${SCANLEVEL_USED}" >> ${LOGFILE}
 echo "TITLE_ExtractVersion=${EXTRACT_VERSION}" >> ${LOGFILE}
@@ -765,6 +782,8 @@ record_file PASSWD_FILE /etc/passwd           # user details
 record_file PASSWD_SHADOW_FILE /etc/shadow    # password and expiry details
 record_file ETC_GROUP_FILE /etc/group         # the user groups on the server
 record_file FTPUSERS_FILE /etc/ftpusers       # users that cannot use ftp
+record_file ETC_HOSTS_ALLOW_FILE /etc/hosts.allow  # hosts that may connect
+record_file ETC_HOSTS_DENY_FILE /etc/hosts.deny  # hosts that may not connect unless in hosts.allow
 record_file LOGIN_DEFS /etc/login.defs        # passwd maxage, minlen etc
 aa=`get_PAM_pwminlen`                         # see if minlen overridden by PAM settings
 echo "PAM_PWQUALITY_MINLEN=${aa}" >> ${LOGFILE}

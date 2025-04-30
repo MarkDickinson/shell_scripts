@@ -1,0 +1,23 @@
+2025 January  1:New Years Day
+2025 January  2:Day after new years
+2025 February  6:Waitangi Day
+2025 April 18:Good Friday
+2025 April 21:Easter Monday
+2025 April 25:Anzac Day
+2025 June  2:NZ Kings<br />Birthday 
+2025 June  9:AUZ Kings<br />Birthday
+2025 June 20:NZ Matariki
+2025 October 27:NZ Labour Day
+2025 December 25:Christmas Day
+2025 December 26:Boxing Day 
+2026 January  1:New Years Day
+2026 January  2:Day after new years
+2026 February  6:Waitangi Day
+2026 April 3:Good Friday
+2026 April 6:Easter Monday
+2026 April 27:Anzac Day observed
+2026 June  1:Kings<br />Birthday
+2026 July 10:Matariki
+2026 October 26:Labour Day
+2026 December 25:Christmas Day
+2026 December 28:Boxing Day observed
