@@ -155,6 +155,11 @@
 #              if it exists in that file. Version now 0.21 to match the
 #              version bump in the processing script to cope with the change.
 #              Also now record whats in hosts.allow and hosts.deny
+# 2025/08/26 - Discovered when I hit enter too soon I was not checking for
+#              an idiot like me using --scanlevel=[enter] instead of the
+#              correct --scanlevel=number[enter] so added a check for that
+#              input validation. Left version at 0.21 as just a minor fix
+#              that affects nobody using it properly.
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
@@ -184,6 +189,12 @@ do
                          echo "*error* the --scanlevel value provided is not numeric"
                          PARM_ERRORS="yes"
                       fi
+		      if [ "${value}." == "." ];    # check for no value provided at all --scanlevel=[enter], yes I oopsied that
+		      then
+                         echo "*error* the --scanlevel value cannot be blank"
+                         PARM_ERRORS="yes"
+			 value=3      # so the below check does not error with no value in the number
+		      fi
                       if [ ${value} -lt 3 ];    # any less than 3 and it's not worth even reporting on
                       then
                          echo "*error* the --scanlevel value cannot be less than 3"
