@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # !!! WILL ONLY WORK WITH BASH !!! - needs bash substring facility
 # ======================================================================
 #
@@ -59,12 +59,15 @@
 #   A. Users
 #      A.1 - Check users all have unique uids
 #      A.2 - must have a password (check against shadow entries)
-#      A.3 - home directories must be secure, and must exist
+#      A.3 - home directories must be secure, and must exist (should exist, overrides allowed for system ones)
 #      A.4 - check users against ftpuser deny entries, no system users should be omitted
 #            (yes, A.3 should be in B.3, but we need the files from A so 'so be it'.
 #      A.5 - /etc/shadow must be tightly secured
 #      A.6 - check password age and length settings
 #      A.7 - no additional users in root group
+#      A.8 - users should not have .ssh/rc files, if they do list contents for review
+#      A.9 - check users .ssh/config files for scripts (ProxyCommand)
+#      A.10 - check users .ssh directory perms
 #   B. Network access
 #      B.1 - check system host equivalences files
 #      B.2 - check user host equivalences files and security of
@@ -444,11 +447,32 @@
 #                       fields are displayed in the server summary display
 #                       page it is displayed there also.
 #                   (2) Added checks for SSHD entries existing in the
-#                       hosts.allow and hosts.deny files
+#                       hosts.allow and hosts.deny files... OBSOLETE 2025/08/31
 # MID: 2024/09/01 - Version 0.21 (unchanged)
 #                   (1) Just a text update in password minlen check desc
 #                       to say in deb12 systems this is now supposedly
 #                       set in /etc/pam.d files somewhere; not checked for.
+# MID: 2025/08/30 - Version 0.22 
+#                   (1) Added new config file flag SELINUX_NOT_INSTALLED=YES
+#                   And just some possible persistent back-door checks added
+#                   (2) check/alert if a "anything : ALL" entry is in hosts.allow
+#                   New keys in server data file
+#                   (3) USER-SSH-RC-userid users .ssh/rc file, check   
+#                       commands run on ssh connect are not suspicious
+#                   (4) USER-SSH-CONFIG-userid users .ssh/config file, check 
+#                       for commands automatically run from it
+#                   Additional checks on existing keys in data file
+#                   (5) USER-SSH-DIRPERMS for checking user .ssh permissions
+#                   (6) Additional checks added against hosts.allow to
+#                       see if scripts are being run when a allowed host
+#                       connects
+#                   (7) Change password must change test from 31 to 60
+#                       days, better suits my needs 
+#                       (todo:make this a custom config file variable)
+#                   (8) More checks on hosts.deny, alert if no "ALL : ALL" 
+#                       or "sshd " ALL", if no ALL but there is sshd just warn
+#                   (9) A big blurb in page for hosts.allow|deny warning  
+#                       of impacts that may happen if you use these files
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -505,7 +529,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.21"
+PROCESSING_VERSION="0.22"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -2024,13 +2048,13 @@ build_appendix_a() {
       fi
       # Now report on what we found
       echo "<table border=\"1\"><tr bgcolor=\"${colour_border}\"><td><center>User Default Settings</center></td></tr>" >> ${htmlfile}
-      if [ ${maxdays} -gt 31 ];  # doesn't expire in 31 days as a default
+      if [ ${maxdays} -gt 61 ];  # doesn't expire in 61 days as a default
       then
-         echo "<tr bgcolor=\"${colour_alert}\"><td>Default password expiry > 31 days, it is ${maxdays}</td></tr>" >> ${htmlfile}
+         echo "<tr bgcolor=\"${colour_alert}\"><td>Default password expiry > 61 days, it is ${maxdays}</td></tr>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
-         log_alert_detail ${hostid} "Default password expiry > 31 days, it is ${maxdays}"
+         log_alert_detail ${hostid} "Default password expiry > 61 days, it is ${maxdays}"
       else
-         echo "<tr bgcolor=\"${colour_OK}\"><td>Default password expiry is <= 31 days</td></tr>" >> ${htmlfile}
+         echo "<tr bgcolor=\"${colour_OK}\"><td>Default password expiry is <= 61 days</td></tr>" >> ${htmlfile}
       fi
       if [ ${mindays} -gt 3 ];   # user can't change for over three days, too excessive
       then
@@ -2089,6 +2113,76 @@ build_appendix_a() {
       echo "<table bgcolor=\"${colour_OK}\"><tr><td>" >> ${htmlfile}
       echo "<p>No additional users have been added to the root group.</p>" >> ${htmlfile}
       echo "</td></tr></table>" >> ${htmlfile}
+   fi
+
+
+   # A.8 - users should not have .ssh/rc files
+   echo "<h3>A.8 Users should not have .ssh/rc files</h3>" >> ${htmlfile}
+   userswithrcs=`grep "USER-SSH-RC-" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $1'} \
+	   | awk -F\- {'print $4'} | sort | uniq`
+   if [ "${userswithrcs}." != "." ];
+   then
+      echo "<p>The following users have .ssh/rc files. Review what is in these for dangerous commands." >> ${htmlfile}
+      echo "Sometimes malware will insert backdoor triggers into user fiiles if they are badly secured.</p>" >> ${htmlfile}
+      echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
+      echo "${userswithrcs}" | while read uname
+      do
+         echo "<tr><td><b>user=${uname}</b><br /><pre>" >> ${htmlfile}
+         grep "USER-SSH-RC-${uname}" ${SRCDIR}/secaudit_${hostid}.txt | sed -e"s/USER-SSH-RC-${uname}=//" >> ${htmlfile}
+         echo "</pre></td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      done
+      echo "</table>" >> ${htmlfile}
+   else
+      echo "<p>No users have .ssh/rc files.</p>" >> ${htmlfile}
+   fi
+
+   # A.9 - check users .ssh/config files for scripts (ProxyCommand)
+   echo "<h3>A.9 No script commands allowed in user .ssh/config files</h3>" >> ${htmlfile}
+   userswithconfigs=`grep "USER-SSH-CONFIG-" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $1'} \
+	   | awk -F\- {'print $4'} | sort | uniq`
+   if [ "${userswithconfigs}." != "." ];
+   then
+      cfgcount=`echo "${userswithconfigs}" | wc -l`
+      scriptcount=`grep "USER-SSH-CONFIG-" ${SRCDIR}/secaudit_${hostid}.txt | grep -i command | wc -l`
+      if [ ${scriptcount} -gt 0 ];
+      then
+         echo "<table><tr bgcolor=\"${colour_banner}\"><td>These users run scripts in their .ssh/config files</td></tr>" >> ${htmlfile}
+         echo "<tr bgcolor=\"${colour_banner}\"><td>User</td><td>Command</td></tr>" >> ${htmlfile}
+         grep "USER-SSH-CONFIG-" ${SRCDIR}/secaudit_${hostid}.txt | grep -i command | while read dataline
+         do
+            keyword=`echo "${dataline}" | awk -F\= {'print $1'}`
+            uname=`echo "${keyword}" | awk -F\- {'print $4'}`
+            unamecommand=`echo "${dataline}" | sed -e"s/${keyword}=//"`
+            echo "<tr bgcolor=\"${colour_alert}\"><td>${uname}</td><td>${unamecommand}</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} alert_count
+         done
+	 echo "</table>" >> ${htmlfile}
+      else
+         echo "<p>No users run scripts from their .ssh/config files.<br />${cfgcount} users have .ssh/config files.</p>" >> ${htmlfile}
+      fi
+   else
+      echo "<p>No users have .ssh/config files.</p>" >> ${htmlfile}
+   fi
+
+   # A.10 - check users .ssh directory perms
+   echo "<h3>A.10 Check user .ssh directory permissions</h3>" >> ${htmlfile}
+   baddircount=`grep "USER-SSH-DIRPERMS=" ${SRCDIR}/secaudit_${hostid}.txt | grep -v "drwx------" | wc -l`
+   if [ ${baddircount} -eq 0 ];
+   then
+      echo "<p>No badly secured user .ssh directories were located on this server.</p> " >> ${htmlfile}
+   else
+      echo "<p>The following user .ssh directories are badly secured !.</p>"
+      echo "<table bgcolor=\"${colour_alert}\">" >> ${htmlfile}
+      grep "USER-SSH-DIRPERMS=" ${SRCDIR}/secaudit_${hostid}.txt | grep -v "drwx------" | while read dataline
+      do
+         dirname=`echo "${dataline}" | awk -F\= {'print $2'} | awk -F: {'print $1'}`
+         dirperms=`echo "${dataline}" | awk -F: {'print $2'}`
+         dirowner=`echo "${dataline}" | awk -F: {'print $3'}`
+         echo "<tr><td>dir=${dirname}, perms=${dirperms}, owner=${dirowner}</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      done
+      echo "</table>" >> ${htmlfile}
    fi
 
    # Close the appendix page
@@ -2249,16 +2343,40 @@ build_appendix_b() {
    # 2023/11/24 - Added the below hosts.deny|allow checks
    echo "<h2>B.5 - Allowed hosts checks</h2>" >> ${htmlfile}
    cat << EOF >> ${htmlfile}
-<p>To limit who has SSH access to the server you should have a hosts.deny file
-that be default prevents any access via ssh to the server ( [ sshd : all ] ).</p>
+<p>To limit who has access to the server you should have a hosts.deny file
+that by default prevents any access to the server.</p>
 <p>You may then use the hosts.allow file to add subnets or individual ip addresses
 for the clients that you wish to have access to the server. This can help prevent
-any random unexpected machine trying to connect to your server via ssh from being able
-to do so.</p>
-<p>There are many other connection type you can limit with these files, this
-toolkit currently only checks ssh access.</p>
+any random unexpected machine trying to connect to your server but at a mimimum you
+should have in hosts.dey "ssh : all" and allow only required ranges in hosts.allow.</p>
+<p><em>Please note that tcp wrapper is considered obsolete in favour of firewall
+rules these days</em> so many services no longer use these two files (ie: cockpit ignores them)
+but they are still relevant as a safety net for services that do still use them
+such as sshd; especially as a home lab may have lax firewall rules.</p>
+<p>
+<b>However</b> use with care as some products use random port numbers, for example
+if using bacula it uses ransom ports to communicate with the storage daemon so something
+like the below just will not work; if bacula-sd and bacula-dir on the same machine the
+dir cannot contact the sd.</p>
+<pre>
+sshd : 192.168.1.
+nrpe : 192.168.1.
+bacula-sd : 192.168.1.
+bacula-fd : 192.168.1.
+bacula-dir : 192.168.1.
+bacula-sd : localhost
+bacula-fd : localhost
+bacula-dir : localhost
+</pre>
+<p>You will need in hosts.allow something like</p>
+<pre>
+ALL : localhost
+ALL : 192.168.1.
+</pre>
+<p>This warning in here as I hit that issue with bacula. There will be other
+products that also open ransom data channel ports so be aware using these files may cause issues.</p>
 EOF
-   hostsdeny=`grep "ETC_HOSTS_DENY" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   hostsdeny=`grep "ETC_HOSTS_DENY_FILE" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
    if [ ${hostsdeny} -lt 1 ];
    then
       echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
@@ -2266,21 +2384,65 @@ EOF
       echo "</td></tr></table>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
    else
-      hostsdeny=`grep "ETC_HOSTS_DENY" ${SRCDIR}/secaudit_${hostid}.txt | grep "sshd" | grep -i "all" | wc -l`
-      if [ ${hostsdeny} -lt 1 ];
+      echo "<p>The following entries are in /etc/hosts.deny and should be reviewed.</p><pre>" >> ${htmlfile}
+      grep "ETC_HOSTS_DENY_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} >> ${htmlfile}
+      echo "</pre>" >> ${htmlfile}
+      # if sshd is in the deny file that is OK to not alert, as at least the file is being used
+      hostsdenyall=`grep -i "ETC_HOSTS_DENY_FILE=all" ${SRCDIR}/secaudit_${hostid}.txt | awk -F: {'print $2'} | grep -iw all | wc -l`
+      hostsdenysshd=`grep "ETC_HOSTS_DENY_FILE=ssh" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+      if [ ${hostsdenyall} -lt 1 -a ${hostsdenysshd} -lt 1 ];
+      then
+         echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
+         echo "<p>There is no deny \"ALL : ALL\" or \"sshd : ALL\" entry in /etc/hosts.deny." >> ${htmlfile}
+	 echo "hosts.deny should contain 'ALL : ALL' with hosts.allow used to permit only what you expect to connect.</p>" >> ${htmlfile}
+         echo "</td></tr></table>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+      # BUT should still warn
+      elif [ ${hostsdenyall} -lt 1 ];
       then
          echo "<table bgcolor=\"${colour_warn}\"><tr><td>" >> ${htmlfile}
-         echo "<p>There is no deny all sshd entry in /etc/hosts.deny. There should be with explicit allows in hosts.allow</p>" >> ${htmlfile}
+         echo "<p>There is no deny \"ALL : ALL\" or \"sshd : ALL\" entry in /etc/hosts.deny." >> ${htmlfile}
+	 echo "You do have a sshd entry which is good but look at expanding that further.</p>" >> ${htmlfile}
          echo "</td></tr></table>" >> ${htmlfile}
          inc_counter ${hostid} warning_count
+      else
+         echo "<p>The hosts.deny file appears to being used. Well done.</p>" >> ${htmlfile}
       fi
    fi
-   hostsallow=`grep "ETC_HOSTS_ALLOW" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+   hostsallow=`grep "ETC_HOSTS_ALLOW_FILE" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
    if [ ${hostsallow} -gt 0 ];
    then
       echo "<p>The following entries are in /etc/hosts.allow and should be reviewed.</p><pre>" >> ${htmlfile}
-      grep "ETC_HOSTS_ALLOW" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} >> ${htmlfile}
+      grep "ETC_HOSTS_ALLOW_FILE" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} >> ${htmlfile}
       echo "</pre>" >> ${htmlfile}
+   fi
+   # check for anything with "ALL : ALL" as that is really bad
+   # The w in the last grep is word, so in a,b,all,c,d,testall,f,g it will match on all but not testall etc, we want explicit all
+   allaftercolon=`grep -i "ETC_HOSTS_ALLOW_FILE=all" ${SRCDIR}/secaudit_${hostid}.txt | awk -F: {'print $2'} | grep -iw all | wc -l`
+   if [ ${allaftercolon} -gt 0 ];
+   then
+      echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
+      echo "<p>Entries in hosts.allow for ALL : ALL exist, this is dangerous. Review the above entries and correct that.</p>" >> ${htmlfile}
+      echo "</td></tr></table>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   else
+      echo "<p>No entries allow all hostnames in hosts.allow, well done.</p>" >> ${htmlfile}
+   fi
+   # Also any hosts.allow line with a "spawn" or "twist" command (to run scripts) must
+   # be flagged, there shold be no reason do do this these days.
+   # TODO - could remove false alerts on hostnames containing spawn or twist by awking
+   #        away trhe first two fields and only checking the rest, but then would have
+   #        to re-assemble the line later to display the full offending entry.
+   hostsallowscript=`grep 'ETC_HOSTS_ALLOW_FILE' ${SRCDIR}/secaudit_${hostid}.txt | grep -Ei 'spawn|twist'`
+   if [ "${hostsallowscript}." != "." ];
+   then
+      echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
+      echo "<p>Entries in hosts.allow may contain spawn or twist commands to run scripts on connection. This is dangerous. Review the above entries and correct that.</p>" >> ${htmlfile}
+      echo "</td></tr></table>" >> ${htmlfile}
+      echo "<p>If host names in hosts.allow contain spawn or twist this may be a false alert.</p>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   else
+      echo "<p>No scripts appear to be executed from hosts.allow</p>" >> ${htmlfile}
    fi
 
    # Close the appendix page
@@ -3793,6 +3955,8 @@ EOF
 #      F.3 - ssh config settings
 #      F.3.1 - ssh banner should exist and contain reqd keywords
 #      F.3.2 - ssh must not allow direct root login
+#      F.3.3 - SSH subsystems
+#      F.3.4 - SSH embedded commands
 #      F.4 - selinux config checks
 # ----------------------------------------------------------
 extract_appendix_f_files() {
@@ -3888,7 +4052,7 @@ build_appendix_f() {
    echo "authorised users only notice.</p>" >> ${htmlfile}
    if [ -f ${WORKDIR}/motd ];
    then
-       numentries=`cat ${WORKDIR}/motd | wc -l | awk {'print $1}'`
+       numentries=`cat ${WORKDIR}/motd | wc -l | awk {'print $1'}`
    else
        numentries=0
    fi
@@ -3970,7 +4134,7 @@ build_appendix_f() {
    echo "It should also contain an authorised users only notice.</p>" >> ${htmlfile}
    if [ -f ${WORKDIR}/sshd_banner ];
    then
-       numentries=`cat ${WORKDIR}/sshd_banner | wc -l | awk {'print $1}'`
+       numentries=`cat ${WORKDIR}/sshd_banner | wc -l | awk {'print $1'}`
    else
        numentries=0
    fi
@@ -4064,6 +4228,20 @@ build_appendix_f() {
       echo "<p>No subsystems are defined in the sshd_config file.</p>" >> ${htmlfile}
    fi
 
+   echo "<h3>F.3.4 - SSH embedded commands</h3>" >> ${htmlfile}
+   # Check for the below, these would run on every connection attempt
+   #     AuthorisedKeysCommand
+   #     AuthorisedKeysCommandUser
+   keyscommands=`grep -i "^AuthorisedKeysCommand" ${WORKDIR}/sshd_config`
+   if [ "${keyscommands}." == "." ];
+   then
+      echo "<p>No AuthorisedKeysCommand setings found configured in sshd_config.</p>" >> ${htmlfile}
+   else
+      echo "<table><tr bgcolor=\"${colour_alert}\" border=\"1\"><td>AuthorisedKeysCommand values are in sshd_config</td></tr></table>" >> ${htmlfile}
+      echo "<p>Check and verify that these are expected in your sshd_config file !</p><pre>${keyscommands}</pre>" >> ${htmlfile}
+      inc_counter ${hostid} alert_count
+   fi
+
    # The selinux configuration checks
    echo "<h2>F.4 - SELinux Configuration</h2>" >> ${htmlfile}
    selinuxinstalled=`grep "^SELINUX_INSTALLED=yes" ${SRCDIR}/secaudit_${hostid}.txt`
@@ -4120,9 +4298,15 @@ build_appendix_f() {
       unset lowercasevar2         # done with type specefic usage
       echo "</table>" >> ${htmlfile}
    else
-      echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>SELinux is not installed on the server (no /etc/selinux/config file found, provided by selinux-policy)</td></tr></table>" >> ${htmlfile}
-      inc_counter ${hostid} alert_count
-      log_alert_detail ${hostid} "SELinux is not installed on this server (needs selinux-policy)"
+      ispermitted=`grep -i "SELINUX_NOT_INSTALLED=YES" ${CUSTOMFILE}`
+      if [ "${ispermitted}." != "." ];
+      then
+	      echo "<p>SELinux is not installed on this server. Permiited by custom file override.</p>" >> ${htmlfile}
+      else
+         echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>SELinux is not installed on the server (no /etc/selinux/config file found, provided by selinux-policy)</td></tr></table>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "SELinux is not installed on this server (needs selinux-policy)"
+      fi
    fi
 
    # Close the appendix page

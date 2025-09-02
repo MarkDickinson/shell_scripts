@@ -1437,6 +1437,12 @@ Using this parameter in a customisation file will suppress alerts for
 any orphan files (files not owned by a existing system user) in 
 docker container overlay directories
 </td></tr>
+<tr><td>SELINUX_NOT_INSTALLED=YES</td><td>
+This will turm off the SELinux not installed alert as some servers may not
+have SELinux. Even though I manually install it on my Debian servers a lot
+of users probably do not go to that effort so this permits that alert to
+be ignored/suppressed.
+</td></tr>
 </table>
 
 <hr>

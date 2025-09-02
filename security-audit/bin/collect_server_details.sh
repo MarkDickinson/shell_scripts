@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # !!! WILL ONLY WORK WITH BASH !!! - needs bash substring facility
 # ======================================================================
 #
@@ -160,13 +160,20 @@
 #              correct --scanlevel=number[enter] so added a check for that
 #              input validation. Left version at 0.21 as just a minor fix
 #              that affects nobody using it properly.
+# 2025/08/30 - Now collect user .ssh/config and .ssh/rc files if they     
+#              exist also so the processing script can check for entries
+#              indicating commands are trigered on connection; and the
+#              processing script will be updated to check for commands
+#              being run on ssh connections by the global sshd_config also.
+#              Also seperately collect dirperms on .ssh directories to check.
+#              This is a version bump to 0.22
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.21"    # capture script version
+EXTRACT_VERSION="0.22"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -352,6 +359,8 @@ timestamp_action() {
 } # end of timestamp_action
 
 # ----------------------------------------------------------------------
+# Logs the entire contects of a file prefixed by the 'key'.
+# The processing script will have to check for anything in the files.
 # ----------------------------------------------------------------------
 record_file() {
    key="$1"
@@ -362,6 +371,8 @@ record_file() {
       do
          echo "${key}=${dataline}" >> ${LOGFILE}
       done
+   else
+      echo "${key}=MISSING FILE ${file}" >> ${LOGFILE}
    fi
 } # record_file
 
@@ -398,7 +409,7 @@ find_perms_under_dir() {
    do
       echo "${key}=${dataline}=${expected_owner}" >> ${LOGFILE}
    done
-} # fine_perms_under_dir
+} # find_perms_under_dir
 
 # ----------------------------------------------------------------------
 # ----------------------------------------------------------------------
@@ -794,6 +805,8 @@ record_file PASSWD_SHADOW_FILE /etc/shadow    # password and expiry details
 record_file ETC_GROUP_FILE /etc/group         # the user groups on the server
 record_file FTPUSERS_FILE /etc/ftpusers       # users that cannot use ftp
 record_file ETC_HOSTS_ALLOW_FILE /etc/hosts.allow  # hosts that may connect
+              # processing script to make sure no 'ALL: ALL: spawn' commands are executed 
+	      # as even SNMP can get a backdoor script running that way
 record_file ETC_HOSTS_DENY_FILE /etc/hosts.deny  # hosts that may not connect unless in hosts.allow
 record_file LOGIN_DEFS /etc/login.defs        # passwd maxage, minlen etc
 aa=`get_PAM_pwminlen`                         # see if minlen overridden by PAM settings
@@ -1176,9 +1189,6 @@ fi
 # Collect basic network info to be checked
 # ======================================================================
 timestamp_action "searching for user network files that may pose a risk"
-
-record_file HOSTS_ALLOW /etc/hosts.allow
-record_file HOSTS_DENY /etc/hosts.deny
 # --- Any equiv files on the server ? ---
 if [ -f /etc/hosts.equiv ];
 then
@@ -1340,7 +1350,6 @@ find_file_perm PERM_ETC_MOTD "/etc/motd" "root" "NA"
 # MID: 2008/07/03 added sshd config and banner capture
 if [ -f /etc/ssh/sshd_config ];
 then
-   record_file SSHD_CONFIG_DATA /etc/ssh/sshd_config
    xx=`grep -i "Banner" /etc/ssh/sshd_config | grep -v "^#"`
    if [ "${xx}." != "." ];
    then
@@ -1351,6 +1360,46 @@ then
       fi
    fi
 fi
+
+# ======================================================================
+# SSH config settings, global and per user should be checked
+# processing sript to check/alert on any in sshd_gonfig global
+#     AuthorisedKeysCommand
+#     AuthorisedKeysCommandUser
+# and in user ssh configs for any
+#     ProxyCommand
+# ======================================================================
+timestamp_action "collecting global ssh config info"
+record_file SSHD_CONFIG_DATA /etc/ssh/sshd_config
+
+timestamp_action "collecting user ssh config info"
+# User SSH config files should ideally not have any 'ProxyCommand'
+cat /etc/passwd | while read dataline
+do
+	homedir=`echo "${dataline}" | awk -F: {'print $6'}`
+	if [ -f ${homedir}/.ssh/config ];
+	then
+	   userid=`echo "${dataline}" | awk -F: {'print $1'}`
+	   record_file USER-SSH-CONFIG-${userid} "${homedir}/.ssh/config"
+	fi
+	# If a rc file exists these are commands to be run when a user
+	# ssh session is established, record those for the processing
+	# check script to look at as dangerous/back-door commands can
+	# slip into those.
+	if [ -f ${homedir}/.ssh/rc ];
+	then
+	   userid=`echo "${dataline}" | awk -F: {'print $1'}`
+	   record_file USER-SSH-RC-${userid} "${homedir}/.ssh/rc"
+	fi
+done
+
+# While we are getting user ssh info also save their .ssh directory permissions
+# to ensure only they can access the files under it.
+find /home -type d -name ".ssh" | while read sshdir
+do
+   dirperms=`ls -la "${sshdir}" | grep "^d" | head -2 | tail -1 | awk {'print $1":"$3'}`  # perms:owner
+   echo "USER-SSH-DIRPERMS=${sshdir}:${dirperms}" >> ${LOGFILE}      #dir:perms:owner
+done
 
 # ======================================================================
 # Files that must exist and be retained for a specific period (days)
@@ -1372,15 +1421,20 @@ done
 # Collect the contents of the wtmp log using the 'last' command.
 # Plus user last logged on info for all users using lastlog
 # ======================================================================
-timestamp_action "recording last login information"
-last -i | while read dataline
-do
-   echo "WTMP_LAST_LOG=${dataline}" >> ${LOGFILE}
-done
-lastlog | while read dataline
-do
-   echo "LASTLOG_ENTRY=${dataline}" >> ${LOGFILE}
-done
+# Debian13 has obsoleted WTMP and the last and lastlog commands
+havelast=`which last`
+if [ "${havelast}." != "." ];
+then
+   timestamp_action "recording last login information"
+   last -i | while read dataline
+   do
+      echo "WTMP_LAST_LOG=${dataline}" >> ${LOGFILE}
+   done
+   lastlog | while read dataline
+   do
+      echo "LASTLOG_ENTRY=${dataline}" >> ${LOGFILE}
+   done
+fi
 
 # ======================================================================
 # Collect the interface information.

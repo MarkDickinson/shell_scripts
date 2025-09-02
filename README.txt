@@ -17,7 +17,9 @@ Any subdirectories will be task specific scripts.
                       its best to handle both iptables and firewalld/netfilter
                       as depending on server function I could use either.
                       All bash, not performance efficient.
-   - demo-web-apps  : best to avoid. A long time ago I wrote a tutorial on
-                      prototyping web apps using nothing but bash. That
-                      comes with the disclaimer you should never put those
-                      on a server with a public facing interface
+   - calendar-creator : used the linux "cal" program to pull out the values
+                      to populate dates in a html calendar, inserts pictures
+                      for each month from a list provided, allows holidays
+                      and bithdays to be inserted into day boxes.
+                      This is a cgi webserver script, you need to use your browsers
+                      print function to print it.

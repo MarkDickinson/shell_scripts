@@ -14,6 +14,18 @@ be permitted to alert if older capture files are used rather than add new coding
 for backward compatability. Simply always use the same versions.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.21 and version 0.22 are
+-------------------------------------------------------------------------------------
+(1) Added checks for some places persistent backdoors could live, ie: checks for
+    commands run from sshd_config, user .ssh/config, user .ssh/rc, hosts.allow files
+    that can all have commands set in them. Also check perms on .ssh directories.
+(2) Not all servers run SELinuux, added a config file option to prevent an alert if
+    it is not installed (even if you should install it on servers without it).
+(3) additional check in hosts.allow to report as an alert if the server field is ALL
+    for any entry instead of a hostname or ip-mask
+(4) Minor non-visible bug fixes.
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.20 and version 0.21 are
 -------------------------------------------------------------------------------------
 (1) Checks that sshd entries exist in hosts.allow and hosts.deny but as if you use
