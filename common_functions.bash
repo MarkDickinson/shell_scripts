@@ -189,23 +189,36 @@ progress_bar() {
 	local i;
 	local bar_char=" "      # space, we set background to show progress bar
 	local empty_char="."
+        local disable_pct_display="NO"   # if colums too small to display pct test we will disable it
 
 	# adjust bar to fit window width
-	local length=$(tput cols)          # width of terminal
-	if [ ${length} -gt 20 ];
+	if [ "${COLUMNS}." != '.' ];      # if the shell has set the variable use it
 	then
-		length=$((length - 20))          # leave room for count+pct
+           local length=${COLUMNS}
+        else
+           local length=$(tput cols)      # else use tput to find the width of the terminal
+	fi
+	if [ ${length} -gt 40 ];
+	then
+		length=$((length - 20))     # leave room for count+pct at the end
+        else
+		disable_pct_display="YES"
 	fi
 	local num_bars=$((pct_done * length / 100))
 
 	s='['      # start with open bracket
         for ((i = 0; i < num_bars; i++)); do
 #		s="${s}${bar_char}"
-		s="${s}\e[42m${bar_char}\e[0m"   # colour red for bar
+		s="${s}\e[42m${bar_char}\e[0m"   # colour green for bar
 	done
         for ((i = num_bars; i < length; i++)); do
 		s="${s}${empty_char}"
 	done
 	s="${s}]"     # end with close bracket
-        echo -ne "${s} ${current}/${len} ${pct_done}%\r"
+	if [ "${disable_pct_display}." == "YES." ];   # too small to display counts+pct
+	then                                          # yes, do not display that info
+           echo -ne "${s}\r"
+        else                                          # not too small, room to display it so do so
+           echo -ne "${s} ${current}/${len} ${pct_done}%\r"
+	fi
 } # -------------------- End of progress_bar routine --------------------
