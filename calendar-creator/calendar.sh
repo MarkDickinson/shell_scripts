@@ -112,7 +112,7 @@ build_one_entry() {
       oncalltext=""         # Added for my use
       onleavetext=""        # Added for my use
       # Surely only one public holiday on any given date
-      if [ "${UseHols}." == "yes. ];"
+      if [ "${UseHols}." == "yes." ];
       then
          ispubhol=`grep "${yr} ${mt} ${dy}:" ${holidayfile}`
          if [ "${ispubhol}." != "." ];
@@ -122,7 +122,7 @@ build_one_entry() {
          fi
       fi
       # Can be more than one aniversary on a given date so back to kludging
-      if [ "${UseAniv}." == "yes. ];"
+      if [ "${UseAniv}." == "yes." ];
       then
          datalines=`grep "${mt} ${dy}:" ${aniversaryfile} | awk -F: {'print $2'}`
          aniversarytext=`split_lines "${datalines}" | tail -1`
@@ -132,14 +132,14 @@ build_one_entry() {
       # reminder for any given date.
       # Because of the pipe which starts a subshell the global variable
       # is not updated. So have to do it this messy way and use the last line produced
-      if [ "${UseRemind}." == "yes. ];"
+      if [ "${UseRemind}." == "yes." ];
       then
          datalines=`grep "${yr} ${mt} ${dy}:" ${reminderfile} | awk -F: {'print $2'}`
          remindertext=`split_lines "${datalines}" | tail -1`
          remindertext="<span style=\"color:blue\">${remindertext}</span>"
       fi
       # only one oncall entry per date expected (and only one handled)
-      if [ "${UseCall}." == "yes. ];"
+      if [ "${UseCall}." == "yes." ];
       then
          isoncall=`grep "${yr} ${mt} ${dy}:" ${oncallfile}`
          if [ "${isoncall}." != "." ];
@@ -150,7 +150,7 @@ build_one_entry() {
             oncalltext="<span style=\"background-color:${oncallcolour}\">${oncalltext}</span>"
          fi
       fi
-      if [ "${UseLeave}." == "yes. ];"
+      if [ "${UseLeave}." == "yes." ];
       then
          isonleave=`grep "${yr} ${mt} ${dy}:" ${onleavefile}`
          if [ "${isonleave}." != "." ];
