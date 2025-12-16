@@ -24,8 +24,74 @@
 picfile="picture_list.txt"         #  Year Month Picture-url
 holidayfile="public_hols.txt"      #  Year Month Day:Text description
 aniversaryfile="aniversaries.txt"  #  Month Day:Text description, no year, these repeat
+reminderfile="event_reminders.txt" #  Year Month Day:Text description
 oncallfile="opt/oncall_dates.txt"  #  Year Month Day:Person:Colour  
 onleavefile="opt/team_leave.txt"   #  Year Month Day:Person        
+
+#   --------------- see what files are available ----------
+# Cut down on disk IO. To avoid checkimg if a file is readable
+# for every new date being processed check once at the start 
+# and use variable tests instead inside the loop when determining
+# if the file is available..
+if [ -r ${holidayfile} ];
+then
+   UseHols="yes"
+else
+   UseHols="no"
+fi
+if [ -r ${aniversaryfile} ];
+then
+   UseAniv="yes"
+else
+   UseAniv="no"
+fi
+if [ -r ${reminderfile} ];
+then
+   UseRemind="yes"
+else
+   UseRemind="no"
+fi
+if [ -r ${oncallfile} ];
+then
+   UseCall="yes"
+else
+   UseCall="no"
+fi
+if [ -r ${onleavefile} ];
+then
+   UseLeave="yes"
+else
+   UseLeave="no"
+fi
+#   --------------- end of see what files are available ----------
+
+# --------------------------------------------------------------------------------
+# split_lines - a kludge workaround
+#
+# This is a kludge, if using a pipe inside a loop that starts a subshell
+# which prevents updates to global variables outside the loop; so a string
+# cannot be built from multiple input lines.
+# This is a workaround, all the lines are passed and the string is built echoing 
+# every addition; the caller needs to 'tail -1' the output of this subroutine
+# to obtain for use only the last valid output line.
+#
+# required as I found some dates could have multiple entries for a date in the
+# data files so the script needs to handle those cases.
+# --------------------------------------------------------------------------------
+split_lines() {
+   alllines="$1"
+   brlines=""
+   echo "${alllines}" | while read oneline
+   do
+      if [ "${brlines}." == "." ];
+      then 
+         brlines="${oneline}"
+      else
+         brlines="${brlines}<br />${oneline}"
+      fi
+      echo "${brlines}"
+   done
+} # end of split_lines
 
 # ----------------------------------------------------------------------
 # Writes a single box entry.
@@ -42,21 +108,38 @@ build_one_entry() {
       entrylinecount=0
       pubholtext=""
       aniversarytext=""
+      remindertext=""
       oncalltext=""         # Added for my use
       onleavetext=""        # Added for my use
-      ispubhol=`grep "${yr} ${mt} ${dy}:" ${holidayfile}`
-      if [ "${ispubhol}." != "." ];
+      # Surely only one public holiday on any given date
+      if [ "${UseHols}." == "yes. ];"
       then
-         pubholtext=`echo "${ispubhol}" | awk -F: {'print $2'}`
-         pubholtext="<span style=\"color:red\">${pubholtext}</span>"
+         ispubhol=`grep "${yr} ${mt} ${dy}:" ${holidayfile}`
+         if [ "${ispubhol}." != "." ];
+         then
+            pubholtext=`echo "${ispubhol}" | awk -F: {'print $2'}`
+            pubholtext="<span style=\"color:red\">${pubholtext}</span>"
+         fi
       fi
-      isaniv=`grep "${mt} ${dy}:" ${aniversaryfile}`
-      if [ "${isaniv}." != "." ];
+      # Can be more than one aniversary on a given date so back to kludging
+      if [ "${UseAniv}." == "yes. ];"
       then
-         aniversarytext=`echo "${isaniv}" | awk -F: {'print $2'}`
+         datalines=`grep "${mt} ${dy}:" ${aniversaryfile} | awk -F: {'print $2'}`
+         aniversarytext=`split_lines "${datalines}" | tail -1`
          aniversarytext="<span style=\"color:green\">${aniversarytext}</span>"
       fi
-      if [ -r ${oncallfile} ];
+      # Do this expecting multiple entries, may be more than one
+      # reminder for any given date.
+      # Because of the pipe which starts a subshell the global variable
+      # is not updated. So have to do it this messy way and use the last line produced
+      if [ "${UseRemind}." == "yes. ];"
+      then
+         datalines=`grep "${yr} ${mt} ${dy}:" ${reminderfile} | awk -F: {'print $2'}`
+         remindertext=`split_lines "${datalines}" | tail -1`
+         remindertext="<span style=\"color:blue\">${remindertext}</span>"
+      fi
+      # only one oncall entry per date expected (and only one handled)
+      if [ "${UseCall}." == "yes. ];"
       then
          isoncall=`grep "${yr} ${mt} ${dy}:" ${oncallfile}`
          if [ "${isoncall}." != "." ];
@@ -67,7 +150,7 @@ build_one_entry() {
             oncalltext="<span style=\"background-color:${oncallcolour}\">${oncalltext}</span>"
          fi
       fi
-      if [ -r ${onleavefile} ];
+      if [ "${UseLeave}." == "yes. ];"
       then
          isonleave=`grep "${yr} ${mt} ${dy}:" ${onleavefile}`
          if [ "${isonleave}." != "." ];
@@ -81,6 +164,11 @@ build_one_entry() {
       if [ "${pubholtext}." != "." ];
       then
          dataoutline="${dataoutline}<br \>${pubholtext}"
+         entrylinecount=$(( ${entrylinecount} + 1 ))
+      fi
+      if [ "${remindertext}." != "." ];
+      then
+         dataoutline="${dataoutline}<br \>${remindertext}"
          entrylinecount=$(( ${entrylinecount} + 1 ))
       fi
       if [ "${aniversarytext}." != "." ];
@@ -250,15 +338,14 @@ then
    errors="yes"
    echo "<b>*error*</b> no holiday file found, ${holidayfile}<br />"
 fi
-if [ ! -f ${aniversaryfile} ];
-then
-   errors="yes"
-   echo "<b>*error*</b> no aniversary file found, ${aniversaryfile}<br />"
-fi
 if [ "${errors}." == "no." ];
 then
-   # probably loop for the next 12 months starting in the current month
-   currmonthnow=$(( `date +"%m"` + 0 ))    # the + is to conver 0N to N, month now
+   # loop for the next 12 months starting in the current month
+   currmonthnow=`date +"%m"`   # if 0n remove leading 0 or it is treated as octal
+   if [ "${currmonthnow:0:1}." == "0." ];
+   then
+      currmonthnow=${currmonthnow:1:1}
+   fi
    workmonthnow=${currmonthnow}           # used as first loop counter up to 12
    workyearnow=`date +"%Y"`               # cunnent year, as var as we bump when above 12
    while [ ${workmonthnow} -lt 13 ];
@@ -273,22 +360,6 @@ then
       do_one_month ${workmonthnow} ${workyearnow}
       workmonthnow=$(( ${workmonthnow} + 1 ))
    done
-   # OR - have an imput field on the page so a range can be
-   #      selected, with a print stylesheet used to prevent the
-   #      form from printing.
-#   do_one_month 4 2025
-#   do_one_month 5 2025
-#   do_one_month 6 2025
-#   do_one_month 7 2025
-#   do_one_month 8 2025
-#   do_one_month 9 2025
-#   do_one_month 10 2025
-#   do_one_month 11 2025
-#   do_one_month 12 2025
-#   do_one_month 1 2026
-#   do_one_month 2 2026
-#   do_one_month 3 2026
-#   do_one_month 4 2026
 fi
 
 # Close the web page

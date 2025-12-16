@@ -6,24 +6,31 @@ Name: My calendar generation script "calendar.sh"
       (needs a web server; 
        or could be run on a desktop Linux server [see usage note1])
 
-      Could be considered BETA; a lot of bad scripting to get to
-      the results I wanted with minimal effort; may be useful to others.
+Warning: this is very slow to run, for every day in a 12 month period 
+         it will grep multiple files. Every new file I add makes it
+         run longer. However each new file is 'optional' so if you
+         do not need them simple do not create them.
+         It started out as simply print an empty calendar with pictures
+         (so the pictures data file is not optional) but I have over
+         time added lots of other optional data files that really slow it
+         down if they are used.
+         Yes I could really speed it up, by parsing for a month at a time
+         instead of for each day; maybe one day.
 
 Function:
-    Use a webserver CGI script to produce a calendar
+    Use a webserver CGI script to produce a printable calendar with pretty
+    pictures for the next 12 months 
     - different pictures for each month    (file picture_list.txt)
     - populate with aniversary/birthdays   (file aniversaries.txt)
     - populate with public holidays        (file public_hols.txt)
-
-History:
+    - populate with reminders              (file event_reminders.txt)
+    - (new for personal use) fill in oncall dates (optional, oncall_dates.txt)
+    - (new for personal use) fill in team leave dates (optional, team_leave.txt)
     Basically I did not want a overly expensive commercial calendar generator,
-    and did not want my pictures uploaded to internet based calendar sites to
-    use those.
-    And it is simple to do using generated html (it requires only "bash" and "cal").
-    Designed to run on my home webserver as a CGI script but should work perfectly
-    well on a Linux desktop (see usage note1).
+    and did not want my pictures in the cloud to use internet based ones,
+    and it is bloody simple to do using generated html on a web server.
 
-Usage: -- repeat every year :-)
+Usage: -- 
     1. Install on your own web server in a directory under your cgi-bin
     2. Edit the pictres.txt and aniversaries.txt to define your own 
        pictures and aniversaries/birtdays to be put into the calendar
@@ -34,13 +41,11 @@ Usage: -- repeat every year :-)
        a printer
     note1: if you do not have a web server but do have a linux desktop you
            could just run the script as "calendar.sh > some-outputfile.html" 
-           and use your desktop web browser to "open file" to view/print the results,
+           and use your desktop web browser to "open file" to view the results,
            BUT the picture_list.txt file will need to refer to pictures relative
            to the directory you direct the output file to (instead of paths your
-           webserver would use) for the picture URL path.
-           Must be a Linux server, it needs the "cal" program; and some bash builtins.
-    note2: yes the picture list is URLs... http[s]://somesite/somepic.jpg could be
-           used BUT do not use other peoples pictures; thats simply bad manners.
+           webserver would use).
+           Must be a Linux server, it needs the "cal" program.
 
 Important things to be aware of:
     In data files day numbers if < 10 must be preceeded by a space, not a zero
@@ -58,7 +63,7 @@ The main file : calendar.sh
 ===============================================================================
 Data files used: READ THIS SECTION
 -------------------------------------------------------------------------------
-aniversaries.txt
+aniversaries.txt [ optional ]
 ^^^^^^^^^^^^^^^^
 This file is used for things that always occur on the same date every year,
 so there is no YEAR value in the data field key. This would be things like
@@ -71,7 +76,7 @@ February  8:Marks Birthday
 December  5:Jessica,Panther,Tigers<br />birthdays observed
 
 -------------------------------------------------------------------------------
-picture_list.txt
+picture_list.txt  [ REQUIRED ]
 ^^^^^^^^^^^^^^^^
 This file is used to define the picture to be used for each month of
 the calendar. It is IMPORTANT to note that these are URL references
@@ -105,7 +110,7 @@ Examples for 12 months...
 2026 March /personal_space/pics/fletcher/fletcher_1_optimized.jpg
 
 -------------------------------------------------------------------------------
-public_hols.txt
+public_hols.txt  [ optional ] (but unlikely to be anwhere without a public hol in a year)
 ^^^^^^^^^^^^^^^
 This file is used to define the public holidays for your location.
 As these can change year to year the full date is required.
@@ -135,6 +140,18 @@ Examples (NZ)...
 2026 October 26:Labour Day
 2026 December 25:Christmas Day
 2026 December 28:Boxing Day observed
+
+-------------------------------------------------------------------------------
+event_reminders.txt  [ optional ]
+^^^^^^^^^^^^^^^^^^^
+This can be used to put placeholders into the calendar for events far in the
+future you want to be reminded off. Concerts and events etc. that you want
+visible so you do not accidentally allocate that time far in the future to
+something else.
+Use the same format as public_hols.txt as these are for exact dates.
+Examples:
+2026 March 14:Otaki Kite Festval
+2026 March 15:Otaki Kite Festval
 
 -------------------------------------------------------------------------------
 Optional files you are unlikely to ever need are documented in the "opt"
