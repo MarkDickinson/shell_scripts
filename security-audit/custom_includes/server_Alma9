@@ -1,6 +1,6 @@
 #
-# These are the common definitions for a CentOS8 server
-# >>> Include File: ../custom_includes/server_CentOS8
+# These are the common definitions for a Alma9.2 server
+# >>> Include File: ../custom_includes/server_Alma9
 #
 TCP_PORTV4_ALLOWED=:22:ssh
 TCP_PORTV4_ALLOWED=:111:systemd portmapper
@@ -103,6 +103,7 @@ SUID_ALLOW=/usr/bin/chage
 SUID_ALLOW=/usr/sbin/postdrop
 SUID_ALLOW=/usr/sbin/postqueue
 SUID_ALLOW=/usr/sbin/grub2-set-bootflag
+SUID_ALLOW=/usr/sbin/userhelper
 #
 FORCE_OWNER_OK=/etc/tcsd.conf:tss
 FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
@@ -116,7 +117,8 @@ ALLOW_VAR_FILE_GROUPWRITE=YES
 #
 HOMEDIR_MISSING_OK=tss:
 HOMEDIR_MISSING_OK=cockpit-ws:
-HOMEDIR_MISSING_OK=cockpit-wsinstance:
+# Below user removed in Alma 9.7
+# HOMEDIR_MISSING_OK=cockpit-wsinstance:
 HOMEDIR_MISSING_OK=saslauth:
 #HOMEDIR_MISSING_OK=rpc:     this user is not created on a fresh C8 install
 #HOMEDIR_MISSING_OK=rngd:    been removed from Alma Linux

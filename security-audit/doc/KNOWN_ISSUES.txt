@@ -6,89 +6,71 @@ Known Bugs with the current release that need fixing
   Ocurrence is completely random so hard to track down. Does not affect any results produced
 * if process one server is passed a servername no data file exists for it does not clear the
   lockfile; need to add that one line between the error msg and the script exit (minor, no hurry)
-
-TODOs
-=====
-The OSVERSION flag I have always set as the kernel value. I will put that in a OSKERNEL value and
-use OSVERSION for the value from /etc/os-release as that would make more sense, not a bud, a todo.
-
-Known issues with the current release
-=====================================
-* Nowhere in the directory path of the processing script can there be an underscore</b> ( _ )
+* if you ^C or kill a running processing script the lockfile remains, you must use the
+  processing script --clearlock option to remove it.  Maybe one day implement a trap handler.
+* Not a bug bate take note:
+  Nowhere in the directory path of the processing script can there be an underscore</b> ( _ )
   character used, the underscore character is used by the script for parsing and having it
   in the directory path will cause problems. Not really an issue, just do not do it
-* if you ^C or kill a running processing script the lockfile remains, you must use the
-  processing script --clearlock option to remove it. However a lockfile is required as we
-  do not want to permit batch and interactive runs to conflict; and if you have a lot
-  of servers a full run may take over 24hrs (althought will take a few hundred servers
-  and you should have split out processing by then).
-  Maybe one day if there are enough complaints I will implement a trap handler, but I
-  do not consider this a bug 
-* >>> Updates to support Debian more fully are still in progress, I have started migrating
-  servers from RHEL to Debian so a work in progress.
+* >>> Updates to support data collected from OpenIndiana/SunOS are still in progress
+  and incomplete. 
 
-Current Limitations with the current release
-============================================
+Current Limitations with the current release (some may consider these bugs)
+===========================================================================
 * performance - on an 8cpu system with 32Gb of memory it takes 2hrs+14mins to process
   634902 file checks (a single server full scan data collection), so using the default
   full scan data collection should be done infrequently
   (refer to the '--scanlevel=N' directive to limit scan data collection)
-* reprocessing logic skip, when a single server is selected for processing any additional
-  servers are also selected to be reprocessed if they must be including for processing
-  version changes, OK as interactive. This has been deliberately skipped in the checkchanged
-  procesing and only collected data files with newer timestamps are processed, the reason
-  is that checkchanged is for batch where you want to automatically process a few files
-  per day and you do not want all servers to suddenly be reprocessed on a processing script
-  version change... this is not an issue but a design and is mentioned as it differs from
-  the normal behaviour. If you are batching grouos of servers to be processed they will
-  all eventually be precessed by the latest version and you can always manually do a 
-  full processing run if needed
+* reprocessing logic skip, when a single server is selected for processing and the
+  processing script version has changed all servers data will need to be re-processed
+  also (user is prompted) to ensure everything is processed with the latest version.
+  That is skipped if processing changed files as that is intended for daily batch so
+  prompts are not possible and avoids a batch job suddenly taking hours instead of minutes.
 * cron job checks - only cron jobs have security permissions checked, not anacron files
   or any queued 'at' jobs
 * cron job checks - stacked commands are able to be tested if seperated by ';' '&&' '|',
   the '||' syntax is not supported yet.
-* cron job checks - where a cron job uses a system command (echo, cd, php) rather than
+* cron job checks - checks on what commands are run in a cron job
+  where a cron job uses a system command (echo, cd, php) rather than
   a discrete script an alert will normally be raised as system commands are normally owned
   by root and not the owner of the cron job. A list of commands considered to be non-disruptive
   can be used to suppress alerts for things like 'echo', 'php', 'bash' etc. to allow those
   to be used without alerting; although commands such as 'ls', 'cd', 'find' etc. will
-  always alert as there is no way of determing what environment a stacked crontab command
+  always alert as there is no way of determing what directory a stacked crontab command
   line has obtained if it is using combinations of these. These are 'hard coded' in the
-  collection script (as custom files are used only by the processing script which runs on
-  a seperate server so cannot be used by the collection script). If you wish to alter the
-  defaults search in the collection script for CRON_CMD_IGNORE_LIST, CRON_CMD_SHELL_LIST,
-  CRON_CMD_FATAL_LIST strings and update those. Note: for files of this type not common
-  across all servers a custom file entry can be added to allow them to be OK if they
-  are owned by root (as all system utilities must be owned by root)
-* user checks - system defaults for max password length and expiry checks are
-  obtained from /etc/login.defs; An uncommented minlen value is also searched for in pwquality.conf
-  and any files in the pwquality.conf.d directory as PAM systems would use this in preference
-  on Fedora/CentOS/RHEL systems. _On Ubuntu servers comments in login.defs indicate minlen
-  is set in files in /etc/pam.d but as I can find no examples of this Ubuntu servers will
-  always raise an alert saying minlen is 0_ which as I don't use Ubuntu other than testing
-  this script so am unlikely to spend time resolving (Note: Debian10/Debian11 are correctly
-  using these files also, the issue is only with Ubuntu [which has become so different from Debian
-  it can no longer be considered as based on Debian)
-  Commented values would be ignored so ensure they are set. authconfig is depreciated on fedora in favor of authselect
-  and god knows what tools ubuntu use so as every system will have different management tools
-  cannot use those to query values so rely
-  on values set in the files _and ignore commented defaults_ as defaults change
-* Does not yet distinguish between an firewall inbound rule and an outbound rule. It WILL in a
+  collection script (as the collection script can check the files on the server it is
+  being run on [the processing script may be on a different server so cannot]).
+  If you wish to alter the defaults search in the collection script for the variables
+  CRON_CMD_IGNORE_LIST, CRON_CMD_SHELL_LIST, CRON_CMD_FATAL_LIST strings and update those.
+  Note: for files of this type not common across all servers a custom file entry can be added
+  for use by the processing script  to allow them to be OK if they are owned by root
+  (as all system utilities must be owned by root)
+* Does not yet distinguish between a firewall inbound rule and an outbound rule. It WILL in a
   future release as I need that but currently if you have an outbound rule for a port
   number and that port is also listening on the local server it treats it as expected
   when it should not do; likewise if no listening port is on the server for it it
   will raise an error expecting one. Temporarily the toolkit allows a 
   TCP|UDP_OUTBOUND_SUPPRESS parameter to suppress the later case but thats just a
   temporary workaround
-* server firewall rule checks - no attempt is made to follow firewall chains or determine zones,
+  No attempt is made to follow firewall chains or determine zones,
   any rule to open a port is considered an open port. This is needed to cleanly fix the above which
   is why fixing the above will take some time
 * server firewall rule checks - currently only handles iptables or netfilter (iptables and nft commands)
+  It does not yet (and may never) support IPF (ipfilter) firewall tables  
+  needed for the SunOS (openindiana) checks I have started implementing. For now to complicated,
+  especially if zones need to be taken into account, no free time.
+* suid file check has a SunOS/OpenIndiana specific issue, suid files are created at boot time
+  with names '/proc/NNN/a.out' (NNN being the pid that changes every reboot). This seems to
+  be sendmail that runs a process as root and another as smmsp (the later using a suid a.out of root)
+  on openindiana. So a TODO in a later release is to add extra processing for suid files under
+  /proc/NNN/a.out to check what program is running with pid NNN to see if it is a process allowed
+  to do that...  as a 'ps' list is in the capture file that is possible when I get time;
+  but for now they will always alert as unexpected file with suid set.
 
 Irritations caused by environments
 ==================================
 * servers running NetworkManager will have firewall ports opened that users may not expect,
-  _This is not an issue with this toolkit_ but
+  This is not an issue with this toolkit but
   with a lack of control over what NetworkManager decides to open; prior to version 0.12 any
   firewall accept rule for a port not in use alerted as an obsolete firewall rule, from
   0.12 onward a custom file rule can be used to identify and downgrade alerts to warnings for ports opened
@@ -102,5 +84,5 @@ Irritations caused by environments
   firewalld services changed from opening ports 631 on tcp and tcpv6 to opening on
   631 tcp and tcpv6 plus udp, but cups does not use the udp port so this toolkit
   will correctly raise an alert for a open firewall port that is not in use but you
-  are at the mercy of random changes like that (I have overrides for almost every
+  are at the mercy of random changes like that in ditributions (I have overrides for almost every
   firewalld service I use to prevent that now but it will affect all other users)

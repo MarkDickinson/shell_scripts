@@ -5,13 +5,24 @@ For changes made under the covers not visible to users refer to the change histo
 the bash script files, and for new parameters the documentation and example ALL.custom
 file provided.
 
-From 0.14 onward changes that can cause problems with a newer processing script
-version processing collected data files from prior versions will not be documented,
-it is recomended that when upgrading between versions you also perform captures
-with the new version. As each new release is produced more and more code used
-for backward compatability will be removed plus any new checks implemented will
-be permitted to alert if older capture files are used rather than add new coding
-for backward compatability. Simply always use the same versions.
+Backward compatibility is not guaranteed although most changes for adding additional
+data collection wil be ignored by older processing versions, and newer processing versions
+will cope with expected new information missing. Ideally you would keep the collector
+and processing script versions the same but still works if you do not.
+
+-------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.22 and version 0.23 are
+-------------------------------------------------------------------------------------
+(1) A bug fix in the collector script for the user .ssh dir check that was
+    getting the perms from the home directory instead of the .ssh one.
+    The bug fix needed the version bump and release.
+(2) Possible bug fix ?. In network checks 'program match' for allowed listeners
+    had stopped working, fixed that. Not sure if that ws an existing bug introduced
+    in an earlier change or a new one I introduced working on (3).
+    Noted as if it was in an earlier commit the fix is important.
+(3) Started implementing checks for SunOS (openindiana).
+    Not yet implemented for that are open firewall ports (the collection script
+    does not yet support ipfilter) and processes using UDP.
 
 -------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.21 and version 0.22 are

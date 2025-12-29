@@ -1,0 +1,13 @@
+#
+# Looking at the KIWIIRC server as an IRC server option as not all
+# prople have a command line or normal IRC server client and may
+# need to use a web interface for troubleshooting chats.
+# This would not normally be running.
+#
+# INCLUDE_CUSTOM_RULES=../custom_includes/docker_container_kiwiirc
+#
+TCP_PORTV4_ALLOWED=:9071:Docker proxy for kiwiirc
+TCP_PORTV6_ALLOWED=:9071:Docker proxy for kiwiirc
+TCP_OUTBOUND_SUPPRESS=:9080:Docker maps 9071 to kiwiirc container 9080
+NETWORK_PORT_NOLISTENER_TCPV4_OK=9071:docker proxy for kiwiirc normally stopped
+NETWORK_PORT_NOLISTENER_TCPV6_OK=9071:docker proxy for kiwiirc normally stopped

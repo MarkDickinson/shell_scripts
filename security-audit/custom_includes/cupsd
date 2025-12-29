@@ -2,5 +2,12 @@
 # Common rules for servers running CUPS to provide printing services
 # >>> Included File: ../custom_includes/cupsd
 #
+TCP_PORTV6_ALLOWED=:515:line printer (/sbin/init)
 TCP_PORTV4_ALLOWED=:631:cupsd
 TCP_PORTV6_ALLOWED=:631:cupsd
+UDP_PORTV4_ALLOWED=:631:cupsd
+# firewall rules are added even though udp does not seem to be used anywhere
+UDP_PORTV6_ALLOWED=:631:cupsd (ipp-client firewalld service)
+NETWORK_PORT_NOLISTENER_TCPV6_OK=515:line printer service
+NETWORK_PORT_NOLISTENER_UDPV6_OK=631:cupsd (ipp-client firewalld service)
+UDP_OUTBOUND_SUPPRESS=:631:cupsd

@@ -6,45 +6,39 @@
 # install httpd/apache on  a server or desktop install whether you want it or not
 # so they also need to be in the commaon Fedora33 file. It you actually start it
 # you will need the httpd file for the network port rules.
-ADD_SYSTEM_FILE_OWNER=apache
+# Likewise TSS is on most F33 servers
+ADD_SYSTEM_FILE_OWNER=apache tss
 ALLOW_OWNER_ROOT=www
 ALLOW_DIRPERM_SYSTEM=www
 #
 # Common network ports used by F33 in a default install
 TCP_PORTV4_ALLOWED=:22:ssh
-TCP_PORTV4_ALLOWED=:53:dnsmasq
-UDP_PORTV4_ALLOWED=:53:dnsmasq
-TCP_PORTV4_ALLOWED=:111:portmapper
-TCP_PORTV6_ALLOWED=:111:portmapper
-UDP_PORTV4_ALLOWED=:111:portmapper
-UDP_PORTV6_ALLOWED=:111:portmapper
-TCP_PORTV4_ALLOWED=:5355:systemd-resolved
-TCP_PORTV6_ALLOWED=:5355:systemd-resolved
-UDP_PORTV4_ALLOWED=:5355:systemd-resolved
-UDP_PORTV6_ALLOWED=:5355:systemd-resolved
+## I disable the systemd-resolved.service on all my servers as it
+## prevents use of local DNS server if using short (non fqdn) server names
+#TCP_PORTV4_ALLOWED=:5355:systemd-resolved
+#TCP_PORTV6_ALLOWED=:5355:systemd-resolved
+#UDP_PORTV4_ALLOWED=:5355:systemd-resolved
+#UDP_PORTV6_ALLOWED=:5355:systemd-resolved
+# Cockpit should always be running
 TCP_PORTV6_ALLOWED=:9090:Cockpit (service cockpit.socket)
-NETWORK_UDPV4_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
-NETWORK_UDPV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
+# something for tcpipv6 introduced around f32
 RAW_PORTV6_ALLOWED=:58:NetworkManager
 #
 # From F32 onward these are started by default by NetworkManager
+# Seemingly at random
 TCP_PORTV6_ALLOWED=:546:dhcpv6-client
 UDP_PORTV4_ALLOWED=:547:dhcpv6-server
+UDP_PORTV6_ALLOWED=:546:dhcpv6-client
+UDP_PORTV6_ALLOWED=:547:dhcpv6-client
 # However may be manually disabled by the admin by disabling ipv6 completely
 # so allow for them not being active.
 NETWORK_PORT_NOLISTENER_TCPV6_OK=546:dhcpv6-client
 NETWORK_PORT_NOLISTENER_UDPV4_OK=547:dhcpv6-server
-#
-TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
-UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
-TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
-UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
-# NetworkManager (systemd) opens this in the firewall on some of my servers,
-# hve not been able to figure out why and it is only on some servers ??
-UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:69:
+NETWORK_PORT_NOLISTENER_UDPV6_OK=546:dhcpv6-server
+NETWORK_PORT_NOLISTENER_UDPV6_OK=547:dhcpv6-server
 #
 # Additional users that can be considered system file owners
-ADD_SYSTEM_FILE_OWNER=rpcuser smmsp unbound logcheck chrony
+ADD_SYSTEM_FILE_OWNER=rpcuser smmsp unbound logcheck abrt
 #
 # Directory ownership overrides as required
 ALLOW_OWNER_ROOT=journal
@@ -147,8 +141,15 @@ SUID_ALLOW=/usr/sbin/mount.nfs
 SUID_ALLOW=/usr/sbin/unix_chkpwd
 SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1
 SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper
-SUID_ALLOW=/usr/sbin/mtr-packet
 SUID_ALLOW=/usr/sbin/grub2-set-bootflag
+# the below appeared after a F33 update on vmhost1
+SUID_ALLOW=/usr/bin/fusermount-glusterfs
+SUID_ALLOW=/usr/bin/fusermount
+SUID_ALLOW=/usr/libexec/spice-gtk-x86_64/spice-client-glib-usb-acl-helper
+SUID_ALLOW=/usr/libexec/Xorg.wrap
+SUID_ALLOW=/usr/libexec/qemu-bridge-helper
+SUID_ALLOW=/usr/sbin/lockdev
+SUID_ALLOW=/usr/libexec/abrt-action-install-debuginfo-to-abrt-cache
 #
 # Force explicit files as OK when checked, full path is needed
 # /etc/dumpdates is normally also writeable by group disk
@@ -172,6 +173,9 @@ HOMEDIR_MISSING_OK=tss:
 HOMEDIR_MISSING_OK=rpc:
 HOMEDIR_MISSING_OK=saslauth:
 HOMEDIR_MISSING_OK=rpc:
+HOMEDIR_MISSING_OK=pulse:
+HOMEDIR_MISSING_OK=pipewire:
+HOMEDIR_MISSING_OK=clevis:
 #
 # The below two entries (root and the group %wheel) are added by
 # default to /etc/sudoers when F33 is installed.

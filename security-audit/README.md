@@ -1,5 +1,7 @@
 # Linux Server Audit Toolkit
 
+No Guarantees that these are fit for purpose in your environment.
+
 These scripts Check for common security issues _on Linux Servers_ not normally checked on a regular
 basis by system administrators. It is designed for Fedora/CentOS/RHEL servers although with a few
 exceptions works perfectly well on Debian based servers like Ubuntu and Kali.
@@ -16,12 +18,17 @@ Be warned, the fisrt run against a server will most likely find hundreds of issu
 But it is possible to get them down to only a few warnings (there will probably always be warnings) and
 I even have a few servers with zero alerts now.
 
+Mostly useful after you have quietened down the initial noise is to see what annoying
+things package updates do to your servers, things like user cockpit-wsinstance becoming
+cockpit-ws, identifying new users that may have been created when new packages are 
+added (ok in this case by reporting a user is not in ftpusers), lets you know what new
+suid files have been created or expected ones deleted,
+firewall rules having a port open when nothing is listening or something unexpected
+listening on a port... and basically lots of stuff that will show up, after you
+have qietened down all the issues from a first run.
+
 These scripts are _slow_ to run and cpu intensive as they are bash shell scripts.
-While I did consider moving some of the processing functions to C utilities as these
-are a work in progress it is easier to tweak a shell script for new functionality
-or even minor tweaks; plus if you want to tweak the utility for your own use it
-would be easier for you in script. In future should some of the checks be considered as 
-static and never to be changed those portions may become C to speed things up a little.
+
 
 ## Table of contents
 * [Requirements](#requirements)
@@ -71,10 +78,14 @@ of users permitted to view the data files.
 Also access to view the output should be controlled as the report is
 designed to highlight issues that could be exploited.
 
-The collection scriot must run as the 'root' user in order to have access
+The collection script must run as the 'root' user in order to have access
 to obtain all the information it needs; as such ensure you have a trusted
 copy of the data collection script and review it to ensure you trust it
-before running it.
+before running it. You obviously _should never run untrusted scripts as root_
+so feel free to look at my really bad coding (getting worse as I try and insert
+more things into it) before running the collection script.
+
+The processing script should not run as root, it needs no special privs.
 
 ## Current checks performed
 * filesystem checks - checks the permissions of all 'system files' to ensure
@@ -127,7 +138,8 @@ before running it.
   all explicit port numbers used match ports expected to be open on the
   server as defined by the network checks, and also alert if firewall rules
   accept traffic to ports that are not in use on the server (to identify
-  obsolete server firewall rules)
+  obsolete server firewall rules). At this time ipfilter checks are not 
+  implemented (ie: will not do firewall checks for SunOS).
 * filesystem checks - reports on all orphaned files and directories (those
   not owned by an existing user). This report 'appendix J' is only
   produced if orphans were found
@@ -226,9 +238,8 @@ with a - range seperator.
 Complicated rules such as that are not handled in V0.17. Changes to handle some of that
 were implemented into V0.18 but it is still a work in progress.
 
-A future enhancement will also be to allow custom file rules to contain port ranges
-rather than specifying individual ports as some suppied firewalld rules open a range
-of ports for an application rather than a single port and it is a pain to have to
-code them all, which will be trival now due to the way I have implemented the
-include files :-).
+I have an OpenIndiana VM I fire up occasionally, so support for processing SunOS
+data collection is partially implemented fom version 0.23 and will be ongoing
+(as a low priotity when I get time).
 
+And anything else I think f as time goes by.

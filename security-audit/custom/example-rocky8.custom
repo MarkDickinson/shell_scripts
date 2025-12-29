@@ -1,0 +1,83 @@
+# Application groups
+INCLUDE_CUSTOM_RULES=../custom_includes/server_Rocky8
+INCLUDE_CUSTOM_RULES=../custom_includes/network-scripts
+INCLUDE_CUSTOM_RULES=../custom_includes/bacula_client
+INCLUDE_CUSTOM_RULES=../custom_includes/nrpe
+INCLUDE_CUSTOM_RULES=../custom_includes/puppet_agent
+INCLUDE_CUSTOM_RULES=../custom_includes/X11_server_clients
+INCLUDE_CUSTOM_RULES=../custom_includes/chronyd
+INCLUDE_CUSTOM_RULES=../custom_includes/sendmail
+INCLUDE_CUSTOM_RULES=../custom_includes/cupsd
+INCLUDE_CUSTOM_RULES=../custom_includes/ansible
+INCLUDE_CUSTOM_RULES=../custom_includes/docker_server
+#
+# Override deffaults from the custom files
+TCP_PORTV4_ALLOWED=:9090:Cockpit (service cockpit.socket)
+NETWORK_PORT_NOLISTENER_TCPV6_OK=9090:is bound to a V4 explicit address so nothing on tcpv6
+NETWORK_PORT_NOLISTENER_UDPV6_OK=631:cupsd does not use udp on this server
+UDP_PORTV4_ALLOWED=:67:dnsmasq used by vibr0
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
+#
+# Suppress alerts we do not want to see
+NOWARN_ON_MANUALLOGCHECK=YES
+NOWARN_ON_CUSTOMFILE=YES
+ALLOW_AUTHORISED_KEYS=yes
+#
+# Additional sudoers entries with ALL servers
+SUDOERS_ALLOW_ALL_COMMANDS=mark
+SUDOERS_ALLOW_ALL_SERVERS=mark
+#
+# I do not know why networkmanager opens this port
+UDP_PORTV4_ALLOWED=:68:opened by networkmanager
+#
+# Specific to this server
+NETWORK_PORT_NOLISTENER_TCPV4_OK=3306:mariadb-server only runs when I am testing
+#
+TCP_PORTV4_ALLOWED=:111:RPC portmap daemon (portmap)
+TCP_PORTV6_ALLOWED=:111:RPC portmap daemon (portmap)
+UDP_PORTV4_ALLOWED=:111:RPC portmap daemon (portmap)
+UDP_PORTV6_ALLOWED=:111:RPC portmap daemon (portmap)
+#
+# The below are server specific so cannot be used in ALL.custom,
+# needed for desktop machines so set for your environment
+NETWORK_UDPV4_PROCESS_ALLOW=avahi-daemon: running [example-rocky8.local]
+NETWORK_UDPV6_PROCESS_ALLOW=avahi-daemon: running [example-rocky8.local]
+#
+ADD_SYSTEM_FILE_OWNER=clamupdate
+ADD_SYSTEM_FILE_OWNER=snort
+ADD_SYSTEM_FILE_OWNER=gdm
+ADD_SYSTEM_FILE_OWNER=puppet
+#
+ALLOW_OWNER_ROOT=dovecot
+ALLOW_OWNER_ROOT=insights
+#
+# System directory perms
+# These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
+ALLOW_DIRPERM_SYSTEM=openvpn
+ALLOW_DIRPERM_SYSTEM=geoclue
+ALLOW_DIRPERM_SYSTEM=clamav
+ALLOW_DIRPERM_SYSTEM=qemu
+ALLOW_DIRPERM_SYSTEM=openvpn
+ALLOW_DIRPERM_SYSTEM=dovecot
+ALLOW_DIRPERM_SYSTEM=bacula
+ALLOW_DIRPERM_SYSTEM=rpcbind
+ALLOW_DIRPERM_SYSTEM=insights
+#
+FORCE_PERM_OK=/var/log/freshclam.log:-rw-rw-r--
+FORCE_OWNER_OK=/etc/fetchmailrc.example:mail
+ALLOW_DIRPERM_EXPLICIT=bacula drwxrwx---
+#
+HOMEDIR_MISSING_OK=gluster:
+HOMEDIR_MISSING_OK=gnome-initial-setup:
+HOMEDIR_MISSING_OK=puppet:
+#
+# clevis/tang is used for network disk unlocking
+/usr/libexec/clevis-luks-udisks2
+#
+# Additional suid files expected
+SUID_ALLOW=/usr/libexec/sssd/proxy_child
+SUID_ALLOW=/usr/libexec/sssd/krb5_child
+SUID_ALLOW=/usr/libexec/sssd/ldap_child
+SUID_ALLOW=/usr/libexec/sssd/selinux_child
+SUID_ALLOW=/usr/bin/vmware-user-suid-wrapper

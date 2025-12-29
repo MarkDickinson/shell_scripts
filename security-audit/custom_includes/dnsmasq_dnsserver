@@ -6,5 +6,12 @@ TCP_PORTV4_ALLOWED=:53:dnsmasq
 TCP_PORTV6_ALLOWED=:53:dnsmasq
 UDP_PORTV4_ALLOWED=:53:dnsmasq
 UDP_PORTV6_ALLOWED=:53:dnsmasq
-UDP_PORTV4_ALLOWED=:67:dnsmasq dhcp used by vibr0
-TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
+#
+# Below seem to be only rhel, not used on Debian11
+#UDP_PORTV4_ALLOWED=:67:dnsmasq dhcp used by vibr0
+#TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
+#
+# The below two are not needed if you have configured
+# dnsmasq to listen on an explicit ipv4 address
+#TCP_PORTV6_ALLOWED=:53:dnsmasq
+#UDP_PORTV6_ALLOWED=:53:dnsmasq

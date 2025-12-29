@@ -1,0 +1,54 @@
+# Customisation file specifically for jellyfin
+#
+INCLUDE_CUSTOM_RULES=../custom_includes/server_Debian12
+INCLUDE_CUSTOM_RULES=../custom_includes/X11_server_clients
+INCLUDE_CUSTOM_RULES=../custom_includes/bacula_client
+INCLUDE_CUSTOM_RULES=../custom_includes/nrpe_debian
+INCLUDE_CUSTOM_RULES=../custom_includes/ansible
+INCLUDE_CUSTOM_RULES=../custom_includes/chronyd_debian
+TCP_PORTV6_ALLOWED=:5666:NRPE
+#
+# 99% of my servers I install SELinux on, but it is not instaleld
+# by default for Debian.
+SELINUX_NOT_INSTALLED=YES
+#
+# --------------------------------------------------
+# Some overrides of the include files
+# --------------------------------------------------
+TCP_PORTV4_ALLOWED=:22:ssh:WILD
+TCP_PORTV6_ALLOWED=:22:ssh:WILD
+#
+TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
+NETWORK_PORT_NOLISTENER_UDPV4_OK=68:I may have wireless turned off
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:69:
+#
+# --------------------------------------------------
+# Server specic rules now
+# --------------------------------------------------
+HOMEDIR_MISSING_OK=www-data:
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwsr-x
+# I have NFS and SMB disks mounted to this so those
+# packages are installed on this server.
+SUID_ALLOW=/usr/sbin/mount.nfs
+SUID_ALLOW=/usr/sbin/exim4
+SUID_ALLOW=/usr/sbin/mount.cifs
+#
+TCP_PORTV6_ALLOWED=:546:NetworkManager
+NETWORK_PORT_NOLISTENER_TCPV6_OK=546:NetworkManager
+# No cockpit installed on thsi server
+NETWORK_PORT_NOLISTENER_TCPV4_OK=9090:Cockpit not on this server
+NETWORK_PORT_NOLISTENER_TCPV6_OK=9090:Cockpit not on this server
+#
+# Ok I install some of my stuff so I can edit it without needing root
+ADD_SYSTEM_FILE_OWNER=mark
+#
+# --------------------------------------------------------------
+# TO INVESTIGATE (maybe remove packages)
+# --------------------------------------------------------------
+# package xserver-xorg-legacy
+SUID_ALLOW=/usr/lib/xorg/Xorg.wrap
+# package evolution-data-server
+SUID_ALLOW=/usr/libexec/camel-lock-helper-1.2
+# package mailutils
+SUID_ALLOW=/usr/bin/dotlock.mailutils

@@ -1,16 +1,16 @@
 #
 # Common rules for servers using chrony rather than NTP for timesync
-# >>> Included File: ../custom_includes/chronyd
+# This is specific to debian (debian uses _chrony and not chrony as the userid)
+# >>> Included File: ../custom_includes/chronyd_debian
 #
 UDP_PORTV4_ALLOWED=:123:chronyd
 UDP_PORTV4_ALLOWED=:323:chronyd
 UDP_PORTV6_ALLOWED=:323:chronyd
-ADD_SYSTEM_FILE_OWNER=chrony
-ALLOW_DIRPERM_SYSTEM=chrony
+ADD_SYSTEM_FILE_OWNER=_chrony
+ALLOW_DIRPERM_SYSTEM=_chrony
 # For servers where I only open explicit ports for outbound traffic 
 # the below two lines stop alerting on the outbound firewal rules
 TCP_OUTBOUND_SUPPRESS=:123:Contact local network ntp servers
 UDP_OUTBOUND_SUPPRESS=:123:Contact local network ntp servers
 # On one (just one) of my Debian11 servers it does not listen on this port
 NETWORK_PORT_NOLISTENER_UDPV4_OK=123:chronyd
-

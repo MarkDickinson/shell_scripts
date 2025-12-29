@@ -1,0 +1,11 @@
+#
+# Common rules for servers running wazuh agent
+# >>> Included File: ../custom_includes/wazuh_agent
+#
+TCP_PORTV4_ALLOWED=:1414:wazuh_agent
+TCP_PORTV4_ALLOWED=:1415:wazuh_agent
+ALLOW_OWNER_ROOT=ossec
+ALLOW_DIRPERM_SYSTEM=ossec
+# Seems it only opens ports at poll intervals and does not keep them open
+NETWORK_PORT_NOLISTENER_TCPV4_OK=1414:wazuh-agent
+NETWORK_PORT_NOLISTENER_TCPV4_OK=1415:wazuh-agent

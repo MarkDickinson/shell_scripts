@@ -1,13 +1,11 @@
-# DEFAULT customisation file for server PUPPET
+# DEFAULT customisation file for Alma9
 #
-INCLUDE_CUSTOM_RULES=../custom_includes/server_CentOS8
-INCLUDE_CUSTOM_RULES=../custom_includes/network-scripts
+INCLUDE_CUSTOM_RULES=../custom_includes/server_Alma9
 INCLUDE_CUSTOM_RULES=../custom_includes/bacula_client
 INCLUDE_CUSTOM_RULES=../custom_includes/nrpe
 INCLUDE_CUSTOM_RULES=../custom_includes/sendmail
 INCLUDE_CUSTOM_RULES=../custom_includes/chronyd
-INCLUDE_CUSTOM_RULES=../custom_includes/puppet_agent
-INCLUDE_CUSTOM_RULES=../custom_includes/puppet_server
+INCLUDE_CUSTOM_RULES=../custom_includes/puppet_agent_rhel
 INCLUDE_CUSTOM_RULES=../custom_includes/ansible
 INCLUDE_CUSTOM_RULES=../custom_includes/sendmail
 #
@@ -19,12 +17,14 @@ INCLUDE_CUSTOM_RULES=../custom_includes/sendmail
 # of the default tcp v6 all interfaces definition in the
 # server_CentOS file we included.
 TCP_PORTV4_ALLOWED=:9090:Cockpit (service cockpit.socket)
-NETWORK_PORT_NOLISTENER_TCPV6_OK=9090:default on v6 will not be listening
+NETWORK_PORT_NOLISTENER_TCPV6_OK=9090:on puppet isbound to a V4 explicit address so nothing on tcpv6
+NETWORK_PORT_NOLISTENER_UDPV4_OK=53:not listening on puppet (CentOS8)
 #
 # Custom directory perms for this directory on this server
-ALLOW_DIRPERM_EXPLICIT=bacula drwxrwx---
+ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
+ALLOW_DIRPERM_SYSTEM=rpcbind
 #
 # ---------------------------------------------
 # Additional rules specific to this server
 # ---------------------------------------------
-ADD_SYSTEM_FILE_OWNER=snort
+SUID_ALLOW=/usr/sbin/fping

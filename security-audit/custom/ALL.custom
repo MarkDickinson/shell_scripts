@@ -1,28 +1,513 @@
-#
 # DEFAULT customisation file for all servers that do not have their
 # own personalised configuration file.
 #
-# For server checks you need to select one of the include files below.
+# This can be used as a starting point for a Fedora/CentOS/RHEL system
+# (A really old one anyway, this example is from Fedora32 ?)
 #
-# The below will handle most default installs of the selected Server OS
-# Select the appropriate OS for your server farm.
-#INCLUDE_CUSTOM_RULES=../custom_includes/server_Fedora32
-INCLUDE_CUSTOM_RULES=../custom_includes/server_Fedora33
-#INCLUDE_CUSTOM_RULES=../custom_includes/server_CentOS8
-#INCLUDE_CUSTOM_RULES=../custom_includes/server_Ubuntu20.04
+# IT DOES NOT USE INCLUDE FILES but tries to cover many of the
+# commant paramters that may be set.
 #
-# If you have the 'network-scripts' package installed on Fedora or CentOS8
-# use this include file as well.
-#INCLUDE_CUSTOM_RULES=../custom_includes/network-scripts
 #
-# -----------------------------------------------------------
-# When copied to a servername.custom file use the below also. 
-# -----------------------------------------------------------
-# On a Gnome Desktop server you will need the following...
-# ...however it is servername specific so you will need a custom file
-#    per desktop Gnome install, below example is for server phoenix.
+# Comments are any line beginning with a #, if a # is part of
+# any line not beginning with a # it is treated as part of the
+# data and not as a comment.
+#
+# You may override this on an individual server basis if
+# you create a file in this directory named 
+# <hostname>.custom (ie: falcon.custom). If a custom
+# file exists for a specific server it will be used
+# instead of this one.
+#
+# ===============================================================
+# Network check overrides
+# ===============================================================
+# By default all open ports are reported as critical until defined
+# in a server customisation file, as it is important you know
+# what network ports are expected to be open on your server(s).
+#
+# ------- Customising by known port number --------
+#
+# When defining ports in a customisation file the following
+# processing rules will occur
+# -- if the port is bound to specific addresses the port is
+#    considered OK
+# -- if the port is listening on all interfaces it is reported as 
+#    a warning and the server warning count incremented
+# -- if the optional :WILD parameter is used to indicate that
+#    you require the port to listen on all interfaces no counters
+#    are incremented but the report will display it in a different
+#    colour to indicate it is still considered insecure.
+#
+# Syntax: TCP_PORTV<type>_ALLOWED=:<port-num>:<description>[:WILD]
+#         UDP_PORTV<type>_ALLOWED=:<port-num>:<description>[:WILD]
+#         RAW_PORTV<type>_ALLOWED=:<port-num>:<description>[:WILD]
+#
+# Notes: The ":" around the port number is to make exact
+#        matching agaist the port number easier for the
+#        processing script.
+#        The optional :WILD means this port is expected to be bound 
+#        to wildcard interfaces 0.0.0.0 and ::: and overrides the
+#        default of reporting ports listening on all interfaces as
+#        insecure. ONLY set that for ports you know cannot be 
+#        configured to a specific interface or has a site reason 
+#        to listen on all interfaces.
+#
+# Common TCP ports on Fedora systems
+TCP_PORTV4_ALLOWED=:22:ssh:WILD
+TCP_PORTV4_ALLOWED=:25:sendmail
+TCP_PORTV4_ALLOWED=:111:portmapper
+TCP_PORTV4_ALLOWED=:5666:NRPE
+TCP_PORTV4_ALLOWED=:6010:X11 ssh forwarding
+TCP_PORTV4_ALLOWED=:9102:Bacula FD
+TCP_PORTV6_ALLOWED=:111:portmapper
+TCP_PORTV6_ALLOWED=:5666:NRPE
+TCP_PORTV6_ALLOWED=:6010:X11 ssh forwarding
+TCP_PORTV6_ALLOWED=:9090:Cockpit
+# If you are likely to have more than one ssh session using x11 forwarding
+# to a server allow for additional forwarding ports also (ie: if the server
+# will have up to six users allow an additional six ports).
+#TCP_PORTV4_ALLOWED=:6011:X11 ssh forwarding
+#TCP_PORTV4_ALLOWED=:6012:X11 ssh forwarding
+#TCP_PORTV4_ALLOWED=:6013:X11 ssh forwarding
+#TCP_PORTV4_ALLOWED=:6014:X11 ssh forwarding
+#TCP_PORTV4_ALLOWED=:6015:X11 ssh forwarding
+#TCP_PORTV6_ALLOWED=:6011:X11 ssh forwarding
+#TCP_PORTV6_ALLOWED=:6012:X11 ssh forwarding
+#TCP_PORTV6_ALLOWED=:6013:X11 ssh forwarding
+#TCP_PORTV6_ALLOWED=:6014:X11 ssh forwarding
+#TCP_PORTV6_ALLOWED=:6015:X11 ssh forwarding
+#NETWORK_PORT_NOLISTENER_TCPV4_OK=6011:
+#NETWORK_PORT_NOLISTENER_TCPV4_OK=6012:
+#NETWORK_PORT_NOLISTENER_TCPV4_OK=6013:
+#NETWORK_PORT_NOLISTENER_TCPV4_OK=6014:
+#NETWORK_PORT_NOLISTENER_TCPV4_OK=6015:
+#NETWORK_PORT_NOLISTENER_TCPV6_OK=6011:
+#NETWORK_PORT_NOLISTENER_TCPV6_OK=6012:
+#NETWORK_PORT_NOLISTENER_TCPV6_OK=6013:
+#NETWORK_PORT_NOLISTENER_TCPV6_OK=6014:
+#NETWORK_PORT_NOLISTENER_TCPV6_OK=6015:
+#
+# Common UDP ports on Fedora systems
+UDP_PORTV4_ALLOWED=:111:portmapper
+UDP_PORTV4_ALLOWED=:123:NTP
+UDP_PORTV6_ALLOWED=:111:portmapper
+UDP_PORTV6_ALLOWED=:123:NTP
+#
+# Common RAW ports on Fedora systems, if tcpipv6 is enabled on the server
+RAW_PORTV6_ALLOWED=:58:NetworkManager
+#
+# ------- Customising by known process name --------
+#
+# These parameters are for processes that use random ports,
+# such as rpcbind, where it is impossible to define them
+# as known ports using the parameters above.
+# The value must be an exact 'full' match
+# for the process details returned by 'ps'.
+# Note: CentOS7 runs the below as '/sbin/rpcbind -w' (no -f and from sbin)
+#
+# When defining a process as being permitted/expected to use
+# a port the following procesisng rules occur
+# -- if the port is bound to specfic ip-addresses no
+#    alert/warning counters are incremented, but the report
+#    will display it in a different colour to indicate it
+#    is insecure (as a process could match on multiple ports)
+# -- if the port listens on all interfaces instead of a
+#    critical alert a warning alert will be raised and the
+#    warning counters incremented.
+#    There is no facility such as the :WILD parameter in
+#    the above section available here as having to
+#    match by process must always be considered insecure.
+#
+# Syntax: NETWORK_TCPV4_PROCESS_ALLOW=/the/full/programname and parms
+#         NETWORK_TCPV6_PROCESS_ALLOW=/the/full/programname and parms
+#         NETWORK_UDPV4_PROCESS_ALLOW=/the/full/programname and parms
+#         NETWORK_UDPV6_PROCESS_ALLOW=/the/full/programname and parms
+#         NETWORK_RAWV4_PROCESS_ALLOW=/the/full/programname and parms
+#         NETWORK_RAWV6_PROCESS_ALLOW=/the/full/programname and parms
+#
+# Common values required for Fedora systems
+NETWORK_UDPV4_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
+NETWORK_UDPV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
+# The below are server specific so cannot be used in ALL.custom,
+# needed for desktop machines so set for your environment
 #NETWORK_UDPV4_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]
 #NETWORK_UDPV6_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]
 #
-# Include additional application rules as needed
-# Include additional coded rules as needed
+# ------- Customising for ports expected to be open, that may not be --------
+#
+# If there is a firewall rule for the port, or it is configured in the custom
+# file as being permitted to be open, but nothing has the port open there
+# would normally be an alert.
+#
+# There will be occasions when you expect a port not to be listening,
+# for example X11 forwarding session ports are only in use when a user is
+# actually running remote X sessions. Ports that need to be opened in
+# the firewall but will seldom be in use.
+# These options prevent those ports alerting as obsolete (not being used)
+# firewall rules and obsolete cuestom file entries.
+#
+# Syntax: NETWORK_PORT_NOLISTENER_TCPV4_OK=portnum:optional comment 
+#         NETWORK_PORT_NOLISTENER_TCPV6_OK=portnum:optional comment 
+#         NETWORK_PORT_NOLISTENER_UDPV4_OK=portnum:optional comment
+#         NETWORK_PORT_NOLISTENER_UDPV6_OK=portnum:optional comment 
+#         NETWORK_PORT_NOLISTENER_RAWV4_OK=portnum:optional comment 
+#         NETWORK_PORT_NOLISTENER_RAWV6_OK=portnum:optional comment 
+# The trailing : is required to permit explicit port matching.
+#
+# A desription/comment can be used after the : to comment for this file however
+# the processing script will ignore the comment  and use the decsription from the
+# xxx_PORTVx_ALLOWED custom file entry, as if we fall through the checks to reach
+# the nolistener_ok checks we have already determined a port_allowed entry existed.
+#
+NETWORK_PORT_NOLISTENER_TCPV4_OK=6010:any description that will be ignored by processing
+#
+# Fedora32 - be default opens firewall ports for below if service dhcpv6-client
+#            is enabled (the default) in firewalld. Can be closed with
+#            'firewall-cmd --remove dhcpv6-client && firewall-cmd --remove dhcpv6-client --permanant'
+#            if you don't need them (which you probably do not)
+TCP_PORTV6_ALLOWED=:546:dhcpv6-client
+UDP_PORTV4_ALLOWED=:547:dhcpv6-server
+NETWORK_PORT_NOLISTENER_TCPV6_OK=546:dhcpv6-client
+NETWORK_PORT_NOLISTENER_UDPV4_OK=547:dhcpv6-server
+#
+# Ports that get opened in the firewall on Fedora systems
+# (seen on servers with NetworkManager enabled and iptables used instead of firewalld, plus
+# on servers with NetworkManager disabled and Firewalld running); basically I cannot
+# figure out what opens these ports in the firewall to stop them doing so)
+# these entries downgrade the alert to a warning and add a comment to the warning
+# identifying them as probably networkmanager or firewalld generated rather than
+# ports configurable by a system admin.
+TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
+TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:69:
+#
+#
+# ===============================================================
+# Filesystem check check overrides
+# Section E.1 System file security
+# ===============================================================
+#
+# ---------------------------------------------------------------
+# Additional users that can be considered system file owners for
+# Fedora systems. These are additional users that are permitted
+# to be owners of what are considered 'system' files.
+# ---------------------------------------------------------------
+ADD_SYSTEM_FILE_OWNER=setroubleshoot
+ADD_SYSTEM_FILE_OWNER=chrony
+ADD_SYSTEM_FILE_OWNER=pcpqa
+ADD_SYSTEM_FILE_OWNER=pcp
+ADD_SYSTEM_FILE_OWNER=sssd
+ADD_SYSTEM_FILE_OWNER=pesign
+ADD_SYSTEM_FILE_OWNER=unbound
+ADD_SYSTEM_FILE_OWNER=setroubleshoot
+#
+# These are examples for optional products you may install
+#ADD_SYSTEM_FILE_OWNER=apache
+#ADD_SYSTEM_FILE_OWNER=mysql
+#ADD_SYSTEM_FILE_OWNER=puppet
+#ADD_SYSTEM_FILE_OWNER=bacula
+#ADD_SYSTEM_FILE_OWNER=clamupdate
+#ADD_SYSTEM_FILE_OWNER=pcp
+#ADD_SYSTEM_FILE_OWNER=jetty
+#ADD_SYSTEM_FILE_OWNER=logcheck
+#ADD_SYSTEM_FILE_OWNER=snort
+#
+# Uncomment as needed for openstack hosts
+#   compute nodes
+#ADD_SYSTEM_FILE_OWNER=openvswitch
+#ADD_SYSTEM_FILE_OWNER=ceilometer
+#ADD_SYSTEM_FILE_OWNER=nova
+#ADD_SYSTEM_FILE_OWNER=neutron
+#   additional for control/network nodes
+#ADD_SYSTEM_FILE_OWNER=keystone
+#ADD_SYSTEM_FILE_OWNER=redis
+#ADD_SYSTEM_FILE_OWNER=swift
+#ADD_SYSTEM_FILE_OWNER=aodh
+#ADD_SYSTEM_FILE_OWNER=heat
+#ADD_SYSTEM_FILE_OWNER=cinder
+#ADD_SYSTEM_FILE_OWNER=rabbitmq
+#ADD_SYSTEM_FILE_OWNER=gnocchi
+#ADD_SYSTEM_FILE_OWNER=glance
+#ADD_SYSTEM_FILE_OWNER=magnum
+#
+# ---------------------------------------------------------------
+# Overrides affecting home directory checks
+# ---------------------------------------------------------------
+# Home Directory ownership overrides as required. Used in the
+# case where many system users have home directories that are
+# system directories that need to be owned by root and not the
+# userid that has it defined as their home directory.
+ALLOW_OWNER_ROOT=bin
+ALLOW_OWNER_ROOT=sbin
+ALLOW_OWNER_ROOT=daemon
+ALLOW_OWNER_ROOT=lpd
+ALLOW_OWNER_ROOT=sync
+ALLOW_OWNER_ROOT=shutdown
+ALLOW_OWNER_ROOT=halt
+ALLOW_OWNER_ROOT=rpm
+ALLOW_OWNER_ROOT=nfs
+ALLOW_OWNER_ROOT=postfix
+ALLOW_OWNER_ROOT=mail
+ALLOW_OWNER_ROOT=mqueue
+ALLOW_OWNER_ROOT=smmsp
+ALLOW_OWNER_ROOT=sshd
+ALLOW_OWNER_ROOT=dev
+ALLOW_OWNER_ROOT=fs
+ALLOW_OWNER_ROOT=gdm
+ALLOW_OWNER_ROOT=adm
+ALLOW_OWNER_ROOT=httpd
+ALLOW_OWNER_ROOT=dnsmasq
+ALLOW_OWNER_ROOT=pcp
+ALLOW_OWNER_ROOT=root
+ALLOW_OWNER_ROOT=usage
+ALLOW_OWNER_ROOT=unbound
+ALLOW_OWNER_ROOT=ntp
+# home dir of multiple users (ie:rtkit)
+ALLOW_OWNER_ROOT=proc
+#
+# Directory permission overrides for home directories that can
+# be considered to be shared system directories
+# These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
+ALLOW_DIRPERM_SYSTEM=bin
+ALLOW_DIRPERM_SYSTEM=sbin
+ALLOW_DIRPERM_SYSTEM=adm
+ALLOW_DIRPERM_SYSTEM=lpd
+ALLOW_DIRPERM_SYSTEM=backuppc
+ALLOW_DIRPERM_SYSTEM=sshd
+ALLOW_DIRPERM_SYSTEM=mysql
+ALLOW_DIRPERM_SYSTEM=rpcuser
+ALLOW_DIRPERM_SYSTEM=nfsnobody
+ALLOW_DIRPERM_SYSTEM=usage
+ALLOW_DIRPERM_SYSTEM=ntp
+ALLOW_DIRPERM_SYSTEM=dnsmasq
+ALLOW_DIRPERM_SYSTEM=unbound
+ALLOW_DIRPERM_SYSTEM=httpd
+ALLOW_DIRPERM_SYSTEM=postfix
+ALLOW_DIRPERM_SYSTEM=nagios
+ALLOW_DIRPERM_SYSTEM=puppet
+ALLOW_DIRPERM_SYSTEM=colord
+ALLOW_DIRPERM_SYSTEM=root
+#
+# If home directories fail all checks a test for an allowed
+# override for expected OK perms can be provided here
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwxr-x
+ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T
+ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
+#
+# The below two are probably Fedora specific, some system userids
+# are defined with the home directories below, which are actually
+# symbolic links so will always fail checks.
+# (home directories that are links may be handled in version 0.07)
+ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
+#
+# The below are examples of suppressing warning alerts for users
+# that have home directories defined that simply do not exist, for
+# example the cockpit* users have /nonexisting
+# these are required for Fedora32
+HOMEDIR_MISSING_OK=cockpit-ws:
+HOMEDIR_MISSING_OK=cockpit-wsinstance:
+HOMEDIR_MISSING_OK=tss:
+HOMEDIR_MISSING_OK=rpc:
+HOMEDIR_MISSING_OK=pulse:
+HOMEDIR_MISSING_OK=saslauth:
+HOMEDIR_MISSING_OK=pipewire:
+HOMEDIR_MISSING_OK=gnome-initial-setup:
+HOMEDIR_MISSING_OK=clevis:
+HOMEDIR_MISSING_OK=sphinx:
+HOMEDIR_MISSING_OK=vboxadd:
+# You can add additional here
+#
+# ---------------------------------------------------------------
+# Overrides for individual files that are expected to be
+# secured more loosely that default checks allow.
+# These overrides are only tested if all other checks have
+# already been processed and an alert condition still exists.
+# Syntax: FORCE_PERM_OK=/path/and/file:exactperm
+# ---------------------------------------------------------------
+# Force explicit files as OK when checked, full path is needed
+# for example /etc/dumpdates is normally also writeable by group disk
+# so would always be group writeable by other than the file owner
+# so raise an alert if not overridden
+FORCE_PERM_OK=/etc/dumpdates:-rw-rw-r--
+FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
+FORCE_PERM_OK=/var/log/lastlog:-rw-rw-r--
+FORCE_PERM_OK=/var/log/btmp:-rw-rw----
+#
+# Allow a file of this name to be forced OK under any directory if
+# it fails initial default checks.
+# A risk, but Fedora now generates lots of dynamic PCI bus entries
+# under the /sys/devices/pciNNNN:NN path as --w--w----. we do not
+# want them generating false alerts.
+# Risk is minimised be specifying the only permitted value.
+# Syntax: FORCE_ANYFILE_OK=file exactperm
+FORCE_ANYFILE_OK=remove --w--w----
+FORCE_ANYFILE_OK=rescan --w--w----
+#
+# Only warn for /var file security failures, cuts out a lot
+# of alerts as a lot of stuff in /var is owned by many different
+# userids.
+ALLOW_SLOPPY_VAR=WARN
+#
+# Consider it OK if a file under /var is group writeable but the 
+# group also matches the userid owning the file
+ALLOW_VAR_FILE_GROUPWRITE=YES
+#
+# ===============================================================
+# Filesystem check check overrides
+# Section E.2 Permitted SUID files
+# ===============================================================
+# ---------------------------------------------------------------
+# SUID files expected on Fedora 32 server
+# ---------------------------------------------------------------
+SUID_ALLOW=/usr/sbin/sendmail.sendmail
+SUID_ALLOW=/usr/sbin/userhelper
+SUID_ALLOW=/usr/bin/lockfile
+SUID_ALLOW=/usr/bin/sudo
+SUID_ALLOW=/usr/bin/crontab
+SUID_ALLOW=/usr/bin/gpasswd
+SUID_ALLOW=/usr/bin/at
+SUID_ALLOW=/usr/bin/locate
+SUID_ALLOW=/usr/bin/newgrp
+SUID_ALLOW=/usr/bin/screen
+SUID_ALLOW=/usr/bin/chage
+SUID_ALLOW=/usr/bin/write
+SUID_ALLOW=/usr/bin/passwd
+SUID_ALLOW=/usr/libexec/openssh/ssh-keysign
+SUID_ALLOW=/usr/libexec/utempter/utempter
+SUID_ALLOW=/usr/libexec/cockpit-session
+SUID_ALLOW=/usr/bin/mount
+SUID_ALLOW=/usr/bin/su
+SUID_ALLOW=/usr/bin/umount
+SUID_ALLOW=/usr/bin/pkexec
+SUID_ALLOW=/usr/sbin/pam_timestamp_check
+SUID_ALLOW=/usr/sbin/mount.nfs
+SUID_ALLOW=/usr/sbin/unix_chkpwd
+SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1
+SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper
+SUID_ALLOW=/usr/sbin/usernetctl
+SUID_ALLOW=/usr/sbin/mtr-packet
+SUID_ALLOW=/usr/sbin/grub2-set-bootflag
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_dhcp
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_icmp
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_ide_smart
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
+SUID_ALLOW=/usr/lib64/mariadb/plugin/auth_pam_tool_dir/auth_pam_tool
+# ---------------------------------------------------------------
+# SUID files expected on a CentOS8 server
+# ---------------------------------------------------------------
+#SUID_ALLOW=/usr/sbin/sendmail.sendmail
+#SUID_ALLOW=/usr/bin/lockfile
+#SUID_ALLOW=/usr/bin/sudo
+#SUID_ALLOW=/usr/bin/crontab
+#SUID_ALLOW=/usr/bin/gpasswd
+#SUID_ALLOW=/usr/bin/at
+#SUID_ALLOW=/usr/bin/locate
+#SUID_ALLOW=/usr/bin/newgrp
+#SUID_ALLOW=/usr/bin/screen
+#SUID_ALLOW=/usr/bin/chsh
+#SUID_ALLOW=/usr/bin/chage
+#SUID_ALLOW=/usr/bin/chfn
+#SUID_ALLOW=/usr/bin/write
+#SUID_ALLOW=/usr/bin/passwd
+#SUID_ALLOW=/usr/libexec/openssh/ssh-keysign
+#SUID_ALLOW=/usr/libexec/utempter/utempter
+#SUID_ALLOW=/usr/bin/mount
+#SUID_ALLOW=/usr/bin/su
+#SUID_ALLOW=/usr/bin/umount
+#SUID_ALLOW=/usr/sbin/mount.nfs
+#SUID_ALLOW=/usr/sbin/pam_timestamp_check
+#SUID_ALLOW=/usr/sbin/unix_chkpwd
+#SUID_ALLOW=/usr/bin/pkexec
+#SUID_ALLOW=/usr/bin/staprun
+#SUID_ALLOW=/usr/bin/fusermount
+#SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1
+#SUID_ALLOW=/usr/libexec/cockpit-session
+#SUID_ALLOW=/usr/libexec/abrt-action-install-debuginfo-to-abrt-cache
+#SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper
+#SUID_ALLOW=/usr/sbin/postqueue
+#SUID_ALLOW=/usr/sbin/postdrop
+#SUID_ALLOW=/usr/libexec/qemu-bridge-helper
+#SUID_ALLOW=/usr/libexec/sssd/proxy_child
+#SUID_ALLOW=/usr/libexec/sssd/ldap_child
+#SUID_ALLOW=/usr/libexec/sssd/krb5_child
+#SUID_ALLOW=/usr/libexec/sssd/selinux_child
+#SUID_ALLOW=/usr/sbin/grub2-set-bootflag
+#SUID_ALLOW=/usr/sbin/userhelper
+# ---------------------------------------------------------------
+# SUID files for nagios-plugins-all package
+# ---------------------------------------------------------------
+#SUID_ALLOW=/usr/lib64/nagios/plugins/check_dhcp
+#SUID_ALLOW=/usr/lib64/nagios/plugins/check_icmp
+#SUID_ALLOW=/usr/lib64/nagios/plugins/check_ide_smart
+#SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
+#
+# ===============================================================
+# Overrides for commands being run from crontab (added in 0.14)
+# ===============================================================
+# Appendix D.2 overrides
+# if a user crontab run a system command owned by root (that is not in
+# the collectors 'expected' list of things like echo) it would normally
+# alert as not being owned by the correct user.
+# From 0.14 onward this parameter can be used to indicate that root
+# owning the file is OK.
+# As you can see it can be multiple entries, of a space seperated list
+# or individual filenames. They will be merged.
+#CRONTAB_CMD_OWNER_ROOT_ALLOWED=/bin/keystone-manage /bin/nova-manage
+#CRONTAB_CMD_OWNER_ROOT_ALLOWED=/bin/cinder-manage
+#
+# ===============================================================
+# Special alert suppression parameters
+# ===============================================================
+# Do not raise a warning to remind manual log retention checks
+# are needed. Default NO
+NOWARN_ON_MANUALLOGCHECK=YES
+# Do not raise a warning when a customisation file is used for a
+# server. Default NO
+NOWARN_ON_CUSTOMFILE=YES
+# The number of days old the data capture file for this server can
+# be before the main report index shows a highlighted error that
+# the server report is out of date. Default 14
+REFRESH_INTERVAL_EXPECTED=14
+#
+#
+# Below two added as ansible required the sftp service available
+# Only Needed for ansible managed servers that need sftp
+#    Downgrade to warning is sftp is used on the server
+#SSHD_SUBSYSTEM_ALLOW=sftp:/usr/libexec/openssh/sftp-server:
+#    Downgrade to OK is server is ansible managed
+#SERVER_IS_ANSIBLE_NODE=yes
+#
+# Below two example parameters added in 0.14
+# There can be a EXACT_ALERT_REASON line for each expected
+# alert explaining what the expected alert is. If there are
+# N EXACT_ALERT_REASON lines and the total number of alerts
+# for a server is also N the main index weill display the alert
+# count in green instead of red, and provide a link to a page
+# listing the exact alerts expected so they can be checked
+# for validity.
+# From 0.15 the reason must exactly match alert text written for the alert
+# -- Examples
+#      Cannot determine minlen on debian based servers
+#EXACT_ALERT_REASON=Default minimum password length < 6, it is 0 in login.defs and 0 in pwquality.conf
+#      PermitRootLogin as yes or commented out
+#EXACT_ALERT_REASON=There is no explicit 'PermitRootLogin no' statement in /etc/ssh/sshd_config
+#
+# Do not raise warnings if users have authorized_keys files,
+# the reposrt listing them will still be produced but no warning counters bumped
+ALLOW_AUTHORISED_KEYS=yes
+#
+# Downgrade the default ntries for ALL servers and ALL commands created on RHEL systems by default
+# from alerts to warnings
+# (note: anything sudoers line granting all commands can never go below warning)
+# The two lines added on any RHEL install are as below, you should really change them
+# to limit commands to the servername and restrict the commands that can be used.
+#     root	ALL=(ALL) 	ALL
+#     %wheel	ALL=(ALL)	ALL
+# Overrides for sudoers checks
+SUDOERS_ALLOW_ALL_SERVERS=root
+SUDOERS_ALLOW_ALL_COMMANDS=root
+SUDOERS_ALLOW_ALL_SERVERS=%wheel
+SUDOERS_ALLOW_ALL_COMMANDS=%wheel

@@ -9,3 +9,5 @@ TCP_PORTV4_ALLOWED=:10081:motion
 # I do not always have it running (windy days and a tree fill up the filesystem)
 NETWORK_PORT_NOLISTENER_TCPV4_OK=10080:
 NETWORK_PORT_NOLISTENER_TCPV4_OK=10081:
+#
+ALLOW_DIRPERM_EXPLICIT=motion drwxr-s---

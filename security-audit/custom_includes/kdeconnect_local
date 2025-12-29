@@ -1,0 +1,13 @@
+#
+# Common rules for desktops running KDECONNECT to provide android phone interface
+# >>> Included File: ../custom_includes/kdeconnect_custom
+#
+# I have created a local /etc/firewalld/services/kdeconnect that
+# only opens ports 1714-1715
+# The default range of 1714-1764 in /usr/lib/firewalld/services/kdeconnect.xml is not opened
+#
+# It always uses 1716
+UDP_PORTV6_ALLOWED=:1716:kdeconnect
+TCP_PORTV6_ALLOWED=:1716:kdeconnect
+#
+# And it only opens the ports when active

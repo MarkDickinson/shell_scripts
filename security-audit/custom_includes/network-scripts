@@ -1,5 +1,6 @@
 #
 # Customisations needed if the network-scripts package is installed
+# NOTE: Removed from RHEL9+ and should be moving everything to NetworkManager
 # >>> Included File: ../custom_includes/network-scripts
 #
 SUID_ALLOW=/usr/sbin/usernetctl

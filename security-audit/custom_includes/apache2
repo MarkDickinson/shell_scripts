@@ -1,0 +1,24 @@
+#
+# Common definitions for running a apache2 server [For Debian Servers]
+# >>> Included File: ../custom_includes/apache2
+#
+ADD_SYSTEM_FILE_OWNER=www-data
+ALLOW_OWNER_ROOT=www-data
+ALLOW_DIRPERM_SYSTEM=www-data
+TCP_PORTV6_ALLOWED=:80:http server ipv6:WILD
+TCP_PORTV6_ALLOWED=:443:http server ssl port ipv6:WILD
+TCP_PORTV6_ALLOWED=:8443:apache nss port
+NETWORK_PORT_NOLISTENER_TCPV6_OK=80:http server ipv4
+NETWORK_PORT_NOLISTENER_TCPV6_OK=443:http server ipv4
+# I have disabled ipv6 on vosprey5, but it is still available on other servers
+# So this is for vosprey5 (and anywhere else I disable ipV6
+# The default if ipv6 is available is to only use that
+TCP_PORTV4_ALLOWED=:80:http server:WILD
+TCP_PORTV4_ALLOWED=:443:http server ssl port:WILD
+TCP_PORTV4_ALLOWED=:8443:apache nss port
+NETWORK_PORT_NOLISTENER_TCPV4_OK=80:http server ipv4
+NETWORK_PORT_NOLISTENER_TCPV4_OK=443:http server ipv4
+#
+# Depending on what your webserver is doing the following may not be in use
+NETWORK_PORT_NOLISTENER_TCPV4_OK=8443:apache nss port
+NETWORK_PORT_NOLISTENER_TCPV6_OK=8443:apache nss port

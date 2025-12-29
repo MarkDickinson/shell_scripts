@@ -2,8 +2,23 @@
 # Common rules for servers running the docker-ce toolkit
 # >>> Included File: ../custom_includes/docker_server
 #
+# These rules suppress alerts for files in the docker overlay
+# directories; that in many cases will be owned by users that
+# do not exist on the system. Also suppress alerts for suid
+# files in docker overlays.
+#
 ALLOW_OWNER_ROOT=dockerroot
 ALLOW_DIRPERM_EXPLICIT=dockerroot drwx--x--x
 SUID_SUPPRESS_DOCKER_OVERLAYS=yes
 DOCKER_ORPHANS_SUPPRESS=YES
-
+#
+# The below are server specific, one process is started for ever docker
+# container port mapped to the host, so is different for every server.
+# So copy/paste the ones you need to the individual server custom files.
+#NETWORK_TCPV4_PROCESS_ALLOW=/usr/bin/docker-proxy -proto tcp -host-ip 127.0.0.1 -host-port 49158 -container-ip
+#NETWORK_TCPV4_PROCESS_ALLOW=/usr/bin/docker-proxy -proto tcp -host-ip 127.0.0.1 -host-port 49159 -container-ip
+#NETWORK_TCPV4_PROCESS_ALLOW=/usr/bin/docker-proxy -proto tcp -host-ip 127.0.0.1 -host-port 49160 -container-ip
+#NETWORK_TCPV4_PROCESS_ALLOW=/usr/bin/docker-proxy -proto tcp -host-ip 127.0.0.1 -host-port 49161 -container-ip
+#NETWORK_TCPV4_PROCESS_ALLOW=/usr/bin/docker-proxy -proto tcp -host-ip 127.0.0.1 -host-port 49162 -container-ip
+#NETWORK_TCPV4_PROCESS_ALLOW=/usr/bin/docker-proxy -proto tcp -host-ip 127.0.0.1 -host-port 49163 -container-ip
+#NETWORK_TCPV4_PROCESS_ALLOW=/usr/bin/docker-proxy -proto tcp -host-ip 127.0.0.1 -host-port 49164 -container-ip

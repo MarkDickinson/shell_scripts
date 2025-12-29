@@ -1,0 +1,8 @@
+#
+# Common rules for clam AV being installed
+# >>> Included File: ../custom_includes/clamav_debian
+#
+#   Packages: clamav
+#
+ADD_SYSTEM_FILE_OWNER=clamav
+ALLOW_DIRPERM_SYSTEM=clamav

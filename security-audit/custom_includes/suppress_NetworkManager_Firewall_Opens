@@ -1,0 +1,20 @@
+#
+# This include file suppresses firewall alerts cause by NetworkManager
+# opening ports 67, 68 and 69 in the firewall.
+# I have not been able to find out why.
+# On some servers where I use DNS a couple of those are OK, but 
+# thay are randomly (as far as I can tell) on servers as servers with 
+# identical packages, services and even moving KVMs between servers
+# to ensure servers are running exactly the same software... have
+# different ports opened in the firewall in this range.
+#
+# But one day I will find out why.
+#
+# >>> Included File: ../custom_includes/suppress_NetworkManager_Firewall_Opens
+#
+TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:67:
+TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:68:
+TCP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:69:
+UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:69:

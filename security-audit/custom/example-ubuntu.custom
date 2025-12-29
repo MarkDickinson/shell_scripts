@@ -1,5 +1,5 @@
 #
-# Customisation file fir server ubuntu-test
+# Customisation file for  test ubuntu server
 #
 # This is a Generic customisation file for an Ubuntu 10.04 server
 # No additional packages have been installed.
@@ -26,7 +26,6 @@ EXACT_ALERT_REASON=This server appears to be not running a firewall
 EXACT_ALERT_REASON=SELinux is not installed on this server
 EXACT_ALERT_REASON=Default minimum password length < 6, it is 0 in login.defs and 0 in pwquality.con
 EXACT_ALERT_REASON=Unsafe SNAP packages are installed
-EXACT_ALERT_REASON=root has an authorized_keys file
 #
 # The below text is inserted as is (without the parameter keyword prefix) into the expected
 # alerts documentation file if any EXACT_ALERT_REASON= parameters were used. This is just to

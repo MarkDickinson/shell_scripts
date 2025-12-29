@@ -11,4 +11,8 @@ NETWORK_PORT_NOLISTENER_TCPV6_OK=17603:Only active when user logged on
 # The lansync port 17500 may be in use (on by default in dropbox)
 # It can be disabled with 'dropbox lansync off'; I have it off
 # TCP_PORTV4_ALLOWED=:17500:Dropbox lansync
+# UDP_PORTV4_ALLOWED=:17500:Dropbox lansync
+# TCP_PORTV6_ALLOWED=:17500:Dropbox lansync
+# NETWORK_PORT_NOLISTENER_TCPV4_OK=17500:Only active when user logged on
+# NETWORK_PORT_NOLISTENER_UDPV4_OK=17500:Only active when user logged on
 # NETWORK_PORT_NOLISTENER_TCPV6_OK=17500:Only active when user logged on

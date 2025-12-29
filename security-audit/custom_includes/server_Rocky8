@@ -1,6 +1,6 @@
 #
-# These are the common definitions for a CentOS8 server
-# >>> Include File: ../custom_includes/server_CentOS8
+# These are the common definitions for a Rocky server based on RHEL8
+# >>> Include File: ../custom_includes/server_Rocky8
 #
 TCP_PORTV4_ALLOWED=:22:ssh
 TCP_PORTV4_ALLOWED=:111:systemd portmapper
@@ -22,9 +22,12 @@ NETWORK_PORT_NOLISTENER_TCPV6_OK=111:portmapper
 NETWORK_PORT_NOLISTENER_UDPV4_OK=111:portmapper
 NETWORK_PORT_NOLISTENER_UDPV6_OK=111:portmapper
 #
+#NETWORK_TCPV4_PROCESS_ALLOW=/usr/sbin/rpc.statd
+#NETWORK_TCPV4_PROCESS_ALLOW=/usr/sbin/rpc.mountd
+#
 # Directory ownership overrides as required
 ADD_SYSTEM_FILE_OWNER=chrony
-ADD_SYSTEM_FILE_OWNER=sssd unbound setroubleshoot postfix 
+ADD_SYSTEM_FILE_OWNER=sssd unbound setroubleshoot pesign
 #
 ALLOW_OWNER_ROOT=bin
 ALLOW_OWNER_ROOT=sbin
@@ -49,6 +52,8 @@ ALLOW_OWNER_ROOT=pcp
 ALLOW_OWNER_ROOT=root
 ALLOW_OWNER_ROOT=ftp
 ALLOW_OWNER_ROOT=unbound
+ALLOW_OWNER_ROOT=games
+ALLOW_OWNER_ROOT=proc
 #
 # Directory permission overrides for shared system directories
 # These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
@@ -56,7 +61,6 @@ ALLOW_DIRPERM_SYSTEM=bin
 ALLOW_DIRPERM_SYSTEM=sbin
 ALLOW_DIRPERM_SYSTEM=adm
 ALLOW_DIRPERM_SYSTEM=lpd
-ALLOW_DIRPERM_SYSTEM=backuppc
 ALLOW_DIRPERM_SYSTEM=sshd
 ALLOW_DIRPERM_SYSTEM=mysql
 ALLOW_DIRPERM_SYSTEM=rpcuser
@@ -69,6 +73,9 @@ ALLOW_DIRPERM_SYSTEM=postfix
 ALLOW_DIRPERM_SYSTEM=chrony
 ALLOW_DIRPERM_SYSTEM=ftp
 ALLOW_DIRPERM_SYSTEM=unbound
+ALLOW_DIRPERM_SYSTEM=games
+ALLOW_DIRPERM_SYSTEM=proc
+ALLOW_DIRPERM_SYSTEM=colord
 #
 ALLOW_DIRPERM_EXPLICIT=root dr-xr-x---
 ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
@@ -76,6 +83,8 @@ ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
 ALLOW_DIRPERM_EXPLICIT=mail drwxrwxr-x
 ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T
 ALLOW_DIRPERM_EXPLICIT=exim drwxr-x---
+ALLOW_DIRPERM_EXPLICIT=gdm drwxrwx--T
+ALLOW_DIRPERM_EXPLICIT=bacula drwxrwx---
 #
 # Allow a whole lot of files to have the suid bit set
 SUID_ALLOW=/usr/sbin/sendmail.sendmail
@@ -100,9 +109,22 @@ SUID_ALLOW=/usr/sbin/pam_timestamp_check
 SUID_ALLOW=/usr/sbin/unix_chkpwd
 SUID_ALLOW=/usr/bin/pkexec
 SUID_ALLOW=/usr/bin/chage
-SUID_ALLOW=/usr/sbin/postdrop
-SUID_ALLOW=/usr/sbin/postqueue
 SUID_ALLOW=/usr/sbin/grub2-set-bootflag
+SUID_ALLOW=/usr/libexec/clevis-luks-udisks2
+SUID_ALLOW=/usr/libexec/qemu-bridge-helper
+SUID_ALLOW=/usr/libexec/Xorg.wrap
+SUID_ALLOW=/usr/libexec/spice-gtk-x86_64/spice-client-glib-usb-acl-helper
+SUID_ALLOW=/usr/sbin/userhelper
+SUID_ALLOW=/usr/sbin/mount.nfs
+SUID_ALLOW=/usr/bin/fusermount
+SUID_ALLOW=/usr/bin/chfn
+SUID_ALLOW=/usr/bin/at
+SUID_ALLOW=/usr/bin/fusermount3
+SUID_ALLOW=/usr/bin/chsh
+SUID_ALLOW=/usr/bin/staprun
+SUID_ALLOW=/opt/google/chrome/chrome-sandbox
+SUID_ALLOW=/usr/sbin/lockdev
+SUID_ALLOW=/usr/bin/locate
 #
 FORCE_OWNER_OK=/etc/tcsd.conf:tss
 FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
@@ -119,7 +141,10 @@ HOMEDIR_MISSING_OK=cockpit-ws:
 HOMEDIR_MISSING_OK=cockpit-wsinstance:
 HOMEDIR_MISSING_OK=saslauth:
 #HOMEDIR_MISSING_OK=rpc:     this user is not created on a fresh C8 install
-#HOMEDIR_MISSING_OK=rngd:    been removed from Alma Linux
+HOMEDIR_MISSING_OK=rngd:
+HOMEDIR_MISSING_OK=pulse:
+HOMEDIR_MISSING_OK=clevis:
+HOMEDIR_MISSING_OK=pipewire:
 #
 SUDOERS_ALLOW_ALL_SERVERS=root
 SUDOERS_ALLOW_ALL_COMMANDS=root

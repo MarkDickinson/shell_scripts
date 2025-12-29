@@ -1,0 +1,135 @@
+# 
+# Common settings for a OpenIndianna server install with no additional products installed
+# >>> Included File: ../custom_includes/server_OpenIndianna
+#
+# No SELinux on OpenIndiana, mark that as expected.
+SELINUX_NOT_INSTALLED=YES
+#
+# Directory permission overrides for shared system directories
+# These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
+ALLOW_DIRPERM_SYSTEM=adm
+ALLOW_DIRPERM_SYSTEM=nls
+ALLOW_DIRPERM_SYSTEM=empty
+ALLOW_DIRPERM_SYSTEM=bin
+# This is an exception to a system directory, use the defaults openindiana sets
+ALLOW_DIRPERM_EXPLICIT=adm drwxrwxr-x
+#
+# Directories owned by root that other users may also have as home
+# directories so if others have them as home dirs then root ownership
+# is to be treated as OK.
+ALLOW_OWNER_ROOT=bin
+ALLOW_OWNER_ROOT=adm
+ALLOW_OWNER_ROOT=nls
+ALLOW_OWNER_ROOT=empty
+#
+# Users that do not need existing home directories
+HOMEDIR_MISSING_OK=uucp:
+HOMEDIR_MISSING_OK=nuucp:
+HOMEDIR_MISSING_OK=gdm:
+HOMEDIR_MISSING_OK=upnp:
+HOMEDIR_MISSING_OK=named:
+#
+# Additional user that can own system files
+ADD_SYSTEM_FILE_OWNER=adm
+ADD_SYSTEM_FILE_OWNER=smmsp
+ADD_SYSTEM_FILE_OWNER=uucp
+ADD_SYSTEM_FILE_OWNER=dladm
+ADD_SYSTEM_FILE_OWNER=netadm
+ADD_SYSTEM_FILE_OWNER=netcfg
+#
+# SUID files that are permitted to exist
+SUID_ALLOW=/usr/lib/utmp_update
+SUID_ALLOW=/usr/lib/acct/accton
+SUID_ALLOW=/usr/lib/fs/ufs/ufsrestore
+SUID_ALLOW=/usr/lib/fs/ufs/ufsdump
+SUID_ALLOW=/usr/lib/fs/ufs/quota
+SUID_ALLOW=/usr/lib/smtp/sendmail/mailq
+SUID_ALLOW=/usr/bin/fdformat
+SUID_ALLOW=/usr/bin/rsh
+SUID_ALLOW=/usr/bin/atrm
+SUID_ALLOW=/usr/bin/sys-suspend
+SUID_ALLOW=/usr/bin/rmformat
+SUID_ALLOW=/usr/bin/rlogin
+SUID_ALLOW=/usr/bin/pppd
+SUID_ALLOW=/usr/bin/rcp
+SUID_ALLOW=/usr/bin/newtask
+SUID_ALLOW=/usr/bin/chkey
+SUID_ALLOW=/usr/bin/login
+SUID_ALLOW=/usr/bin/scanpci
+SUID_ALLOW=/usr/bin/tip
+SUID_ALLOW=/usr/bin/atq
+SUID_ALLOW=/usr/bin/uptime
+SUID_ALLOW=/usr/bin/w
+SUID_ALLOW=/usr/bin/rdist
+SUID_ALLOW=/usr/libexec/ssh-keysign
+SUID_ALLOW=/usr/xpg4/bin/crontab
+SUID_ALLOW=/usr/xpg4/bin/at
+SUID_ALLOW=/usr/sbin/allocate
+SUID_ALLOW=/usr/sbin/deallocate
+SUID_ALLOW=/usr/sbin/traceroute
+SUID_ALLOW=/usr/sbin/sacadm
+SUID_ALLOW=/usr/sbin/list_devices
+SUID_ALLOW=/usr/sbin/pmconfig
+SUID_ALLOW=/usr/sbin/whodo
+SUID_ALLOW=/usr/sbin/ping
+SUID_ALLOW=/usr/lib/smtp/sendmail/sendmail
+SUID_ALLOW=/usr/bin/ssh-agent
+SUID_ALLOW=/usr/bin/mail
+SUID_ALLOW=/usr/bin/mailx
+SUID_ALLOW=/usr/sbin/sysdef
+SUID_ALLOW=/usr/sbin/prtdiag
+SUID_ALLOW=/usr/sbin/wall
+SUID_ALLOW=/usr/sbin/updatedb
+SUID_ALLOW=/usr/sbin/swap
+SUID_ALLOW=/usr/sbin/prtconf
+SUID_ALLOW=/usr/sbin/eeprom
+SUID_ALLOW=/usr/bin/newgrp
+SUID_ALLOW=/usr/bin/at
+SUID_ALLOW=/usr/bin/sudo
+SUID_ALLOW=/usr/bin/passwd
+SUID_ALLOW=/usr/bin/su
+SUID_ALLOW=/usr/bin/crontab
+SUID_ALLOW=/usr/bin/locate
+SUID_ALLOW=/usr/bin/write
+SUID_ALLOW=/usr/bin/passwd
+SUID_ALLOW=/media/.hal-mtab-lock
+# These are buggers. The proc ones will change every process restart
+#SUID_ALLOW=/proc/1085/object/a.out
+#SUID_ALLOW=/proc/1122/object/a.out
+#
+# The below entrie (root) is added by
+# default to /etc/sudoers when OpenIndianna is installed.
+SUDOERS_ALLOW_ALL_SERVERS=root
+SUDOERS_ALLOW_ALL_COMMANDS=root
+# And it also adds the first user added to the system during
+# the install.
+SUDOERS_ALLOW_ALL_SERVERS=mark
+SUDOERS_ALLOW_ALL_COMMANDS=mark
+#
+# Force approval of specific individual files if secured as expected
+FORCE_PERM_OK=/etc/dumpdates:-rw-rw-r--
+FORCE_PERM_OK=/etc/dladm/secobj.conf:-rw-rw----
+FORCE_PERM_OK=/var/adm/spellhist:-rw-rw-rw-
+#
+# Network Ports that are expected to be listening
+TCP_PORTV4_ALLOWED=:22:sshd
+TCP_PORTV6_ALLOWED=:22:sshd
+TCP_PORTV4_ALLOWED=:25:sendmail
+TCP_PORTV6_ALLOWED=:25:sendmail
+TCP_PORTV4_ALLOWED=:80:apache2
+TCP_PORTV6_ALLOWED=:80:apache2
+TCP_PORTV4_ALLOWED=:111:rpcbind
+TCP_PORTV6_ALLOWED=:111:rpcbind
+TCP_PORTV4_ALLOWED=:587:sendmail
+TCP_PORTV4_ALLOWED=:631:cupsd
+TCP_PORTV6_ALLOWED=:631:cupsd
+TCP_PORTV4_ALLOWED=:5999:in.mpathd
+TCP_PORTV6_ALLOWED=:5999:in.mpathd
+# Processes that select random ports
+NETWORK_TCPV4_PROCESS_ALLOW=/usr/libexec/sshd-session -R
+NETWORK_TCPV6_PROCESS_ALLOW=/usr/libexec/sshd-session -R
+NETWORK_TCPV4_PROCESS_ALLOW=/usr/lib/inet/inetd start
+NETWORK_TCPV6_PROCESS_ALLOW=/usr/lib/inet/inetd start
+#
+EXACT_ALERT_REASON=This server appears to be not running a firewall
+EXACT_ALERT_REASON_NOTES=SunOS uses ipfilter firewall which is not yet supported by these scripts

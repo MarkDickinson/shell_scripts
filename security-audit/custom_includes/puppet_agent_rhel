@@ -1,13 +1,9 @@
 #
-# Common settings for servers running a puppet agent
-# >>> Included File: ../custom_includes/puppet_agent
+# Common settings for servers running a puppet agent on a RHEL family based server
+# RHEL installs are different to Debian installs
+# >>> Included File: ../custom_includes/puppet_agent_rhel
 #
-# The below two only on Fedora servers, not on CentOS8/Alma8/Debian servers for a puppet agent install
-#ADD_SYSTEM_FILE_OWNER=puppet
-#ALLOW_DIRPERM_SYSTEM=puppet
-#
-# On Debian which most of my servers are now, no puppet user created
-#HOMEDIR_MISSING_OK=puppet:
+ADD_SYSTEM_FILE_OWNER=puppet
 ALLOW_DIRPERM_SYSTEM=puppet
 #
 # Firewalls need to permit outbound traffic on 8140 to contact the puppetserver

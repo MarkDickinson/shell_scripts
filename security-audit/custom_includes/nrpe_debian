@@ -1,0 +1,17 @@
+#
+# Common definitions for running the nrpe client
+# >>> Included File: ../custom_includes/nrpe_debian
+#
+#   ADD_SYSTEM_FILE_OWNER=nrpe    (nrpe user not used on debian, it uses nagios for nrpe)
+ADD_SYSTEM_FILE_OWNER=nagios
+ALLOW_DIRPERM_SYSTEM=nagios
+#
+TCP_PORTV4_ALLOWED=:5666:NRPE
+#
+# If nagios-plugins-all or selected plugins are installed for nrpe use,
+# these are the setuid ones.
+# On rhel systems in lib64, on debian systems just in lib
+#SUID_ALLOW=/usr/lib/nagios/plugins/check_dhcp
+#SUID_ALLOW=/usr/lib/nagios/plugins/check_icmp
+#SUID_ALLOW=/usr/lib/nagios/plugins/check_ide_smart
+#SUID_ALLOW=/usr/lib/nagios/plugins/check_fping

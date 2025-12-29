@@ -1,0 +1,36 @@
+#
+# Common rules for desktops running KDECONNECT to provide android phone interface
+# >>> Included File: ../custom_includes/kdeconnect
+#
+# Default ports opened by kdeconnectd
+#
+UDP_PORTV6_ALLOWED=:1716:kdeconnect
+TCP_PORTV6_ALLOWED=:1716:kdeconnect
+#
+# The below are opened by the kdeconnect service
+TCP_PORTV6_ALLOWED=:1739:kdeconnect
+TCP_PORTV6_ALLOWED=:1740:kdeconnect
+TCP_PORTV6_ALLOWED=:1741:kdeconnect
+TCP_PORTV6_ALLOWED=:1742:kdeconnect
+TCP_PORTV6_ALLOWED=:1743:kdeconnect
+TCP_PORTV6_ALLOWED=:1744:kdeconnect
+TCP_PORTV6_ALLOWED=:1745:kdeconnect
+TCP_PORTV6_ALLOWED=:1746:kdeconnect
+TCP_PORTV6_ALLOWED=:1747:kdeconnect
+TCP_PORTV6_ALLOWED=:1748:kdeconnect
+TCP_PORTV6_ALLOWED=:1749:kdeconnect
+TCP_PORTV6_ALLOWED=:1750:kdeconnect
+TCP_PORTV6_ALLOWED=:1751:kdeconnect
+TCP_PORTV6_ALLOWED=:1752:kdeconnect
+TCP_PORTV6_ALLOWED=:1753:kdeconnect
+TCP_PORTV6_ALLOWED=:1754:kdeconnect
+TCP_PORTV6_ALLOWED=:1755:kdeconnect
+TCP_PORTV6_ALLOWED=:1756:kdeconnect
+TCP_PORTV6_ALLOWED=:1757:kdeconnect
+TCP_PORTV6_ALLOWED=:1758:kdeconnect
+TCP_PORTV6_ALLOWED=:1759:kdeconnect
+TCP_PORTV6_ALLOWED=:1760:kdeconnect
+TCP_PORTV6_ALLOWED=:1761:kdeconnect
+TCP_PORTV6_ALLOWED=:1762:kdeconnect
+TCP_PORTV6_ALLOWED=:1763:kdeconnect
+TCP_PORTV6_ALLOWED=:1764:kdeconnect

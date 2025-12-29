@@ -1,0 +1,2 @@
+# Customisation file specifically for a default OpenIndiana install.
+INCLUDE_CUSTOM_RULES=../custom_includes/server_OpenIndiana

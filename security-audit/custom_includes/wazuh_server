@@ -1,0 +1,18 @@
+#
+# Common rules for servers running wazuh server, container setup
+# >>> Included File: ../custom_includes/wazuh_server
+#
+TCP_PORTV4_ALLOWED=:443:wazuh-dashboard
+UDP_PORTV4_ALLOWED=:514:wazuh-manager
+TCP_PORTV4_ALLOWED=:1514:wazuh-manager
+TCP_PORTV4_ALLOWED=:1515:wazuh-manager
+TCP_PORTV4_ALLOWED=:9200:wazuh_server
+TCP_PORTV4_ALLOWED=:55000:wazuh-manager
+TCP_PORTV6_ALLOWED=:443:wazuh-dashboard
+UDP_PORTV6_ALLOWED=:514:wazuh-manager
+TCP_PORTV6_ALLOWED=:1514:wazuh-manager
+TCP_PORTV6_ALLOWED=:1515:wazuh-manager
+TCP_PORTV6_ALLOWED=:9200:wazuh_server
+TCP_PORTV6_ALLOWED=:55000:wazuh-manager
+ALLOW_OWNER_ROOT=ossec
+ALLOW_DIRPERM_SYSTEM=ossec

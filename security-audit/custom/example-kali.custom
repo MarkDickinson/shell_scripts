@@ -1,0 +1,253 @@
+# kali.custom
+#
+# For server kali-vm (hostname kali)
+#
+REFRESH_INTERVAL_EXPECTED=30
+#
+EXACT_ALERT_REASON=Default minimum password length < 6, it is 0 in login.defs and 0 in pwquality.conf
+EXACT_ALERT_REASON=This server appears to be not running a firewall
+EXACT_ALERT_REASON=SELinux is not installed on this server
+#
+# TCP Ports that are permitted to be listening on all servers
+# Notes: The ":" around the port number is to make exact
+#        matching agaist the port number easier for the
+#        processing script.
+TCP_PORTV4_ALLOWED=:22:ssh
+TCP_PORTV6_ALLOWED=:22:ssh
+TCP_PORTV4_ALLOWED=:6010:X11 forwarding port
+TCP_PORTV6_ALLOWED=:6010:X11 forwarding port
+#
+NETWORK_PORT_NOLISTENER_TCPV4_OK=6010:X11 ssh forwarding port
+NETWORK_PORT_NOLISTENER_TCPV6_OK=6010:X11 ssh forwarding port
+#
+# UDP Ports that are permitted to be listening on all servers
+# Notes: The ":" around the port number is to make exact
+#        matching agaist the port number easier for the
+#        processing script.
+UDP_PORTV4_ALLOWED=:68:dhclient
+RAW_PORTV6_ALLOWED=:58:NetworkManager
+UDP_PORTV6_ALLOWED=:546:NetworkManager
+#
+# Charon, added in an update
+UDP_PORTV4_ALLOWED=:500:ipsec charon
+UDP_PORTV6_ALLOWED=:500:ipsec charon
+UDP_PORTV4_ALLOWED=:4500:ipsec charon
+UDP_PORTV6_ALLOWED=:4500:ipsec charon
+#
+# Additional users that can be considered system file owners
+ADD_SYSTEM_FILE_OWNER=dradis
+ADD_SYSTEM_FILE_OWNER=arpwatch
+ADD_SYSTEM_FILE_OWNER=systemd-timesync
+ADD_SYSTEM_FILE_OWNER=colord
+ADD_SYSTEM_FILE_OWNER=inetsim
+ADD_SYSTEM_FILE_OWNER=postgres
+ADD_SYSTEM_FILE_OWNER=www-data
+ADD_SYSTEM_FILE_OWNER=stunnel4
+ADD_SYSTEM_FILE_OWNER=mysql
+ADD_SYSTEM_FILE_OWNER=lightdm
+ADD_SYSTEM_FILE_OWNER=king-phisher
+#
+# Directory ownership overrides as required
+ALLOW_OWNER_ROOT=bin
+ALLOW_OWNER_ROOT=sbin
+ALLOW_OWNER_ROOT=daemon
+ALLOW_OWNER_ROOT=lpd
+ALLOW_OWNER_ROOT=sync
+ALLOW_OWNER_ROOT=shutdown
+ALLOW_OWNER_ROOT=halt
+ALLOW_OWNER_ROOT=rpm
+ALLOW_OWNER_ROOT=nfs
+ALLOW_OWNER_ROOT=postfix
+ALLOW_OWNER_ROOT=mail
+ALLOW_OWNER_ROOT=mqueue
+ALLOW_OWNER_ROOT=smmsp
+ALLOW_OWNER_ROOT=sshd
+ALLOW_OWNER_ROOT=dev
+ALLOW_OWNER_ROOT=fs
+ALLOW_OWNER_ROOT=gdm
+ALLOW_OWNER_ROOT=adm
+ALLOW_OWNER_ROOT=httpd
+ALLOW_OWNER_ROOT=dnsmasq
+ALLOW_OWNER_ROOT=pcp
+ALLOW_OWNER_ROOT=root
+ALLOW_OWNER_ROOT=usage
+ALLOW_OWNER_ROOT=unbound
+ALLOW_OWNER_ROOT=ntp
+ALLOW_OWNER_ROOT=games
+ALLOW_OWNER_ROOT=www
+ALLOW_OWNER_ROOT=backups
+ALLOW_OWNER_ROOT=systemd
+ALLOW_OWNER_ROOT=uuidd
+ALLOW_OWNER_ROOT=misc
+ALLOW_OWNER_ROOT=proc
+ALLOW_OWNER_ROOT=strongswan
+ALLOW_OWNER_ROOT=NetworkManager
+# below user added after a kali update
+ALLOW_OWNER_ROOT=iodine
+#
+# Directory permission overrides for shared system directories
+# These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
+ALLOW_DIRPERM_SYSTEM=bin
+ALLOW_DIRPERM_SYSTEM=sbin
+ALLOW_DIRPERM_SYSTEM=adm
+ALLOW_DIRPERM_SYSTEM=lpd
+ALLOW_DIRPERM_SYSTEM=root
+ALLOW_DIRPERM_SYSTEM=backups
+ALLOW_DIRPERM_SYSTEM=backuppc
+ALLOW_DIRPERM_SYSTEM=sshd
+ALLOW_DIRPERM_SYSTEM=mysql
+ALLOW_DIRPERM_SYSTEM=rpcuser
+ALLOW_DIRPERM_SYSTEM=nfsnobody
+ALLOW_DIRPERM_SYSTEM=usage
+ALLOW_DIRPERM_SYSTEM=ntp
+ALLOW_DIRPERM_SYSTEM=dnsmasq
+ALLOW_DIRPERM_SYSTEM=unbound
+ALLOW_DIRPERM_SYSTEM=httpd
+ALLOW_DIRPERM_SYSTEM=postfix
+ALLOW_DIRPERM_SYSTEM=nagios
+ALLOW_DIRPERM_SYSTEM=puppet
+ALLOW_DIRPERM_SYSTEM=colord
+ALLOW_DIRPERM_SYSTEM=dev
+ALLOW_DIRPERM_SYSTEM=games
+ALLOW_DIRPERM_SYSTEM=man
+ALLOW_DIRPERM_SYSTEM=www
+ALLOW_DIRPERM_SYSTEM=backup
+ALLOW_DIRPERM_SYSTEM=systemd
+ALLOW_DIRPERM_SYSTEM=uuidd
+ALLOW_DIRPERM_SYSTEM=rwho
+ALLOW_DIRPERM_SYSTEM=postgresql
+ALLOW_DIRPERM_SYSTEM=exim4
+ALLOW_DIRPERM_SYSTEM=arpwatch
+ALLOW_DIRPERM_SYSTEM=misc
+ALLOW_DIRPERM_SYSTEM=snmp
+ALLOW_DIRPERM_SYSTEM=proc
+ALLOW_DIRPERM_SYSTEM=inetsim
+ALLOW_DIRPERM_SYSTEM=geoclue
+ALLOW_DIRPERM_SYSTEM=king-phisher
+ALLOW_DIRPERM_SYSTEM=gdm3
+ALLOW_DIRPERM_SYSTEM=dradis
+ALLOW_DIRPERM_SYSTEM=beef-xss
+ALLOW_DIRPERM_SYSTEM=tpm
+ALLOW_DIRPERM_SYSTEM=rpcbind
+ALLOW_DIRPERM_SYSTEM=avahi-daemon
+ALLOW_DIRPERM_SYSTEM=chroot
+# Below was set to 755 after a kali update, new user _caldera added
+ALLOW_DIRPERM_SYSTEM=caldera
+# Below is for a new user added by a kali update
+ALLOW_DIRPERM_SYSTEM=iodine
+#
+ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwsr-x
+ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T
+ALLOW_DIRPERM_EXPLICIT=tor drwx--S---
+ALLOW_DIRPERM_EXPLICIT=lightdm drwxr-x---
+ALLOW_DIRPERM_EXPLICIT=NetworkManager drwx------
+ALLOW_DIRPERM_EXPLICIT=strongswan drwx------
+#
+# handle mysql user default umask of allowing group write
+# on all mysql owned files.
+ALLOW_VAR_FILE_GROUPWRITE=YES
+#
+# SUID files on a Fedora 31 system KVM system
+SUID_ALLOW=/usr/bin/sudo
+SUID_ALLOW=/usr/bin/crontab
+SUID_ALLOW=/usr/bin/gpasswd
+SUID_ALLOW=/usr/bin/newgrp
+SUID_ALLOW=/usr/bin/chage
+SUID_ALLOW=/usr/bin/passwd
+SUID_ALLOW=/usr/bin/mount
+SUID_ALLOW=/usr/bin/su
+SUID_ALLOW=/usr/bin/umount
+SUID_ALLOW=/usr/bin/pkexec
+SUID_ALLOW=/usr/sbin/unix_chkpwd
+SUID_ALLOW=/usr/sbin/pppd
+SUID_ALLOW=/usr/lib/xorg/Xorg.wrap
+SUID_ALLOW=/usr/lib/dbus-1.0/dbus-daemon-launch-helper
+SUID_ALLOW=/usr/lib/chromium/chrome-sandbox
+SUID_ALLOW=/usr/lib/openssh/ssh-keysign
+SUID_ALLOW=/usr/bin/chfn
+SUID_ALLOW=/usr/bin/ntfs-3g
+SUID_ALLOW=/usr/bin/chsh
+SUID_ALLOW=/usr/bin/fusermount
+SUID_ALLOW=/usr/lib/mc/cons.saver
+SUID_ALLOW=/usr/lib/xorg/Xorg.wrap
+SUID_ALLOW=/usr/lib/x86_64-linux-gnu/utempter/utempter
+SUID_ALLOW=/usr/bin/dotlockfile
+SUID_ALLOW=/usr/bin/ssh-agent
+SUID_ALLOW=/usr/bin/expiry
+SUID_ALLOW=/usr/bin/wall
+SUID_ALLOW=/usr/sbin/mount.cifs
+SUID_ALLOW=/usr/sbin/mount.nfs
+SUID_ALLOW=/usr/bin/kismet_cap_nrf_51822
+SUID_ALLOW=/usr/bin/kismet_cap_nrf_mousejack
+SUID_ALLOW=/usr/bin/kismet_cap_linux_bluetooth
+SUID_ALLOW=/usr/bin/kismet_cap_ti_cc_2540
+SUID_ALLOW=/usr/bin/kismet_cap_linux_wifi
+SUID_ALLOW=/usr/bin/fusermount3
+SUID_ALLOW=/usr/bin/kismet_cap_nxp_kw41z
+SUID_ALLOW=/usr/bin/kismet_cap_ti_cc_2531
+#
+# The below were added (or removed/commented) after a kali update)
+#SUID_ALLOW=/usr/lib/policykit-1/polkit-agent-helper-1
+#SUID_ALLOW=/usr/bin/bwrap
+#SUID_ALLOW=/usr/bin/bsd-write
+#SUID_ALLOW=/usr/bin/mlocate
+SUID_ALLOW=/usr/libexec/polkit-agent-helper-1
+SUID_ALLOW=/usr/lib/mysql/plugin/auth_pam_tool_dir/auth_pam_tool
+SUID_ALLOW=/usr/bin/kismet_cap_rz_killerbee
+SUID_ALLOW=/usr/bin/kismet_cap_ubertooth_one
+SUID_ALLOW=/usr/bin/kismet_cap_nrf_52840
+SUID_ALLOW=/usr/bin/write
+SUID_ALLOW=/usr/bin/plocate
+#
+# Force explicit files as OK when checked, full path is needed
+# /etc/dumpdates is normally also writeable by group disk
+FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
+FORCE_PERM_OK=/var/log/btmp:-rw-rw----
+FORCE_PERM_OK=/var/log/lastlog:-rw-rw-r--
+FORCE_PERM_OK=/var/log/mysql/error.log:-rw-rw----
+FORCE_PERM_OK=/etc/king-phisher/server_config.yml:-rw-rw-r--
+#
+# Allow a file of this name to be forced OK under any directory if
+# it fails initial default checks.
+# A risk, but Fedora now generates lots of dynamic PCI bus entries
+# under the /sys/devices/pciNNNN:NN path as --w--w----. we do not
+# want them generating false alerts.
+# Risk is minimised be specifying the only permitted value.
+FORCE_ANYFILE_OK=remove --w--w----
+FORCE_ANYFILE_OK=rescan --w--w----
+#
+#
+HOMEDIR_MISSING_OK=lp:
+HOMEDIR_MISSING_OK=news:
+HOMEDIR_MISSING_OK=uucp:
+HOMEDIR_MISSING_OK=list:
+HOMEDIR_MISSING_OK=irc:
+HOMEDIR_MISSING_OK=gnats:
+HOMEDIR_MISSING_OK=nobody:
+HOMEDIR_MISSING_OK=_apt:
+HOMEDIR_MISSING_OK=mysql:
+HOMEDIR_MISSING_OK=ntp:
+HOMEDIR_MISSING_OK=messagebus:
+HOMEDIR_MISSING_OK=redsocks:
+HOMEDIR_MISSING_OK=miredo:
+HOMEDIR_MISSING_OK=usbmux:
+HOMEDIR_MISSING_OK=tcpdump:
+HOMEDIR_MISSING_OK=sslh:
+HOMEDIR_MISSING_OK=pulse:
+HOMEDIR_MISSING_OK=saned:
+HOMEDIR_MISSING_OK=avahi:
+HOMEDIR_MISSING_OK=ntpsec:
+#
+NOWARN_ON_MANUALLOGCHECK=YES
+NOWARN_ON_CUSTOMFILE=YES
+#
+SSHD_SUBSYSTEM_ALLOW=sftp:/usr/lib/openssh/sftp-server:
+#
+SUDOERS_ALLOW_ALL_SERVERS=root
+SUDOERS_ALLOW_ALL_COMMANDS=root
+SUDOERS_ALLOW_ALL_SERVERS=%sudo
+SUDOERS_ALLOW_ALL_COMMANDS=%sudo
+SUDOERS_ALLOW_ALL_SERVERS=%kali-trusted
+SUDOERS_ALLOW_ALL_COMMANDS=%kali-trusted

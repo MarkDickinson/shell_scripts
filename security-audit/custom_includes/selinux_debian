@@ -1,0 +1,9 @@
+# 
+# Common settings for a Debian after SELinux has been installed.
+# SELinux is not installed by default on Debian
+#
+# >>> Included File: ../custom_includes/selinux_debian
+#
+SUID_ALLOW=/usr/libexec/polkit-agent-helper-1
+SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1
+HOMEDIR_MISSING_OK=polkitd:

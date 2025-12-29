@@ -167,13 +167,29 @@
 #              being run on ssh connections by the global sshd_config also.
 #              Also seperately collect dirperms on .ssh directories to check.
 #              This is a version bump to 0.22
+# 2025/12/10 + In progress. Starting to implement SunOS data collection.
+#          (1) All 'which' commands now have a 'grep -v "no xxx in' as
+#              SunOS does not redirect the error message to stderr
+#          (2) SunOS does not support all the Linux 'find' flags, use
+#              a variable and opts removed if SunOS
+#          (3) No 'ip' command, use ifconfig for the interface dump
+#              if SunOS
+#              This is a TEST version bump to 0.22S BETA
+# 2025/12/27 - Version bump to 0.23 as it has a bugfix   
+#          (1) BugFix. In .ssh directory check was collecting the ..    
+#              directory perms instead of the . so was reporting on
+#              user homedir not .ssh dir perms 
+#          (2) Added SunOS network listening port info collection,
+#              capture /etc/default/password to use for SunOS checks
+#              in the processing script id OSTYPE is SunOS (processing
+#              script still uses login.defs/pwquality.conf if Linux)
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.22"    # capture script version
+EXTRACT_VERSION="0.23"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -298,6 +314,15 @@ then
    exit 1
 fi
 
+OStypeName=`uname -s`
+if [ "${OStypeName}." == "Linux." ];
+then
+	LinuxFindOpts="-P -H"
+else
+	LinuxFindOpts="-H"   # -P not available on SunOS
+fi
+
+
 echo "$0 collector script version is ${EXTRACT_VERSION}"
 timenow=`date`
 echo "Start time: ${timenow}"
@@ -334,7 +359,12 @@ fi
 # System directories to search for
 #   * badly secured system files
 #   * orphaned files
-SYSTEM_DIR_LIST="/bin /boot /dev /etc /lib /opt /sbin /sys /usr /var"
+if [ -d /sys ];  # SunOS does not have /sys
+then
+   SYSTEM_DIR_LIST="/bin /boot /dev /etc /lib /opt /sbin /sys /usr /var"
+else
+   SYSTEM_DIR_LIST="/bin /boot /dev /etc /lib /opt /sbin /usr /var"
+fi
 # All filesystems to search fo
 #   * directories to search for orphaned files in
 ALL_DIR_LIST="${SYSTEM_DIR_LIST} /home"
@@ -405,7 +435,7 @@ find_perms_under_dir() {
 # ----- when using the webpathexclude we get a lot of files not normally detected ----
 #       leave the var in for now, as I explicitly reset it to empty while working on the issue
 # do not capture symbolic links (grep -v the perms), the files they point to will be captured
-   find -P ${startdir} ${MAX_SYSSCAN} -mount -type f ${WEBPATHEXCLUDE} -exec ls -la {} \; | grep -v "^lrwxrwxrwx" | grep -v "\/tmp\/" | tr "\=" "-" | while read dataline
+   find ${LinuxFindOpts} ${startdir} ${MAX_SYSSCAN} -mount -type f ${WEBPATHEXCLUDE} -exec ls -la {} \; | grep -v "^lrwxrwxrwx" | grep -v "\/tmp\/" | tr "\=" "-" | while read dataline
    do
       echo "${key}=${dataline}=${expected_owner}" >> ${LOGFILE}
    done
@@ -488,7 +518,7 @@ find_file_perm_nolog() {
       testresult=$?
       if [ ${testresult} -gt 0  ]
       then
-         fname2=`which ${fname}`
+         fname2=`which ${fname} | grep -v "no ${fname} in"`
          if [ "${fname2}." != "." ];
          then
             tempvar=`ls -la ${fname2}`
@@ -559,7 +589,7 @@ get_process_by_exact_pid() {
          if [ "${exact}." == "${pid}." ];
          then
             programname=`echo "${yy}" | awk {'print $8" "$9" "$10" "$11" "$12" "$13" "$14" "$15'}`
-            programname=`echo "${programname}"`     # remove traing spaces we may have inserted
+            programname=`echo ${programname}`    # remove leading/trailing spaces we may have inserted
             echo "${programname}"
          fi
       done
@@ -727,6 +757,58 @@ identify_network_listening_processes() {
    /bin/rm identify_network_listening_processes.wrk
 } # end of identify_network_listening_processes
 
+# ----------------------------------------------------------------------
+#             identify_network_listening_processes_sunos
+# Of course SunOS outputs in a totally different format with different
+# command syntax to get the info we need. 
+# Get the info and return it in a format identical to the Linux one.
+# Note: that is only the port not the listening part so from the    
+#       *.port (instead of 0.0.0.0:port on linux) or ipaddr.port
+#       we only want the port so use awks NF to get the last field
+#       after the last . from that.
+# Note2: SunOS can also have a listen address of *.* instead of
+#        *.portnum as a local address unless we grep only on LISTEN
+# ----------------------------------------------------------------------
+identify_network_listening_processes_sunos() {
+   # put ps into a workfile to avoid running it many times
+   ps -ef > identify_network_listening_processes.wrk
+   netstat -an -u -f inet | grep "LISTEN" | while read xx
+   do
+      listenport=`echo "${xx}" | awk {'print $1'}`
+      pid=`echo "${xx}" | awk {'print $4'}`
+      listenprocess=`get_process_by_exact_pid "${pid}"`
+      if [ "${listenprocess}." != "." ]
+      then
+         # SunOS reports the port as *.port or nnn.nnn.nnn.nnn.port, the processing
+	 # script expects only the port part so only keep that. That allows the
+	 # existing Linux checks in the processing script to work unaltered.
+         listenport=`echo "${listenport}" | awk -F\. {'print $NF'}`  # only keep the port
+         echo "NETWORK_TCPV4_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+      else
+         listenport=`echo "${listenport}" | awk -F\. {'print $NF'}`  # only keep the port
+         listenprocess=`echo "${xx}" | awk {'print $5'}`
+         echo "NETWORK_TCPV4_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+      fi
+   done
+   netstat -an -u -f inet6 | grep "LISTEN" | while read xx
+   do
+      listenport=`echo "${xx}" | awk {'print $1'}`
+      pid=`echo "${xx}" | awk {'print $4'}`
+      listenprocess=`get_process_by_exact_pid "${pid}"`
+      if [ "${listenprocess}." != "." ]
+      then
+         listenport=`echo "${listenport}" | awk -F\. {'print $NF'}`  # only keep the port
+         echo "NETWORK_TCPV6_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+      else
+         listenport=`echo "${listenport}" | awk -F\. {'print $NF'}`  # only keep the port
+         listenprocess=`echo "${xx}" | awk {'print $5'}`
+         echo "NETWORK_TCPV6_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
+      fi
+   done
+   # MID: TODO - the 'unix' socket handling
+   /bin/rm identify_network_listening_processes.wrk
+} # end of identify_network_listening_processes_sunos
+
 # -------------------------------------------------------------------------------
 # PAM is used on many systems to override the values in /etc/login.defs,
 # however we do not check if PAM modules are loaded so even if the PAM configuration
@@ -784,7 +866,7 @@ then
       osversion="No PRETTY_NAME in /etc/os-release"
    fi
 else
-   osversion="unknown"
+   osversion="${ostype}"   # will put in SunOS for SunOS
 fi
 echo "TITLE_HOSTNAME=${myhost}" >> ${LOGFILE}
 echo "TITLE_CAPTUREDATE=${mydate}" >> ${LOGFILE}
@@ -808,9 +890,15 @@ record_file ETC_HOSTS_ALLOW_FILE /etc/hosts.allow  # hosts that may connect
               # processing script to make sure no 'ALL: ALL: spawn' commands are executed 
 	      # as even SNMP can get a backdoor script running that way
 record_file ETC_HOSTS_DENY_FILE /etc/hosts.deny  # hosts that may not connect unless in hosts.allow
-record_file LOGIN_DEFS /etc/login.defs        # passwd maxage, minlen etc
-aa=`get_PAM_pwminlen`                         # see if minlen overridden by PAM settings
-echo "PAM_PWQUALITY_MINLEN=${aa}" >> ${LOGFILE}
+ostype=`uname -s`
+if [ "${ostype}." != "SunOS." ];   # Linux checking reasonably coded
+then
+   record_file LOGIN_DEFS /etc/login.defs        # passwd maxage, minlen etc
+   aa=`get_PAM_pwminlen`                         # see if minlen overridden by PAM settings
+   echo "PAM_PWQUALITY_MINLEN=${aa}" >> ${LOGFILE}
+else   # SunOS puts things in different places
+   record_file ETC_DEFAULT_PASSWD /etc/default/passwd
+fi
 
 # ======================================================================
 # Collect General operating system files and optional system files.
@@ -911,10 +999,17 @@ done
 # Are cron.allow and cron.deny being used ?
 # ======================================================================
 timestamp_action "collecting cron information"
-if [ -f /etc/cron.deny ];
+ostype=`uname -s`
+if [ "${ostype}." != "SunOS." ];
+then
+   basedir="/etc"
+else
+   basedir="/etc/cron.d"    # SunOS puts them in here
+fi
+if [ -f ${basedir}/cron.deny ];
 then
    echo "CRON_DENY_EXISTS=YES" >> ${LOGFILE}
-   cat /etc/cron.deny | while read dataline
+   cat ${basedir}/cron.deny | while read dataline
    do
       if [ "${dataline}." != "." ];    # only record non-blank lines
       then
@@ -924,10 +1019,10 @@ then
 else
    echo "CRON_DENY_EXISTS=NO" >> ${LOGFILE}
 fi
-if [ -f /etc/cron.allow ];
+if [ -f ${basedir}/cron.allow ];
 then
    echo "CRON_ALLOW_EXISTS=YES" >> ${LOGFILE}
-   cat /etc/cron.allow | while read dataline
+   cat ${basedir}/cron.allow | while read dataline
    do
       if [ "${dataline}." != "." ];    # only record non-blank lines
       then
@@ -1000,6 +1095,8 @@ cron_parse_strip_options() {
 cron_parse_out_commands() {
    # shift over the five time fields, MUST assume space delimiter and not tab
    var1=`echo "$1" | cut -d " " -f 6-999`
+   # Bug found trying on SunOS, where commands are embedded inside [ ] fields
+   var1=`echo "${var1}" | sed -e's/\[ -x //g' | sed -e's/\[//'g | sed -e's/\]//'g` # remove them
    # and the rest of the data is the commands to check
    while [ ${#var1} -gt 0 ];
    do 
@@ -1041,7 +1138,7 @@ cron_parse_out_commands() {
       firstpart=`echo "${cmdtest}" | awk {'print $1'}`
       if [ "${firstpart:0:1}." != "/". ];   # if not full path find the file
       then
-         cmdexists=`which ${firstpart} 2>/dev/null`
+         cmdexists=`which ${firstpart} 2>/dev/null | grep -v "no ${firstpart} in"`
       else
          cmdexists="${firstpart}"
       fi
@@ -1075,7 +1172,7 @@ cron_parse_out_commands() {
          then
             if [ "${firstpart:0:1}." != "/". ];   # if not full path find the file
             then
-               cmdexists=`which ${firstpart} 2>/dev/null`
+               cmdexists=`which ${firstpart} 2>/dev/null | | grep -v "no ${firstpart} in"`
             else                                  # else use what was provided as full path
                cmdexists="${firstpart}"
             fi
@@ -1158,10 +1255,17 @@ unset cron_parse_out_commands
 # ======================================================================
 # Are at.allow and at.deny being used ?
 # ======================================================================
-if [ -f /etc/at.deny ];
+ostype=`uname -s`
+if [ "${ostype}." != "SunOS." ];
+then
+	basedir="/etc"
+else
+	basedir="/etc/cron.d"   # SonOS puts them here
+fi
+if [ -f ${basedir}/at.deny ];
 then
    echo "CRON_AT_DENY_EXISTS=YES" >> ${LOGFILE}
-   cat /etc/at.deny | while read dataline
+   cat ${basedir}/at.deny | while read dataline
    do
       if [ "${dataline}." != "." ];    # only record non-blank lines
       then
@@ -1171,10 +1275,10 @@ then
 else
    echo "CRON_AT_DENY_EXISTS=NO" >> ${LOGFILE}
 fi
-if [ -f /etc/at.allow ];
+if [ -f ${basedir}/at.allow ];
 then
    echo "CRON_AT_ALLOW_EXISTS=YES" >> ${LOGFILE}
-   cat /etc/at.allow | while read dataline
+   cat ${basedir}/at.allow | while read dataline
    do
       if [ "${dataline}." != "." ];    # only record non-blank lines
       then
@@ -1213,15 +1317,34 @@ done
 
 # --- How about any file shares ? ---
 timestamp_action "checking for exported filesystems"
-if [ -f /etc/exports ];
+ostype=`uname -s`
+if [ "${ostype}." != "SunOS" ];
 then
-   find_file_perm PERM_ETC_EXPORTS "/etc/exports" "root" "NA"
-   record_file ETC_EXPORTS_DATA /etc/exports
-   cat /etc/exports | while read dataline
-   do
-       dirtocheck=`echo "${dataline}" | awk {'print $1'}`
-       find_dir_perm PERM_EXPORTED_DIR ${dirtocheck} "root"
-   done
+   if [ -f /etc/exports ];
+   then
+      find_file_perm PERM_ETC_EXPORTS "/etc/exports" "root" "NA"
+      record_file ETC_EXPORTS_DATA /etc/exports
+      cat /etc/exports | while read dataline
+      do
+          dirtocheck=`echo "${dataline}" | awk {'print $1'}`
+          find_dir_perm PERM_EXPORTED_DIR ${dirtocheck} "root"
+      done
+   fi
+else   # Must be SunOS
+   if [ -f /etc/dfs/dfstab ];
+   then
+      find_file_perm PERM_ETC_DFS_DFSTAB "/etc/dfs/dfstab" "root" "NA"
+      record_file ETC_DFS_DFSTAB_DATA /etc/dfs/dfstab
+      cat /etc/dfs/dfstab | while read dataline
+      do
+          # SunOS has it as a share command with teh dir as the last value
+	  # before a comment
+	  # ie: share -F nfs -o rw=client1:client2 -d "description" /path/to/share
+	  # so first awk is to drop off any comment
+          dirtocheck=`echo "${dataline}" | awk -F\# {'print $1'} | awk {'print $NF'}`
+          find_dir_perm PERM_EXPORTED_DIR ${dirtocheck} "root"
+      done
+   fi
 fi
 
 # --- record any users with authorized_keys files
@@ -1244,43 +1367,101 @@ do
 done
 
 # --- what ports are being listened to ? ---
-timestamp_action "collecting information on open network ports and sockets"
-netstat -an -p | grep LISTEN | grep "^tcp "| grep -v "::" | while read dataline
-do
-   echo "PORT_TCPV4_LISTENING=${dataline}" >> ${LOGFILE}
-done
-netstat -an -p | grep LISTEN | grep "^tcp6 "| grep "::" | while read dataline
-do
-   echo "PORT_TCPV6_LISTENING=${dataline}" >> ${LOGFILE}
-done
-netstat -an -p | grep "^udp "| grep -v "::" | while read dataline
-do
-   echo "PORT_UDPV4_LISTENING=${dataline}" >> ${LOGFILE}
-done
-netstat -an -p | grep "^udp6 "| grep "::" | while read dataline
-do
-   echo "PORT_UDPV6_LISTENING=${dataline}" >> ${LOGFILE}
-done
-netstat -an -p | grep "^raw"| grep -v "::" | while read dataline
-do
-   echo "PORT_RAWV4_LISTENING=${dataline}" >> ${LOGFILE}
-done
-netstat -an -p | grep "^raw6"| while read dataline
-do
-   echo "PORT_RAWV6_LISTENING=${dataline}" >> ${LOGFILE}
-done
-netstat -an -p | grep "^unix" | while read dataline
-do
-   echo "PORT_UNIX_LISTENING=${dataline}" >> ${LOGFILE}
-done
-
 # try to match a running process to any listening network port
-identify_network_listening_processes
+# MID: 2025/12/10 - not valid on openindianna so
+timestamp_action "collecting information on open network ports and sockets"
+OStypeName=`uname -s`
+case "$OStypeName" in
+   "Linux")
+            netstat -an -p | grep LISTEN | grep "^tcp "| grep -v "::" | while read dataline
+            do
+               echo "PORT_TCPV4_LISTENING=${dataline}" >> ${LOGFILE}
+            done
+            netstat -an -p | grep LISTEN | grep "^tcp6 "| grep "::" | while read dataline
+            do
+               echo "PORT_TCPV6_LISTENING=${dataline}" >> ${LOGFILE}
+            done
+            netstat -an -p | grep "^udp "| grep -v "::" | while read dataline
+            do
+               echo "PORT_UDPV4_LISTENING=${dataline}" >> ${LOGFILE}
+            done
+            netstat -an -p | grep "^udp6 "| grep "::" | while read dataline
+            do
+               echo "PORT_UDPV6_LISTENING=${dataline}" >> ${LOGFILE}
+            done
+            netstat -an -p | grep "^raw"| grep -v "::" | while read dataline
+            do
+               echo "PORT_RAWV4_LISTENING=${dataline}" >> ${LOGFILE}
+            done
+            netstat -an -p | grep "^raw6"| while read dataline
+            do
+               echo "PORT_RAWV6_LISTENING=${dataline}" >> ${LOGFILE}
+            done
+            netstat -an -p | grep "^unix" | while read dataline
+            do
+               echo "PORT_UNIX_LISTENING=${dataline}" >> ${LOGFILE}
+            done
+            identify_network_listening_processes
+            ;;
+   "SunOS")  # MID: TODO, put it into linux format, tricky have to imbed :: for v6 plus tcp/tcp6 header
+	    # But that means the complicated work in the processing script does not
+	    # need to be messed about with.
+	    # SunOS format is for V4
+	    #   *.port  *  *  userid pid program-name 0 0 bufsize?
+	    #   nnn.nnn.nnn.nnn.port  *  *  userid pid program-name 0 0 bufsize?
+	    # Need the format rewritten to Linux format which is
+	    #   tcp 0 0 0.0.0.0:port  0.0.0.0:* LISTEN pid/program
+	    #   tcp 0 0 nnn.nnn.nnn.nnn:port  0.0.0.0:* LISTEN pid/program
+            netstat -an -u -f inet | grep LISTEN | while read dataline
+            do
+               portfield=`echo "${dataline}" | awk {'print $1'}`
+               iswildcard=`echo "${portfield}" | grep '^*.'`    # will be *.port if wildcard
+               portnum=`echo "${portfield}" | awk -F\. '{print $NF}'`
+               if [ "${iswildcard}." != "." ];
+               then
+                  ipaddr="0.0.0.0"
+               else
+                  ipaddr=`echo "${portfield}" | awk -F\. '{print $1"."$2"."$3"."$4}'`
+               fi
+               pidfield=`echo "${dataline}" | awk {'print $5'}`
+               pgmfield=`echo "${dataline}" | awk {'print $6'}`
+               echo "PORT_TCPV4_LISTENING=tcp 0 0 ${ipaddr}:${portnum} 0.0.0.0:* LISTEN ${pidfield}/${pgmfield}" >> ${LOGFILE}
+            done
+	    # SunOS format is for V6
+	    #   *.port  *  *  userid pid program-name 0 0 bufsize?
+	    #   ::1.port  *  *  userid pid program-name 0 0 bufsize?
+	    # Need the format rewritten to Linux format which is
+	    #   tcp6 0 0 :::port :::* LISTEN pid/program
+	    #   tcp6 0 0 ::1:port :::* LISTEN pid/program
+            netstat -an -u -f inet6 | grep LISTEN | while read dataline
+            do
+               portfield=`echo "${dataline}" | awk {'print $1'}`
+               iswildcard=`echo "${portfield}" | grep '^*.'`    # will be *.port if wildcard
+               portnum=`echo "${portfield}" | awk -F\. '{print $NF}'`
+               if [ "${iswildcard}." != "." ];
+               then
+                  ipaddr=":::${portnum}"
+               else
+                  listenv6=`echo "${portfield}" | awk -F\. {'print $1'}`
+                  ipaddr="${listenv6}:${portnum}"
+               fi
+               pidfield=`echo "${dataline}" | awk {'print $5'}`
+               pgmfield=`echo "${dataline}" | awk {'print $6'}`
+               echo "PORT_TCPV6_LISTENING=tcp6 0 0 ${ipaddr} :::* LISTEN ${pidfield}/${pgmfield}" >> ${LOGFILE}
+            done
+            identify_network_listening_processes_sunos
+            ;;
+   *)
+            echo "*Warn* OS type ${isLinux} not supported for network info collection yet"
+            ;;
+esac
 
 # Whats in the services file
+timestamp_action "recording services file"
 record_file SERVICES_FILE /etc/services
 
 # A few checks to see if samba is running
+timestamp_action "checking for samba"
 sambaRunning="NO"
 testvar=`ps -ef | grep " smbd " | grep -v grep`
 if [ "${testvar}." != "." ];
@@ -1299,8 +1480,10 @@ then
 fi
 echo "APPLICATION_SAMBA_RUNNING=${sambaRunning}" >> ${LOGFILE}
 
+timestamp_action "searching for firewall rules"
 # iptables ACCEPT rules
-haveiptables=`which iptables 2>/dev/null`
+#haveiptables=`which iptables 2>/dev/null`   # SunOS does not redirect error to 2, so grep out the err string
+haveiptables=`which iptables 2>/dev/null | grep -v "no iptables in"`
 if [ "${haveiptables}." != "." ];
 then
    timestamp_action "collecting firewall rules from iptables"
@@ -1309,10 +1492,11 @@ then
       echo "IPTABLES_FULLDATA=${dataline}" >> ${LOGFILE}
    done
 else
-   timestamp_action "**warning** iptables command not installed, cannot collect firewall rules using iptables"
+   timestamp_action "- iptables command not installed, cannot collect firewall rules using iptables"
 fi
 # F32/CentOS8/RHEL8 if using firewalld now use nftables instead of iptables
-havenft=`which nft 2>/dev/null`
+#haveiptables=`which nft 2>/dev/null`   # SunOS does not redirect error to 2, so grep out the err string
+havenft=`which nft 2>/dev/null | grep -v "no nft in"`
 if [ "${havenft}." != "." ];
 then
    timestamp_action "collecting firewall rules from netfilter"
@@ -1321,22 +1505,33 @@ then
       echo "NFTABLES_FULLDATA=${dataline}" >> ${LOGFILE}
    done
 # else no issue, netfilter is not on servers prior to F23/C8/RH8 by default
+else
+   timestamp_action "- nft command not installed, cannot collect firewall rules using netfilter"
 fi
 
-# record if NetworkManager andf Firewalld are running on the server
-timestamp_action "testing for NetworkManager and Firewalld service status"
-testfornm=`systemctl status NetworkManager.service | grep 'Active: active (running)'`
-if [ "${testfornm}." != "." ];
+# record if NetworkManager and Firewalld are running on the server
+OStypeName=`uname -s`
+if [ "${OStypeName}." == "Linux." ]
 then
-   echo "NETWORKMANAGER=YES" >> ${LOGFILE}
+   timestamp_action "testing for NetworkManager and Firewalld service status"
+   testfornm=`systemctl status NetworkManager.service | grep 'Active: active (running)'`
+   if [ "${testfornm}." != "." ];
+   then
+      echo "NETWORKMANAGER=YES" >> ${LOGFILE}
+   else
+      echo "NETWORKMANAGER=NO" >> ${LOGFILE}
+   fi
+   testfornm=`systemctl status firewalld.service | grep 'Active: active (running)'`
+   if [ "${testfornm}." != "." ];
+   then
+      echo "FIREWALLD=YES" >> ${LOGFILE}
+   else
+      echo "FIREWALLD=NO" >> ${LOGFILE}
+   fi
 else
+   # Then in my ENV must be SunOS that has neither of the two above
+   # TODO: find and record the equivalent
    echo "NETWORKMANAGER=NO" >> ${LOGFILE}
-fi
-testfornm=`systemctl status firewalld.service | grep 'Active: active (running)'`
-if [ "${testfornm}." != "." ];
-then
-   echo "FIREWALLD=YES" >> ${LOGFILE}
-else
    echo "FIREWALLD=NO" >> ${LOGFILE}
 fi
 
@@ -1397,16 +1592,20 @@ done
 # to ensure only they can access the files under it.
 find /home -type d -name ".ssh" | while read sshdir
 do
-   dirperms=`ls -la "${sshdir}" | grep "^d" | head -2 | tail -1 | awk {'print $1":"$3'}`  # perms:owner
+   dirperms=`ls -la "${sshdir}" | grep "^d" | head -1 | awk {'print $1":"$3'}`  # perms:owner
    echo "USER-SSH-DIRPERMS=${sshdir}:${dirperms}" >> ${LOGFILE}      #dir:perms:owner
 done
 
 # ======================================================================
 # Files that must exist and be retained for a specific period (days)
 # ======================================================================
-timestamp_action "collecting info on files that must be retained"
-require_file /var/log/auth.log 60 ".gz"
-require_file /var/log/wtmp 60 ".gz"
+if [ "${OStypeName}." == "Linux." ]
+then
+   timestamp_action "collecting info on files that must be retained"
+   require_file /var/log/auth.log 60 ".gz"
+   require_file /var/log/wtmp 60 ".gz"
+fi
+# TODO: find SunOS equivalent
 
 # ======================================================================
 # Record all processes that are running at the time the snapshot ran.
@@ -1422,28 +1621,47 @@ done
 # Plus user last logged on info for all users using lastlog
 # ======================================================================
 # Debian13 has obsoleted WTMP and the last and lastlog commands
-havelast=`which last`
+havelast=`which last | grep -v "no last in"`
 if [ "${havelast}." != "." ];
 then
    timestamp_action "recording last login information"
-   last -i | while read dataline
-   do
-      echo "WTMP_LAST_LOG=${dataline}" >> ${LOGFILE}
-   done
-   lastlog | while read dataline
-   do
-      echo "LASTLOG_ENTRY=${dataline}" >> ${LOGFILE}
-   done
+   if [ "${OStypeName}." == "Linux." ];  # Again SunOS bites, -i is not a valid option
+   then
+      last -i | while read dataline
+      do
+         echo "WTMP_LAST_LOG=${dataline}" >> ${LOGFILE}
+      done
+      lastlog | while read dataline
+      do
+         echo "LASTLOG_ENTRY=${dataline}" >> ${LOGFILE}
+      done
+   elif [ "${OStypeName}." == "SunOS." ];  # Again SunOS bites, -i is not a valid option
+   then
+      last | while read dataline
+      do
+         echo "WTMP_LAST_LOG=${dataline}" >> ${LOGFILE}
+      done
+      # SunOS soes not have 'lastlog'
+      # TODO: find equivalent of showing when users last logged in if ever
+   fi
 fi
 
 # ======================================================================
 # Collect the interface information.
 # ======================================================================
 timestamp_action "recording interface information"
-ip a | while read dataline
-do
-   echo "INTERFACE_INFO_IPA=${dataline}" >> ${LOGFILE}
-done
+if [ "${OStypeName}." == "Linux." ]
+then
+   ip a | while read dataline
+   do
+      echo "INTERFACE_INFO_IPA=${dataline}" >> ${LOGFILE}
+   done
+else  # SunOS does not have ip command
+   ifconfig -a | while read dataline
+   do
+      echo "INTERFACE_INFO_IFCONFIG=${dataline}" >> ${LOGFILE}
+   done
+fi
 
 # ======================================================================
 # Collect the selinux settings.
@@ -1552,7 +1770,23 @@ fi
 if [ "${BACKUP_RPMLIST}." == "yes." ];
 then
    timestamp_action "saving the installed packages information"
-   rpm -qa > ${RPMFILE}
+   OStypeName=`uname -s`
+   case "${OStypeName}" in
+      "Linux")
+               isDebian=`uname -a | grep -i Debian`
+               if [ "${isDebian}." == "." ];
+               then
+                  rpm -qa > ${RPMFILE}
+               else
+                  apt list --installed > ${RPMFILE}
+               fi
+               ;;
+      "SunOS")
+               pkg list > ${RPMFILE}
+               ;;
+      *) echo "*Warn* OS type ${OStypeName} not yet supported for package info collection"
+               ;;
+   esac
 fi
 
 # ======================================================================

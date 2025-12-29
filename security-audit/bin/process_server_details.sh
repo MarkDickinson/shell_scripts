@@ -454,25 +454,32 @@
 #                       set in /etc/pam.d files somewhere; not checked for.
 # MID: 2025/08/30 - Version 0.22 
 #                   (1) Added new config file flag SELINUX_NOT_INSTALLED=YES
-#                   And just some possible persistent back-door checks added
-#                   (2) check/alert if a "anything : ALL" entry is in hosts.allow
-#                   New keys in server data file
-#                   (3) USER-SSH-RC-userid users .ssh/rc file, check   
+#                       to stop alert for servers I have not installed it on
+#                       (not installed by default on Debian (although I always
+#                       install it), and as far as I know not available for SunOS
+#                   (2) Also some possible persistent back-door checks added
+#                   (3) check/alert if a "anything : ALL" entry is in hosts.allow
+#                   (4) USER-SSH-RC-userid users .ssh/rc file, check   
 #                       commands run on ssh connect are not suspicious
-#                   (4) USER-SSH-CONFIG-userid users .ssh/config file, check 
+#                   (5) USER-SSH-CONFIG-userid users .ssh/config file, check 
 #                       for commands automatically run from it
-#                   Additional checks on existing keys in data file
-#                   (5) USER-SSH-DIRPERMS for checking user .ssh permissions
-#                   (6) Additional checks added against hosts.allow to
+#                   Below are Additional checks on existing keys in data file
+#                   (6) USER-SSH-DIRPERMS for checking user .ssh permissions
+#                   (7) Additional checks added against hosts.allow to
 #                       see if scripts are being run when a allowed host
 #                       connects
-#                   (7) Change password must change test from 31 to 60
+#                   (8) Change password must change test from 31 to 60
 #                       days, better suits my needs 
 #                       (todo:make this a custom config file variable)
-#                   (8) More checks on hosts.deny, alert if no "ALL : ALL" 
+#                   (9) More checks on hosts.deny, alert if no "ALL : ALL" 
 #                       or "sshd " ALL", if no ALL but there is sshd just warn
-#                   (9) A big blurb in page for hosts.allow|deny warning  
 #                       of impacts that may happen if you use these files
+# MID: 2025/12/28 - Version 0.23 
+#                   (1) Updated pwlen and expiry checks to cater for
+#                       SunOS data collected now [collecting data from
+#                       my OpenIndiana system now. Added a few other 
+#                       bits to help process results collected on SunOS
+#                       servers.
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -529,7 +536,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.22"
+PROCESSING_VERSION="0.23"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -1300,12 +1307,16 @@ check_homedir_perms() {
       else  # System ownership checks
          # test a list of users allowed to own system files here first
          testvar=`echo "${SYSTEM_FILE_OWNERS}" | grep -w "${realowner}"`
+         if [ "${CUSTOMFILE}." != "." ];  # no match in system list, override allowed ?
+         then
+            testvar=`grep "^ALLOW_OWNER_OVERRIDE=${dirname}:${realowner}:" ${CUSTOMFILE} | awk -F: {'print $2'}`
+         fi
          if [ "${testvar}." == "." ];
          then
             if [ "${PERM_CHECK_RESULT}." == "OK." ];
             then
-               PERM_CHECK_RESULT="Bad Ownership"
-            else
+               PERM_CHECK_RESULT="Bad Ownership"    # if perms OK, only a bad owner
+            else                                    # else both were invalid
                PERM_CHECK_RESULT="${PERM_CHECK_RESULT}<br>Bad Ownership ${realowner}, should be ${neededowner}"
             fi
          # else is ok as was in the system user list
@@ -1993,8 +2004,10 @@ build_appendix_a() {
    shadowperms=`echo "${testvar}" | awk '{print $1'}`
    # 0.12 for Debian add test for -rw-r----- (debian has no trailing . either)
    # 0.19 for debian check for trailing . now, as I have installed selinux on all my debian systems now
-   # 0.19 except for the Lali one that does not so last entry is for a Debian non-selinux system with no trailing dot
-   if [ "${shadowperms}." != "----------.." -a "${shadowperms}." != "-r--------.." -a "${shadowperms}." != "-rw-r-----.." -a "${shadowperms}." != "-rw-r-----." ];
+   # 0.19 except for the Kali one that does not so last entry is for a Debian non-selinux system with no trailing dot
+   # 0.22 And Openindiana has no selinux so no trailing . but different perms
+   #    (above added for Collector V0.22S the openindiana checks beta)
+   if [ "${shadowperms}." != "----------.." -a "${shadowperms}." != "-r--------.." -a "${shadowperms}." != "-rw-r-----.." -a "${shadowperms}." != "-rw-r-----." -a "${shadowperms}." != "-r--------." ];
    then
       echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>" >> ${htmlfile}
       echo "<p>The /etc/shadow file is badly secured.<br /><b>It should be -r-------- or ---------- and owned by root:root for RHEL systems</b>.<br />" >> ${htmlfile}
@@ -2012,40 +2025,83 @@ build_appendix_a() {
    fi
 
    # 6 - Check system default passwd maxage, minlen etc
-   if [ -f ${WORKDIR}/login.defs ];      # check, added later so not in all collection releases
-   then
+##todelete#   if [ -f ${WORKDIR}/login.defs ];      # check, added later so not in all collection releases
+##todelete#   then
       echo "<h3>A.6 User default attributes file</h3>" >> ${htmlfile}
       echo "<p>The default attributes used when adding a new user need to be set to" >> ${htmlfile}
       echo "reasonable values, the defaults are generally unaceptable. These are" >> ${htmlfile}
       echo "the values obtained from /etc/login.defs, /etc/security/pwquality.conf and /etc/security/pwquality.conf.d/*.conf files," >> ${htmlfile} 
       echo "if they exist for server ${hostid} (pwquality.conf files are used on PAM systems)." >> ${htmlfile} 
-      echo "<br>Note: a Debian12 new install has comments in login.defs saying the minlen is now set in /etc/pam.d files, but I cannot find anything relevent in those fles yet to check.</p>" >> ${htmlfile} 
+      echo "<br>Note: a Debian12 new install has comments in login.defs saying the minlen is now set in /etc/pam.d files, but I cannot find anything relevent in those fles yet to check." >> ${htmlfile} 
+      echo "<br>Note: For SunOS systems these are set in /etc/default/passwd.</p>" >> ${htmlfile} 
       # Get and ensure values exist for the data being checked
-      maxdays=`grep "^PASS_MAX_DAYS" ${WORKDIR}/login.defs | awk {'print $2'}`
-      mindays=`grep "^PASS_MIN_DAYS" ${WORKDIR}/login.defs | awk {'print $2'}`
-      minlen=`grep "^PASS_MIN_LEN" ${WORKDIR}/login.defs | awk {'print $2'}`
-      warndays=`grep "^PASS_WARN_AGE" ${WORKDIR}/login.defs | awk {'print $2'}`
-      minlen2=`grep "^PAM_PWQUALITY_MINLEN" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
-      if [ "${maxdays}." == "." ];
+      ostype=`grep "^TITLE_OSTYPE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+      if [ "${ostype}." == "Linux." ];
       then
+         maxdays=`grep "^PASS_MAX_DAYS" ${WORKDIR}/login.defs | awk {'print $2'}`
+         mindays=`grep "^PASS_MIN_DAYS" ${WORKDIR}/login.defs | awk {'print $2'}`
+         minlen=`grep "^PASS_MIN_LEN" ${WORKDIR}/login.defs | awk {'print $2'}`
+         warndays=`grep "^PASS_WARN_AGE" ${WORKDIR}/login.defs | awk {'print $2'}`
+         minlen2=`grep "^PAM_PWQUALITY_MINLEN" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+         if [ "${maxdays}." == "." ];
+         then
+            maxdays="0"
+         fi
+         if [ "${mindays}." == "." ];
+         then
+            mindays="0"
+         fi
+         if [ "${minlen}." == "." ];
+         then
+            minlen="0"
+         fi
+         if [ "${minlen2}." == "." ];
+         then
+            minlen2="0"
+         fi
+         if [ "${warndays}." == "." ];
+         then
+            warndays="0"
+         fi
+      elif [ "${ostype}." == "SunOS." ];
+      then
+         maxweeks=`grep "^ETC_DEFAULT_PASSWD=MAXWEEKS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $3'}`
+	 if [ "${maxweeks}." == "." ];
+	 then
+            maxdays=99999        # use Linux value of never expires for the checks below
+	 else
+            maxdays=$(( ${maxweeks} * 7 ))
+	 fi
+         minweeks=`grep "^ETC_DEFAULT_PASSWD=MINWEEKS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $3'}`
+	 if [ "${minweeks}." == "." ];
+	 then
+            mindays=0
+	 else
+            mindays=$(( ${minweeks} * 7 ))
+	 fi
+         minlen=`grep "^ETC_DEFAULT_PASSWD=PASSLENGTH" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $3'}`
+	 if [ "${minlen}." == "." ];
+	 then
+            minlen=0
+	 fi
+	 minlen2="${minlen}"
+      else
+         echo "*ERROR* ostype of ${ostype} found, not configured yet."
          maxdays="0"
-      fi
-      if [ "${mindays}." == "." ];
-      then
          mindays="0"
-      fi
-      if [ "${minlen}." == "." ];
-      then
          minlen="0"
-      fi
-      if [ "${minlen2}." == "." ];
-      then
          minlen2="0"
-      fi
-      if [ "${warndays}." == "." ];
-      then
          warndays="0"
       fi
+
+      # Make sure we have numbers, was an issue with my awk field numbers
+      # that left some values blank... that passed checks which is bad
+      maxdays=`must_be_number "${maxdays}"`
+      mindays=`must_be_number "${mindays}"`
+      minlen=`must_be_number "${minlen}"`
+      minlen2=`must_be_number "${minlen2}"`
+      warndays=`must_be_number "${warndays}"`
+
       # Now report on what we found
       echo "<table border=\"1\"><tr bgcolor=\"${colour_border}\"><td><center>User Default Settings</center></td></tr>" >> ${htmlfile}
       if [ ${maxdays} -gt 61 ];  # doesn't expire in 61 days as a default
@@ -2064,38 +2120,30 @@ build_appendix_a() {
          echo "<tr bgcolor=\"${colour_OK}\"><td>The default time within which users can change passwords is acceptable</td></tr>" >> ${htmlfile}
       fi
       # minlen can be set in the system login.defs or the pam pwquality.conf
-      if [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -lt ${NEEDPWLEN} ];
+      if [ ${minlen} -lt ${minlen2} ];    # pwquality takes precedence
       then
-         echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf (or missing/defaulting)</td></tr>" >> ${htmlfile}
-         inc_counter ${hostid} alert_count
-         log_alert_detail ${hostid} "Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf"
-      elif [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -eq 0 ]; 
-      then
-         minlen2="commented"
-         echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs</td></tr>" >> ${htmlfile}
-         inc_counter ${hostid} alert_count
-         log_alert_detail ${hostid} "Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs"
-      elif [ ${minlen} -lt ${NEEDPWLEN} -a ${minlen2} -lt ${NEEDPWLEN} ]; 
-      then
-         if [ ${minlen} -eq 0 ];
-         then
-            minlen="commented"
-         fi
-         echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf</td></tr>" >> ${htmlfile}
-         inc_counter ${hostid} alert_count
-         log_alert_detail ${hostid} "Default minimum password length < ${NEEDPWLEN}, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf"
-      else
-         echo "<tr bgcolor=\"${colour_OK}\"><td>Default minimum password length is OK, it is ${minlen} in login.defs and ${minlen2} in pwquality.conf</td></tr>" >> ${htmlfile}
+	      minlen="${minlen2}"
       fi
-      if [ ${warndays} -lt 7 ];  # less than 7 days warning is insufficient
+      if [ ${minlen} -lt ${NEEDPWLEN} ];
       then
-         echo "<tr bgcolor=\"${colour_warn}\"><td>Default warning on password expiry is < 7 days</td></tr>" >> ${htmlfile}
-         inc_counter ${hostid} warning_count
+	      echo "<tr bgcolor=\"${colour_alert}\"><td>Default minimum password length < ${NEEDPWLEN}, it is ${minlen}</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "Default minimum password length < ${NEEDPWLEN}, it is ${minlen}"
       else
-         echo "<tr bgcolor=\"${colour_OK}\"><td>Default password expiry warning is >= 7 days, OK</td></tr>" >> ${htmlfile}
+         echo "<tr bgcolor=\"${colour_OK}\"><td>Default minimum password length is OK, it is ${minlen}</td></tr>" >> ${htmlfile}
+      fi
+      if [ "${ostype}." != "SunOS." ];         # SunOS does not have tghis setting
+      then
+         if [ ${warndays} -lt 7 ];  # less than 7 days warning is insufficient
+         then
+            echo "<tr bgcolor=\"${colour_warn}\"><td>Default warning on password expiry is < 7 days</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} warning_count
+         else
+            echo "<tr bgcolor=\"${colour_OK}\"><td>Default password expiry warning is >= 7 days, OK</td></tr>" >> ${htmlfile}
+         fi
       fi
       echo "</table>" >> ${htmlfile}
-   fi
+##todelete#   fi
 
    # A.7 must be no additional users in the root group
    echo "<h3>A.7 No additional users in the root group</h3>" >> ${htmlfile}
@@ -2172,7 +2220,7 @@ build_appendix_a() {
    then
       echo "<p>No badly secured user .ssh directories were located on this server.</p> " >> ${htmlfile}
    else
-      echo "<p>The following user .ssh directories are badly secured !.</p>"
+      echo "<p>The following user .ssh directories are badly secured !.</p>" >> ${htmlfile}
       echo "<table bgcolor=\"${colour_alert}\">" >> ${htmlfile}
       grep "USER-SSH-DIRPERMS=" ${SRCDIR}/secaudit_${hostid}.txt | grep -v "drwx------" | while read dataline
       do
@@ -2281,45 +2329,88 @@ build_appendix_b() {
 
    echo "<h2>Appendix B.3 - NFS File Shares</h2>" >> ${htmlfile}
    touch ${WORKDIR}/${hostid}_all_ok
-   testvar=`grep "^PERM_ETC_EXPORTS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2"="$3'}`
-   if [ "${testvar}." != "." ];
+   ostype=`uname -s`
+   if [ "${ostype}." != "SunOS." ];
    then
-      check_file_perms "${testvar}" "-rwXX--X--"
-      if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not empty has error text
+      testvar=`grep "^PERM_ETC_EXPORTS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2"="$3'}`
+      if [ "${testvar}." != "." ];
       then
-         inc_counter ${hostid} alert_count
-         log_alert_detail ${hostid} "/etc/exports is badly secured"
-         echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>" >> ${htmlfile}
-         echo "<p><b>The /etc/exports file is badly secured</b>. It must be owned by root and" >> ${htmlfile}
-         echo "only writeable by root.<br>Actual: ${testvar}<br>${PERM_CHECK_RESULT}<br>" >> ${htmlfile}
-         echo "Log up to root and resecure this file <b>immediately</b>.</p>" >> ${htmlfile}
-         echo "</td></tr></table>" >> ${htmlfile}
-      fi
-      # 2007/08/14 - added the grep -v to suprres comments as empty (only comments in file)
-      #              were raising alerts. Done in processing not capture, the capture still
-      #              needs to collect what was there.
-      numentries=`grep "^ETC_EXPORTS_DATA" ${SRCDIR}/secaudit_${hostid}.txt | grep -v "^ETC_EXPORTS_DATA=#" | wc -l`
-      get_num_only ${numentries}
-      numentries=${NUM_VALUE}
-      if [ "${numentries}." != "0." ];
-      then
-         echo "<p>The file /etc/exports exists. Check the exported directories to" >> ${htmlfile}
-         echo "ensure they are still required as NFS mounts.</p>" >> ${htmlfile}
-         echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
-         echo "<center>/etc/exports file for ${hostid}</center></td></tr>" >> ${htmlfile}
-         echo "<tr bgcolor=\"${colour_warn}\"><td><pre>" >> ${htmlfile}
-         grep "^ETC_EXPORTS_DATA" ${SRCDIR}/secaudit_${hostid}.txt | cut -d\= -f2 | cat >> ${htmlfile}
-         echo "</pre></td></tr></table>" >> ${htmlfile}
-         inc_counter ${hostid} warning_count
+         check_file_perms "${testvar}" "-rwXX--X--"
+         if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not empty has error text
+         then
+            inc_counter ${hostid} alert_count
+            log_alert_detail ${hostid} "/etc/exports is badly secured"
+            echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>" >> ${htmlfile}
+            echo "<p><b>The /etc/exports file is badly secured</b>. It must be owned by root and" >> ${htmlfile}
+            echo "only writeable by root.<br>Actual: ${testvar}<br>${PERM_CHECK_RESULT}<br>" >> ${htmlfile}
+            echo "Log up to root and resecure this file <b>immediately</b>.</p>" >> ${htmlfile}
+            echo "</td></tr></table>" >> ${htmlfile}
+         fi
+         # 2007/08/14 - added the grep -v to suprres comments as empty (only comments in file)
+         #              were raising alerts. Done in processing not capture, the capture still
+         #              needs to collect what was there.
+         numentries=`grep "^ETC_EXPORTS_DATA" ${SRCDIR}/secaudit_${hostid}.txt | grep -v "^ETC_EXPORTS_DATA=#" | wc -l`
+         get_num_only ${numentries}
+         numentries=${NUM_VALUE}
+         if [ "${numentries}." != "0." ];
+         then
+            echo "<p>The file /etc/exports exists. Check the exported directories to" >> ${htmlfile}
+            echo "ensure they are still required as NFS mounts.</p>" >> ${htmlfile}
+            echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
+            echo "<center>/etc/exports file for ${hostid}</center></td></tr>" >> ${htmlfile}
+            echo "<tr bgcolor=\"${colour_warn}\"><td><pre>" >> ${htmlfile}
+            grep "^ETC_EXPORTS_DATA" ${SRCDIR}/secaudit_${hostid}.txt | cut -d\= -f2 | cat >> ${htmlfile}
+            echo "</pre></td></tr></table>" >> ${htmlfile}
+            inc_counter ${hostid} warning_count
+         else
+            echo "<table bgcolor=\"${colour_OK}\"><tr><td>" >> ${htmlfile}
+            echo "<p>The /etc/exports file exists, but is empty or has no uncommented entries. This is OK.</p>" >> ${htmlfile}
+            echo "</td></tr></table>" >> ${htmlfile}
+         fi
       else
          echo "<table bgcolor=\"${colour_OK}\"><tr><td>" >> ${htmlfile}
-         echo "<p>The /etc/exports file exists, but is empty or has no uncommented entries. This is OK.</p>" >> ${htmlfile}
+         echo "<p>No problems found. No /etc/exports file exists so no NFS file shares.</p>" >> ${htmlfile}
          echo "</td></tr></table>" >> ${htmlfile}
       fi
-   else
-      echo "<table bgcolor=\"${colour_OK}\"><tr><td>" >> ${htmlfile}
-      echo "<p>No problems found. No /etc/exports file exists so no NFS file shares.</p>" >> ${htmlfile}
-      echo "</td></tr></table>" >> ${htmlfile}
+   else    # Else is SunOS
+
+      testvar=`grep "^PERM_ETC_DFS_DFSTAB" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2"="$3'}`
+      if [ "${testvar}." != "." ];
+      then
+         check_file_perms "${testvar}" "-rwXX--X--"
+         if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not empty has error text
+         then
+            inc_counter ${hostid} alert_count
+            log_alert_detail ${hostid} "/etc/dfs/dfstab is badly secured"
+            echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>" >> ${htmlfile}
+            echo "<p><b>The /etc/dfs/dfstab file is badly secured</b>. It must be owned by root and" >> ${htmlfile}
+            echo "only writeable by root.<br>Actual: ${testvar}<br>${PERM_CHECK_RESULT}<br>" >> ${htmlfile}
+            echo "Log up to root and resecure this file <b>immediately</b>.</p>" >> ${htmlfile}
+            echo "</td></tr></table>" >> ${htmlfile}
+         fi
+         numentries=`grep "^ETC_DFS_DFSTAB_DATA" ${SRCDIR}/secaudit_${hostid}.txt | grep -v "^ETC_DFS_DFSTAB_DATA=#" | wc -l`
+         get_num_only ${numentries}
+         numentries=${NUM_VALUE}
+         if [ "${numentries}." != "0." ];
+         then
+            echo "<p>The file /etc/dfs/dfstab exists. Check the exported directories to" >> ${htmlfile}
+            echo "ensure they are still required as NFS mounts.</p>" >> ${htmlfile}
+            echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
+            echo "<center>/etc/dfs/dfstab file for ${hostid}</center></td></tr>" >> ${htmlfile}
+            echo "<tr bgcolor=\"${colour_warn}\"><td><pre>" >> ${htmlfile}
+            grep "^ETC_DFS_DFSTAB_DATA" ${SRCDIR}/secaudit_${hostid}.txt | cut -d\= -f2 | cat >> ${htmlfile}
+            echo "</pre></td></tr></table>" >> ${htmlfile}
+            inc_counter ${hostid} warning_count
+         else
+            echo "<table bgcolor=\"${colour_OK}\"><tr><td>" >> ${htmlfile}
+            echo "<p>The /etc/dfs/dfstab file exists, but is empty or has no uncommented entries. This is OK.</p>" >> ${htmlfile}
+            echo "</td></tr></table>" >> ${htmlfile}
+         fi
+      else
+         echo "<table bgcolor=\"${colour_OK}\"><tr><td>" >> ${htmlfile}
+         echo "<p>No problems found. No /etc/dfs/dfstab file exists so no NFS file shares.</p>" >> ${htmlfile}
+         echo "</td></tr></table>" >> ${htmlfile}
+      fi
    fi
 
    echo "<h2>Appendix B.4 - Samba file Shares</h2>" >> ${htmlfile}
@@ -2986,8 +3077,8 @@ build_appendix_c() {
          if [ "${CUSTOMFILE}." != "." ];
          then
             searchmatch=`echo "${searchmatch}"`   # remove training spaces
-            # grep needs [ and ] changed to \[ and \] for searches so into a temp car for the search
-            bb=`echo "${aa}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
+            # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the search
+            bb=`echo "${searchmatch}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
             processmatch1=`grep "^NETWORK_TCPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
             processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`                  # remove trailing spaces
             if [ "${processmatch1}." == "${searchmatch}." ]
@@ -3016,6 +3107,11 @@ build_appendix_c() {
    echo "</table>" >> ${htmlfile}
 
    # UDP Ports active
+   ostype=`uname -s`
+   if [ "${ostype}." == "SunOS." ];
+   then
+      echo "*WARNING* UDP checks not yet properly implemented for SunOS yet"
+   fi
    echo "<br><br><table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"4\"><center>UDP Ports open on the server</center></td></tr>" >> ${htmlfile}
    echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td><td>Process</td></tr>" >> ${htmlfile}
    cat ${WORKDIR}/active_udp_services.wrk2 | while read dataline
@@ -4662,6 +4758,7 @@ EOF
          echo "<b>This server appears to be not running a firewall !</b>, or no rules are configured</td></tr></table><br /><br />" >> ${htmlfile}
 	 echo "<p>On rhel family servers you should install package \"firewalld\" which will install firewalld and nftables, or as I prefer just install iptables and do it all by hand although iptables has been depreciated in favour of nftables</p>" >> ${htmlfile}
 	 echo "<p>On debian servers you should install package \"firewalld\" which will install firewalld, nftables (nft command) and iptables (iptables command)</p>" >> ${htmlfile}
+	 echo "<p>On SunOS family servers IPF (ipfilter) is used as the firewall, <b>these scripts do not yet support ipfilter.</b></p>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
          log_alert_detail ${hostid} "This server appears to be not running a firewall"
       fi
@@ -5749,7 +5846,7 @@ build_main_index_page() {
    alerts=`cat ${RESULTS_DIR}/global_alert_totals`
    warns=`cat ${RESULTS_DIR}/global_warn_totals`
    echo "<tr bgcolor=\"${colour_banner}\"><td>TOTALS:</td><td>${alerts}</td><td>${warns}</td>" >> ${htmlfile}
-   echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2023</small></td>" >> ${htmlfile}
+   echo "<td bgcolor=\"lightblue\" colspan=\"2\"><small>&copy Mark Dickinson, 2004-2026</small></td>" >> ${htmlfile}
    if [ "${INDEXKERNEL}." == "yes." ];
    then
       echo "<td colspan=\"3\">Processing script V${PROCESSING_VERSION}</td></tr>" >> ${htmlfile}

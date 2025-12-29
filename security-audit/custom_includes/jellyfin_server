@@ -1,0 +1,11 @@
+#
+# Common rules for servers running jellyfin server, on host setup
+# >>> Included File: ../custom_includes/jellyfin_server
+#
+ADD_SYSTEM_FILE_OWNER=jellyfin
+ALLOW_DIRPERM_SYSTEM=nfs
+UDP_PORTV4_ALLOWED=:7359:jellyfin 
+TCP_PORTV4_ALLOWED=:8096:jellyfin-server
+NETWORK_UDPV4_PROCESS_ALLOW=jellyfin
+SUDOERS_ALLOW_ALL_SERVERS=jellyfin
+SUDOERS_ALLOW_ALL_COMMANDS=jellyfin

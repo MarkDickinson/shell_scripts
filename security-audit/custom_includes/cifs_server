@@ -1,0 +1,20 @@
+#
+# Common rules for servers running SMBD to provide remote disk mounts for CIFS mounts
+# Starting smbd also starts nmbd unfortunately
+# >>> Included File: ../custom_includes/cifs_server
+#
+TCP_PORTV4_ALLOWED=:139:smbd
+TCP_PORTV6_ALLOWED=:139:smbd
+TCP_PORTV4_ALLOWED=:445:smbd
+TCP_PORTV6_ALLOWED=:445:smbd
+TCP_PORTV4_ALLOWED=:137:nmbd
+TCP_PORTV4_ALLOWED=:138:nmbd
+#
+SUID_ALLOW=/usr/sbin/mount.cifs
+#
+NETWORK_PORT_NOLISTENER_TCPV4_OK=137:I dont need to start nmbd
+NETWORK_PORT_NOLISTENER_TCPV4_OK=138:I dont need to start nmbd
+NETWORK_PORT_NOLISTENER_TCPV4_OK=139:only started when I need it
+NETWORK_PORT_NOLISTENER_TCPV6_OK=139:only started when I need it
+NETWORK_PORT_NOLISTENER_TCPV4_OK=445:only started when I need it
+NETWORK_PORT_NOLISTENER_TCPV6_OK=445:only started when I need it
