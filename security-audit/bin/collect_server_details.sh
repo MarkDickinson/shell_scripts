@@ -183,13 +183,14 @@
 #              capture /etc/default/password to use for SunOS checks
 #              in the processing script id OSTYPE is SunOS (processing
 #              script still uses login.defs/pwquality.conf if Linux)
+# 2026/01/25 - Version bump to 0.24 to match processing script
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.23"    # capture script version
+EXTRACT_VERSION="0.24"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -314,7 +315,35 @@ then
    exit 1
 fi
 
+# CRITICAL: This value below OStypeName is used all through the
+# scripts to determine what action to take based on whether it
+# is Linux or SunOS. Make sure it is never unset/set elewhere.
+# Values currently tested for are Linux and SunOS
 OStypeName=`uname -s`
+
+# CRITICAL: This value below OSfamilyName is used all through the
+# scripts to determine what action to take based on whether it
+# is Debian or a rhel family OS as they put files in different
+# places so we need to know this.
+# Make sure it is never unset/set elewhere.
+# Values currently tested for are Debian, Rhel may also be set to Openindiana
+# Yes there are many others, I only run the three above so cannot test anything else.
+# KNOWN ISSUE: Ubuntu puts files in different places to Debian , not catered for.
+if [ "${OStypeName}." == "Linux." ];
+then
+   isdeb=`uname -a | grep -i "Debian"`
+   if [ "${isdeb}." != "." ];
+   then
+      OSfamilyName="Debian"
+   else
+      OSfamilyName="Rhel"
+   fi
+else
+   OSfamilyName="Openindiana"
+fi
+
+# Set some OS specific flags we will need later
+# Find options are OS type specific
 if [ "${OStypeName}." == "Linux." ];
 then
 	LinuxFindOpts="-P -H"
@@ -564,15 +593,16 @@ find_file_perm() {
 require_file() {
    fname="$1"
    days_needed="$2"
-   archive_suffix="$3"
-   ls -la ${fname} 2>/dev/null | while read dataline
-   do
-       echo "REQD_FILE=${days_needed};${dataline}" >> ${LOGFILE}
-   done
-   ls -la ${fname}*${archive_suffix} 2>/dev/null | while read dataline
-   do
-       echo "REQD_FILE=${days_needed};${dataline}" >> ${LOGFILE}
-   done
+   if [ -f ${fname} ];
+   then
+      # list all including the .N and *gz archived ones
+      ls -la ${fname}* 2>/dev/null | while read dataline
+      do
+         echo "REQD_FILE=${days_needed};${dataline}" >> ${LOGFILE}
+      done
+   else
+      echo "REQD_FILE=${days_needed};${fname};DOES NOT EXIST" >> ${LOGFILE}
+   fi
 } # require_file
 
 # ----------------------------------------------------------------------
@@ -844,6 +874,12 @@ get_PAM_pwminlen() {
    else
       pamminlen=""
    fi
+   # clean up temp file
+   if [ -f ${WORKDIR}/pamwork.tmp ];
+   then
+      /bin/rm ${WORKDIR}/pamwork.tmp
+   fi
+   # and return the value we found if any
    echo "${pamminlen}"   # return value to the caller
 } # end of get_PAM_pwminlen
 
@@ -890,8 +926,7 @@ record_file ETC_HOSTS_ALLOW_FILE /etc/hosts.allow  # hosts that may connect
               # processing script to make sure no 'ALL: ALL: spawn' commands are executed 
 	      # as even SNMP can get a backdoor script running that way
 record_file ETC_HOSTS_DENY_FILE /etc/hosts.deny  # hosts that may not connect unless in hosts.allow
-ostype=`uname -s`
-if [ "${ostype}." != "SunOS." ];   # Linux checking reasonably coded
+if [ "${OStypeName}." != "SunOS." ];   # Linux checking reasonably coded
 then
    record_file LOGIN_DEFS /etc/login.defs        # passwd maxage, minlen etc
    aa=`get_PAM_pwminlen`                         # see if minlen overridden by PAM settings
@@ -999,8 +1034,7 @@ done
 # Are cron.allow and cron.deny being used ?
 # ======================================================================
 timestamp_action "collecting cron information"
-ostype=`uname -s`
-if [ "${ostype}." != "SunOS." ];
+if [ "${OStypeName}." != "SunOS." ];
 then
    basedir="/etc"
 else
@@ -1255,8 +1289,7 @@ unset cron_parse_out_commands
 # ======================================================================
 # Are at.allow and at.deny being used ?
 # ======================================================================
-ostype=`uname -s`
-if [ "${ostype}." != "SunOS." ];
+if [ "${OStypeName}." != "SunOS." ];
 then
 	basedir="/etc"
 else
@@ -1317,8 +1350,7 @@ done
 
 # --- How about any file shares ? ---
 timestamp_action "checking for exported filesystems"
-ostype=`uname -s`
-if [ "${ostype}." != "SunOS" ];
+if [ "${OStypeName}." != "SunOS" ];
 then
    if [ -f /etc/exports ];
    then
@@ -1370,8 +1402,7 @@ done
 # try to match a running process to any listening network port
 # MID: 2025/12/10 - not valid on openindianna so
 timestamp_action "collecting information on open network ports and sockets"
-OStypeName=`uname -s`
-case "$OStypeName" in
+case "${OStypeName}" in
    "Linux")
             netstat -an -p | grep LISTEN | grep "^tcp "| grep -v "::" | while read dataline
             do
@@ -1510,7 +1541,6 @@ else
 fi
 
 # record if NetworkManager and Firewalld are running on the server
-OStypeName=`uname -s`
 if [ "${OStypeName}." == "Linux." ]
 then
    timestamp_action "testing for NetworkManager and Firewalld service status"
@@ -1602,8 +1632,16 @@ done
 if [ "${OStypeName}." == "Linux." ]
 then
    timestamp_action "collecting info on files that must be retained"
-   require_file /var/log/auth.log 60 ".gz"
-   require_file /var/log/wtmp 60 ".gz"
+   require_file /var/log/auth.log 60 
+   require_file /var/log/wtmp 60 
+   # below assumes selinux is installed
+   require_file /var/log/audit/audit.log 60 
+   if [ "${OSfamilyName}." == "Debian." ];
+   then
+      require_file /var/log/syslog 60 
+   else
+      require_file /var/log/messages 60 
+   fi
 fi
 # TODO: find SunOS equivalent
 
@@ -1770,11 +1808,9 @@ fi
 if [ "${BACKUP_RPMLIST}." == "yes." ];
 then
    timestamp_action "saving the installed packages information"
-   OStypeName=`uname -s`
    case "${OStypeName}" in
       "Linux")
-               isDebian=`uname -a | grep -i Debian`
-               if [ "${isDebian}." == "." ];
+               if [ "${OSfamilyName}." != "Debian." ];
                then
                   rpm -qa > ${RPMFILE}
                else

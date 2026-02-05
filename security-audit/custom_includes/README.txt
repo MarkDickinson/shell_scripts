@@ -3,6 +3,12 @@ This allows servers with common applications to just include the rule file rathe
 than having to repeatedly code the same rules in each individual servers customisation
 file.
 
+TODO: change directory structure so unique directories for different
+      OS releases instead os sticking things like debian/debian12/debian13 
+      on the end of files as changes are needed for each OS release.
+      If an example file does not have some OS type appended it was tested
+      on a rhel family OS and seems to be OK for others.
+
 In a server customisation file you would normally have an include for the base OS
 and then includes for each application
 (system as well as application, ie: chrony or ntp do not belong in a server_ file

@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.19 of the processing script<br />
-Version 0.19 of the data collection script<br />
-Last updated 05 October 2021
+Version 0.24 of the processing script<br />
+Version 0.24 of the data collection script<br />
+Last updated 04 February 2026  (replacing Nov 2021 document)
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -82,11 +82,8 @@ page will be that they are not installed</li>
 
 <h3>1.2 Requirements, environment needed</h3>
 <ul>
-<li>a large bunch of Linux servers. These scripts are tested primarily Fedora30/31 and CentOS7
- (although I also run them on a 'kali' server which I believe is debian based.
- <em>BETA testing done for Fedora31 and CentOS8 due to major change in firewalld using netfilter
- instead of iptables now</em>, will be some time before the firewall appendix netfilter
- checks can be considered as accurate as the iptables report</li>
+<li>a large bunch of Linux servers. These scripts are tested on Fedora33, Rocky8, Alma9,
+CentOS8, Debian 12 and Debian13. Also partial support for OpenIndiana has been implemented</li>
 <li>server names must be unique until the first '.' (dot) in a server name</li>
 <li>server names cannot contain the '_' underscore character (used for parsing)</li>
 <li>the scripts cannot be installed in a directory where any part of the directoty path contains the '_' underscore character (used for parsing)</li>
@@ -103,9 +100,10 @@ The data collection script must be run as root on the servers to ensure it has
 access to all the files it is checking. The processing script should not be run as root.
 </p>
 <p>
-As written it will only work on Linux servers. I have no plans to
-make the code generic. I use it for checking Fedora and CentOS7 servers,
-although I have also run it for a 'kali' server which I believe is debian based.
+It was created for the Linux servers I use (rhel family and Debian), although partial
+SunOS support now exists for the OpenIndiana server I run. <em>Do not expect it to
+work correctly on other Linux distributions</em> (they all put files in different places,
+even Ubuntu is too different from Debian these days).
 </p>
 <p>
 It is designed for processing results from multiple servers,
@@ -117,7 +115,7 @@ of them have terribly insecure file permissions).<br />
 I do not believe products such as puppet/chef/cfengine are suitable
 for keeping file systems secure as while they can manage products/classes
 they know about they cannot manage all the wild things users can
-get up to outside those parameters. This toolkit is designed 
+get up to in their unmanaged development filesystems. This toolkit is designed 
 to capture everything, especially the applications and badly secured
 files users may put in system directories outside managed infrastructure.
 </p>
@@ -128,29 +126,32 @@ links down to the details for each server.
 </p>
 <p>
 It checks for
-<ul>
-<li>user sanitation checks</li>
-<li>badly secured system files</li>
-<li>badly secured home directories</li>
-<li>unexpected open tcp ports</li>
-<li>unexpected open udp ports</li>
-<li>ftp allowed users</li>
-<li>cron script file securities (excluding anacron jobs)</li>
-</ul>
-The checklist above is vastly simplified, for example the
-ftp allowed users not only warns which users are allowed
-to use ftp but will report on any denied ftp users that
-are no longer on the system so you can clean up your
-ftpusers file, the user checks xref the passwd file against
-the shadow file and report on inconsistencies that need
-pwconv to fix etc.
 </p>
+<ul>
+<li>user sanitation checks, .ssh rc or config files present , are they in ftpusers (or users in ftpusers that are no longer valid users) etc</li>
+<li>some system settings, password minlen+expiry, motd</li>
+<li>server environment such as firewall running or not, SELinux installed or not</li>
+<li>if a firewall any unexpected firewall ports open</li>
+<li>badly secured system files (many packages have bad install settings), orphaned files etc.</li>
+<li>sshd config, and any config or user scripts they may run on a ssh connection etc)</li>
+<li>cron script file securities (excluding anacron jobs), make sure scripts run by cron are only editable by the crontab user etc</li>
+<li>suid file checks to find unexpected ones (with customisation flags to suppress alerts if desired
+ for all the ones it will always find in docker image filesystems and snap packages; which are still
+ a risk of course)</li>
+<li>and it checks customistion files used; entries for users, suid files, firewall ports etc. that
+ are in the customisation file but do not actually exist on the server are also alerted on so
+ you can fic customisation files</li>
+</ul>
 <p>
 The easiest way to see what it does is to run it.
 </p>
 <p>
 It allows customisation of configurable rules on a
-global, or per server basis.
+global, or per server basis. The customiation configuration files support
+'include' of configuration snippets, so if you had for example three servers
+running mariadb their customisation files would have a one line include of
+a mariadb config rather than having to code the full rules in each servers config
+file.
 </p>
 
 <p>
@@ -173,18 +174,16 @@ Basic file structure of the toolkit is
 <li>The doc directory has this documentation.</li>
 <li>The results directory is only created after you have performed a processing run,
 it is important to note that on a "full" processing run the results directory
-is empties and recreated from scratch, on a single server run only files in the
+is emptied and recreated from scratch, on a single server run only files in the
 affected servers results directory are removed and recreated.</li>
 </ul>
 </p>
 <p>
-<em>Additional note</em>: as shipped the
-collection script tars up /etc and takes rpm package
-snapshots. Thats because under this toolkit
+<em>Additional note</em>: the collection script has an option to tar
+up /etc and take rpm (rhel) or apt (debian) package
+snapshots. Thats because this toolkit
 is becoming part of a global configuration toolkit in which
-security is but a small part. Feel free to comment out
-the tar of /etc and recording of rpm packages as they
-are not processed by the security reporter components.<br />
+security is but a small part.<br />
 The collection script also captures hardware details <em>if the
 required packages to do so are installed on each server</em> which are
 available to view for each server from a link on each servers 
@@ -198,11 +197,16 @@ you copy the data to in order for it to be processed is in a secure zone.
 </p>
 
 <p>
-In normal operation the processing script will rebuild the entire results
+In default operation the processing script will rebuild the entire results
 directories and contents from scratch by processing every server there are
 collected data files for.<br />
-It is possible to run processing against a single
-server and merge the new results into the full report structure but there
+How I use it, and the recomended way for regular use, is to have a job that
+runs daily with the flag to only process changed data capture files, and stagger
+the data collection across servers so only 3-4 need to be processed each day
+rather than dozens, especially relevant if only a few files have changed as
+reporocessing unchanged files is a bit pointless.<br />
+It is also possible to run processing against a single
+server by name and merge the new results into the full report structure but there
 are considerations to be aware of when doing so which are discussed in a later
 section, additional servers may be processed if needed.
 </p>
@@ -222,7 +226,7 @@ simply...
 <ol>
 <li>copy the bin/collect_server_details.sh script to each server</li>
 <li>as the root user (to gain access to files being recorded), run it</li>
-<li>copy the *.txt and *.tar file produced in your current directory to your
+<li>copy the *.txt (and optional *.tar) files produced in your current directory to your
 reporting servers incoming data directory.</li>
 </ol>
 You should try to automate the running of the data capture so
@@ -235,7 +239,7 @@ regular intervals and produce a refreshed report.
 <p>
 Why would you want to ?. Well it collects a lot of data which
 results in a long processing time. I do a full scan infrequently
-monthly with a smaller scan regularly.
+ with a smaller scan regularly.
 </p>
 <p>
 By default the script will record all file permissions under
@@ -471,11 +475,13 @@ of modifying the scripts themselves.
 </p>
 <p>
 The overrides may be set at a <em>global site level</em> or at
-an <em>individual server level</em> depending upon your requirements.
+an <em>individual server level</em> (<b>not both</b>) depending upon your requirements.
 There are two types of override files
 <ul>
 	<li>ALL.custom        - will override defaults for all processed servers that do not have their own custom file</li>
-	<li><em>hostname</em>.custom - will override defaults for a specific hostname</li>
+	<li><em>hostname</em>.custom - will override defaults for a specific hostname. This would
+	be the most common as if for example you had dozens of servers but only three with mariadb
+	you would not put mariadb customisations into the default file</li>
 </ul>
 </p>
 <p>
@@ -583,9 +589,10 @@ file lives so you have an example tree already setup.
 The expected tree structure is...
 <pre>
    /something/something/bin
-   /something/something/custom
+   /something/something/custom           # serevr custom files
+   /something/something/custom_includes  # package definitions to include
    /something/something/doc
-   /something/something/results
+   /something/something/results          # html results
 </pre>
 ...all script references to custom files are relative to the bin
 directory (../custom/*) so please keep this directory structure.
@@ -610,6 +617,11 @@ will not affect alerting behavior on any other port type, this allows for the un
 where one application may use tcp port NNN and another application use tcp6 port NNN.
 </p>
 <p>
+It is <em>important to note</em> that these port settings are also used when checking
+firewall rules, if a firewall port is open but no entry of one of the below exists in the custom
+file an alert will also be raised in the firewall checks for an unexpected port open.
+</p>
+<p>
 The syntax of network port overrides are (where &ltversion&gt is either 4 or 6) line is...<br>
 <span style="background-color: #FFCCFF"><b>TCP_PORTV&ltversion&gt_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b></span><br />
 <span style="background-color: #FFCCFF"><b>UDP_PORTV&ltversion&gt_ALLOWED=:<em>portnum</em>:<em>description[:WILD]</em></b></span><br />
@@ -625,6 +637,13 @@ for the specified port to be listening on all interfaces (on 0.0.0.0 or :::),
 <b>but this should be used only if your site has a specific reason for an application
 to listen on all interfaces</b>, you should configure your application to only listen
 on the interfaces it needs rather than on all interfaces.
+</p>
+<p>
+As mentioned above these port values are also checked against firewall rules, so
+not directly relevant but worth mentioning is that if you are not actually using
+iptables or nft (or firewalld) then to avoid an alert saying no firewall is installed
+you should also add in the custom file<br />
+<span style="background-color: #D7FFFF">NO_FIREWALL_INSTALLED=YES</span>
 </p>
 
 <H3>3. Network Overrides by process</H3>
@@ -935,8 +954,9 @@ secured the last thing you would want is less strict settings fom ALL.custom bei
 you servername.custom settings.
 </p>
 <p>
-The list of parameters available is not in alpabetical order, but quite jumbled.
-I will get around to updating that one day.
+The list of parameters available <b>is not in alpabetical order</b>, but quite jumbled.
+I will get around to updating that one day. In the meantime things are added at the end
+as I implement them.
 </p>
 
 <table border="1">
@@ -1135,6 +1155,9 @@ active when a user has a ssh session to the host, and for vnc consoles for
 VMs where the VMs are not always running on the default host.<br />
 It is still raised as a warning, as ifd the port is open in the firewall
 any rouge user application can use the port which is undesirable.
+<br />And yes the checks do treat Tcp+Udp V4 and V6 as distinct entries.
+<br /><b>Important to note the : after the port is mandatory</b> even if you do not
+add a description.
 </td></tr>
 <tr><td>ALLOW_OWNER_ROOT=<em>directoryname</em></td><td>
 Allows a directory that is expected to be owned by a user other than root to
@@ -1238,7 +1261,7 @@ must be specified. <em>It should also be noted that the report will alert on any
 entries defined this way where the file does not exist on the server to ensure
 you do not leave stale entries in this list</em>.
 </td></tr>
-<tr><td>SUID_SUPPRESS_DOCKER_OVERLAYS=yes</td><td>
+<tr><td>SUID_SUPPRESS_DOCKER_OVERLAYS=YES</td><td>
 On servers running docker containers a lot of SUID files used by the containers
 are placed in directories under /var/lib/docker/overlay2/<em>containerid</em>.
 As contaner ids are generated there is no way to hard code allowed filenames using
@@ -1249,7 +1272,7 @@ number of alerts suppressed for this reason and provide a link to all the files
 that had alerts suppressed. <b>You</b> are responsible for reviewing this list
 of suppressed files if you suppress the alerts.
 </td></tr>
-<tr><td>SUID_SUPPRESS_SNAP_OVERLAYS=yes</td><td>
+<tr><td>SUID_SUPPRESS_SNAP_OVERLAYS=YES</td><td>
 On Ubuntu servers (at least from release 20.04 onward) many applications are installed
 as SNAP packages, these contain copies of filesystem files including SUID set files
 under directories such as /snap/snapd, /snap/core, /snap.core18, /snap/core*)
@@ -1306,7 +1329,7 @@ directory paths outside the webserver root directories.
 This is only used if the server data file was produced using the collector --webpathlist option
 to specifically identify web server directories that must only contain read-only files.<br />
 Can be used to suppress an alert for a specific webserver file by explicitly naming
-a file than can be writeable. The trailing : is required to prevent false matches such
+a file that can be writeable. The trailing : is required to prevent false matches such
 as xxx.log matching xxx.log.1
 </td></tr>
 <tr><td>ALLOW_SLOPPY_VAR=WARN</td><td>
@@ -1377,7 +1400,10 @@ exist generates an increment to the warning count by default.<br />
 Using this parameter will suppress the warning count being incremented
 This suppressdion is done on a per user basis so new users/packages added can be 
 easily identified. The entry will still be listed in the report but in a non-warning
-colour and no warning counter incremented.
+colour and no warning counter incremented.<br />
+From V0.23 onward users with home directories of /nonexisting will not be considered
+an issue as that is by design in some distros now so considered OK; so this setting
+does not need to be used for those.
 </td></tr>
 <tr><td>SSHD_SUBSYSTEM_ALLOW=subsysname:fullsubsyscommand:</td><td>
 Example SSHD_SUBSYSTEM_ALLOW=sftp:/usr/libexec/openssh/sftp-server:<br />
@@ -1386,15 +1412,15 @@ reguire sftp to be enabled. It can however be used for any subsystem enabled
 by the sshd_config file. If used the alert raised for the specified subsystem
 is downgraded to a warning.
 </td></tr>
-<tr><td>SERVER_IS_ANSIBLE_NODE=yes</td><td>
+<tr><td>SERVER_IS_ANSIBLE_NODE=YES</td><td>
 This parameter is only used if the SSHD_SUBSYSTEM_ALLOW parameter has been
 used for the sftp subsystem. If used it identified the server as being
 managed by ansible and as such must have sftp running, in this case the
 warning for the sftp subsystem is altered to OK.
 </td></tr>
-<tr><td>ALLOW_AUTHORISED_KEYS=yes</td><td>
+<tr><td>ALLOW_AUTHORISED_KEYS=YES</td><td>
 By default users with authorized_keys files are warnings, using this
-parameter indicates it is OK fir users to have those files and
+parameter indicates it is OK for users to have those files and
 suppresses the warnings.<br />
 This does not affect the 'root' user as an alert will always be raised
 if root has ssh keys; that should never be allowed.
@@ -1415,7 +1441,7 @@ files rather than having to code the values for every server running the applica
 Where include files are used the values in the individual server custom file will
 override values in the shared files in the cases where duplicate entries may result.
 </td></tr>
-<tr><td>BLUETOOTH_ALERT_TO_WARN=yes</td><td>
+<tr><td>BLUETOOTH_ALERT_TO_WARN=YES</td><td>
 Downgrade bluetooth activity in the network checks from alerts to warnings
 if bluetooth active sessions were found to be reported on
 </td></tr>
@@ -1432,16 +1458,23 @@ On servers running docker containers the UID and GID of directories and files
 created are completely up to the creator of the container image.
 Any well designed application container will avoid at all costs any UID/GID
 that may already exist on the system. This does mean they show up as alerts
-in the orpjaned file report.
+in the orphaned file report.
 Using this parameter in a customisation file will suppress alerts for
 any orphan files (files not owned by a existing system user) in 
 docker container overlay directories
 </td></tr>
 <tr><td>SELINUX_NOT_INSTALLED=YES</td><td>
-This will turm off the SELinux not installed alert as some servers may not
+This will turn off the SELinux not installed alert as some servers may not
 have SELinux. Even though I manually install it on my Debian servers a lot
 of users probably do not go to that effort so this permits that alert to
 be ignored/suppressed.
+</td></tr>
+<tr><td>NO_FIREWALL_INSTALLED=YES</td><td>
+If a server has no iptables or netfilter rules this will change the no firewall check
+from an alert to a warning. On some servers a firewall may not have been installed
+(you always should) and this is needed for the SunOS checks at the moment as I
+have not implemented tests for IPF (ipfilter) yet so those family servers will always
+decide there is no firewall.
 </td></tr>
 </table>
 

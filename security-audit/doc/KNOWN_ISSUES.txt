@@ -1,3 +1,11 @@
+IMPORTANT NOTES
+===============
+Currently only Debian (native) and Rhel family (Alma, Rocky, CentOS, Fedora etc)
+are supported, partial support for SunOS (openindiana) are also implemented.
+Do not expect these scripts to work properly on other servers such as Ubuntu;
+because every distro puts some key files in different places and I only test
+on OS releases I run.
+ 
 Known Bugs with the current release that need fixing
 ====================================================
 * when processing a capture with a large number of files _SOMETIMES_ an error is thrown
@@ -8,7 +16,7 @@ Known Bugs with the current release that need fixing
   lockfile; need to add that one line between the error msg and the script exit (minor, no hurry)
 * if you ^C or kill a running processing script the lockfile remains, you must use the
   processing script --clearlock option to remove it.  Maybe one day implement a trap handler.
-* Not a bug bate take note:
+* Not a bug but take note:
   Nowhere in the directory path of the processing script can there be an underscore</b> ( _ )
   character used, the underscore character is used by the script for parsing and having it
   in the directory path will cause problems. Not really an issue, just do not do it
@@ -24,7 +32,7 @@ Current Limitations with the current release (some may consider these bugs)
 * reprocessing logic skip, when a single server is selected for processing and the
   processing script version has changed all servers data will need to be re-processed
   also (user is prompted) to ensure everything is processed with the latest version.
-  That is skipped if processing changed files as that is intended for daily batch so
+  That is skipped if processing only changed files as that is intended for daily batch so
   prompts are not possible and avoids a batch job suddenly taking hours instead of minutes.
 * cron job checks - only cron jobs have security permissions checked, not anacron files
   or any queued 'at' jobs
@@ -57,8 +65,8 @@ Current Limitations with the current release (some may consider these bugs)
   is why fixing the above will take some time
 * server firewall rule checks - currently only handles iptables or netfilter (iptables and nft commands)
   It does not yet (and may never) support IPF (ipfilter) firewall tables  
-  needed for the SunOS (openindiana) checks I have started implementing. For now to complicated,
-  especially if zones need to be taken into account, no free time.
+  needed for the SunOS (openindiana) checks I have started implementing. For now too complicated,
+  especially if running zones need to be taken into account, no free time.
 * suid file check has a SunOS/OpenIndiana specific issue, suid files are created at boot time
   with names '/proc/NNN/a.out' (NNN being the pid that changes every reboot). This seems to
   be sendmail that runs a process as root and another as smmsp (the later using a suid a.out of root)
@@ -75,7 +83,7 @@ Irritations caused by environments
   firewall accept rule for a port not in use alerted as an obsolete firewall rule, from
   0.12 onward a custom file rule can be used to identify and downgrade alerts to warnings for ports opened
   by NetworkManager rather than ports you explicitly configured.
-  Examples: 'firewall-cmd --list-ervices' shows 'cockpit dhcpv6-client dns http ntp ssh' and
+  Examples: 'firewall-cmd --list-services' shows 'cockpit dhcpv6-client dns http ntp ssh' and
   'firewall-cmd --list-ports' does not show the following ports,
   but the following ports have firewall rules opening the ports, udp 67(/usr/lib/firewalld/services/dhcp.xml),
   udp 68(/usr/lib/firewalld/services/RH-Satellite-6.xml),udp 69(/usr/lib/firewalld/services/tftp.xml);
@@ -86,3 +94,15 @@ Irritations caused by environments
   will correctly raise an alert for a open firewall port that is not in use but you
   are at the mercy of random changes like that in ditributions (I have overrides for almost every
   firewalld service I use to prevent that now but it will affect all other users)
+* unknown port openers. While the scripts do their best to identify what had a tcp or udp port
+  open (by going as far if needed to parse the output of the recorded 'ps -ef' to locate the
+  actual process running with the pid reported by 'netstat -anp') in some cases a 'netstat -anp'
+  will just report the pid of a process as '-' (single dash) making it impossible to
+  identify what is opening a port; a best guess can be made by matching a port with what is
+  in /etc/services which may not be correct and in many cases listening ports are in ranges
+  outside what is in /etc/services anyway.
+* I always use SSH sessiosn with X11 forwarding, that opens a port range only when a 
+  ssh session is active (shows as a process like 'sshd: mark@pts/0' so I have an include file
+  for servers that provide X11 forwarding in the examples that allows tghe ports to be open
+  in the firewall but also allows it to be OK is they are not in use that you will have to
+  customise for your own port ranges if you use X11 forwarding in your own environment

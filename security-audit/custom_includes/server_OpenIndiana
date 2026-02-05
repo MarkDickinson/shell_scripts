@@ -126,10 +126,11 @@ TCP_PORTV6_ALLOWED=:631:cupsd
 TCP_PORTV4_ALLOWED=:5999:in.mpathd
 TCP_PORTV6_ALLOWED=:5999:in.mpathd
 # Processes that select random ports
-NETWORK_TCPV4_PROCESS_ALLOW=/usr/libexec/sshd-session -R
-NETWORK_TCPV6_PROCESS_ALLOW=/usr/libexec/sshd-session -R
+#NETWORK_TCPV4_PROCESS_ALLOW=/usr/libexec/sshd-session -R
+#NETWORK_TCPV6_PROCESS_ALLOW=/usr/libexec/sshd-session -R
 NETWORK_TCPV4_PROCESS_ALLOW=/usr/lib/inet/inetd start
 NETWORK_TCPV6_PROCESS_ALLOW=/usr/lib/inet/inetd start
 #
-EXACT_ALERT_REASON=This server appears to be not running a firewall
-EXACT_ALERT_REASON_NOTES=SunOS uses ipfilter firewall which is not yet supported by these scripts
+NO_FIREWALL_INSTALLED=YES
+#EXACT_ALERT_REASON=This server appears to be not running a firewall
+#EXACT_ALERT_REASON_NOTES=SunOS uses ipfilter firewall which is not yet supported by these scripts

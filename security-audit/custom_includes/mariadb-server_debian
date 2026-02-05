@@ -1,6 +1,6 @@
 #
-# Customisation rules for servers running a bacula director daemon
-# >>> Include File: ../custom_includes/mariadb
+# Customisation rules for debian servers running mariadb
+# >>> Include File: ../custom_includes/mariadb_debian
 #
 ADD_SYSTEM_FILE_OWNER=mysql
 TCP_PORTV4_ALLOWED=:3306:MySQL server

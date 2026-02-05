@@ -7,22 +7,42 @@ file provided.
 
 Backward compatibility is not guaranteed although most changes for adding additional
 data collection wil be ignored by older processing versions, and newer processing versions
-will cope with expected new information missing. Ideally you would keep the collector
+should cope with expected new information missing. Ideally you would keep the collector
 and processing script versions the same but still works if you do not.
+
+-------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.23 and version 0.24 are
+-------------------------------------------------------------------------------------
+(1) Breaking change: all custom file variables containing =YES should now be
+    uppercase. For some reason only the authorised keys flag was lowercase now all
+    are consistent as uppercase.
+(2) A bug fix in the processing script for ALLOW_OWNER_OVERRIDE where it would
+    fail if multiple entries for the same directory (added a tail -1 where needed)
+(3) If sftp sybsystem is configured in sshd_config that is now considered OK as
+    by default Debian now requires that with the SCP command
+(4) New custom file flag to change alert for no firewall present to just a warning
+    for servers that I do not intend to put iptables or firewalld on, also needed
+    for servers that use IPF as a firewall (ie: SunOS) as the scripts do not support
+    IPF yet.
+(5) Added a check to see if sshd is configured to listen on all interfaces which is 
+    a bad default, you will be getting an extra alert for non-Debian servers if you
+    use defaults; for Debian servers it is a warning as you must use 0.0.0.0 there
+    or sshd will not start (Debian tries to start sshd before networking configures
+    static ips so sshd fails with no available interfaces if config specifies an ip)
 
 -------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.22 and version 0.23 are
 -------------------------------------------------------------------------------------
-(1) A bug fix in the collector script for the user .ssh dir check that was
-    getting the perms from the home directory instead of the .ssh one.
-    The bug fix needed the version bump and release.
-(2) Possible bug fix ?. In network checks 'program match' for allowed listeners
-    had stopped working, fixed that. Not sure if that ws an existing bug introduced
-    in an earlier change or a new one I introduced working on (3).
-    Noted as if it was in an earlier commit the fix is important.
-(3) Started implementing checks for SunOS (openindiana).
+(1) Started implementing checks for SunOS (openindiana).
     Not yet implemented for that are open firewall ports (the collection script
     does not yet support ipfilter) and processes using UDP.
+(2) A bug fix in the collector script for the user .ssh dir check that was
+    getting the perms from the home directory instead of the .ssh one.
+    The bug fix needed the version bump and release.
+(3) Possible bug fix ?. In network checks 'program match' for allowed listeners
+    had stopped working, fixed that. Not sure if that ws an existing bug introduced
+    in an earlier change or a new one I introduced working on other changes.
+    Noted as if it was in an earlier commit the fix is important.
 
 -------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.21 and version 0.22 are

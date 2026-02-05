@@ -222,7 +222,7 @@
 #                       fuser was not available on the colleted server; as we
 #                       obsoleted the use of fuser in an earlier version
 #                   (2) added handling for new customfile parameter
-#                       "SUID_SUPPRESS_DOCKER_OVERLAYS=yes", will not
+#                       "SUID_SUPPRESS_DOCKER_OVERLAYS=YES", will not
 #                       alert on docker suid files in overlay directories
 #                       but will produce a list of all alerts that were
 #                       suppressed.
@@ -298,7 +298,7 @@
 # MID: 2020/09/01 - Version 0.13
 #                   (1) Added checks for at.allow and at.deny files
 #                   (2) added handling for new customfile parameter
-#                       "SUID_SUPPRESS_SNAP_OVERLAYS=yes", will not
+#                       "SUID_SUPPRESS_SNAP_OVERLAYS=YES", will not
 #                       alert on /snap/core* suid files in overlay directories
 #                       but will produce a list of all alerts that were
 #                       suppressed. This is needed for Ubuntu which installs
@@ -337,7 +337,7 @@
 #                   (1) added check for sshd subsystems being enabled,
 #                       new customfile entry SSHD_SUBSYSTEM_ALLOW=${subsysname}:${subsyscmd}:
 #                       added to change alert to warning, new customfile entry
-#                       SERVER_IS_ANSIBLE_NODE=yes added to change warning to OK
+#                       SERVER_IS_ANSIBLE_NODE=YES added to change warning to OK
 #                       if subsystem was sftp.
 # MID: 2020/10/02 - Version 0.15 
 #                   (1) add extra handling to expected alerts checks to
@@ -480,6 +480,22 @@
 #                       my OpenIndiana system now. Added a few other 
 #                       bits to help process results collected on SunOS
 #                       servers.
+# MID: 2026/01/25 - Version 0.24 (version bump as there are bugfixes)
+#                   (1) Allow for debian using a home dir of /nonexistent
+#                       as being a valid value rather than warning of a
+#                       misisng homedir.
+#                   (2) BugFix - ALLOW_OWNEER_OVEERRIDE test was failing 
+#                       if more than one entry in custom files for the
+#                       same directory. As per doc only the last is
+#                       permitted so added a few 'tail -1' to the greps.
+#                   (3) Added new custom file flag NO_FIREWALL_INSTALLED=YES
+#                       to make it a warning instead of alert if no iptables
+#                       or nftables (firewalld now) rules are found mainly for
+#                       the SunOS checks until Istart checking for ipfilter;
+#                       and I have a few servers without one. 
+#                   (4) Cleaned up the table showing netfilter checks a lot
+#                   (5) Added check for sshd listen address not 
+#                       listening on all interfaces
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -536,7 +552,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.23"
+PROCESSING_VERSION="0.24"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -1262,14 +1278,14 @@ check_homedir_perms() {
             then
                dirname=`echo "${databuffer}" | awk {'print $9'}`
                dirname=`echo "${dirname}" | awk -F\= {'print $1'}`
-               testvar=`grep "^ALLOW_OWNER_ROOT=${dirname}" ${CUSTOMFILE}`
+               testvar=`grep "^ALLOW_OWNER_ROOT=${dirname}" ${CUSTOMFILE} | tail -1`
             else 
                testvar=""
             fi
 	    # Can ownership be another user ? - 2022/05/15 change
             if [ "${testvar}." == "." -a "${CUSTOMFILE}." != "." ];
             then
-               testvar=`grep "^ALLOW_OWNER_OVERRIDE=${dirname}:${realowner}:" ${CUSTOMFILE}`
+               testvar=`grep "^ALLOW_OWNER_OVERRIDE=${dirname}:${realowner}:" ${CUSTOMFILE} | tail -1`
             fi
             #
             if [ "${testvar}." == "." ];
@@ -1284,7 +1300,7 @@ check_homedir_perms() {
             else
                if [ "${CUSTOMFILE}." != "." ];
                then
-                  owneroverride=`grep "^ALLOW_OWNER_OVERRIDE=${dirname}:${realowner}:" ${CUSTOMFILE} | awk -F: {'print $2'}`
+                  owneroverride=`grep "^ALLOW_OWNER_OVERRIDE=${dirname}:${realowner}:" ${CUSTOMFILE} | awk -F: {'print $2'} | tail -1`
                else
                   owneroverride=""
                fi
@@ -1309,7 +1325,7 @@ check_homedir_perms() {
          testvar=`echo "${SYSTEM_FILE_OWNERS}" | grep -w "${realowner}"`
          if [ "${CUSTOMFILE}." != "." ];  # no match in system list, override allowed ?
          then
-            testvar=`grep "^ALLOW_OWNER_OVERRIDE=${dirname}:${realowner}:" ${CUSTOMFILE} | awk -F: {'print $2'}`
+            testvar=`grep "^ALLOW_OWNER_OVERRIDE=${dirname}:${realowner}:" ${CUSTOMFILE} | awk -F: {'print $2'} | tail -1`
          fi
          if [ "${testvar}." == "." ];
          then
@@ -1389,7 +1405,7 @@ check_file_perms() {
       then
          thefilename=`echo "${databuffer}" | awk -F\= {'print $1'} | awk {'print $9'}`
          thefilename=`basename "${thefilename}"`
-         testvar=`grep "^FORCE_ANYFILE_OK=${thefilename}" ${CUSTOMFILE}`
+         testvar=`grep "^FORCE_ANYFILE_OK=${thefilename}" ${CUSTOMFILE} | tail -1`
          if [ "${testvar}." != "." ];
          then
             perm=`echo "${databuffer}" | awk {'print $1'}`
@@ -1449,7 +1465,7 @@ check_file_perms() {
                # See if we have a FORCE_OWNER_OK for this file
                thefilename=`echo "${databuffer}" | awk -F\= {'print $1'}`
                thefilename=`echo "${thefilename}" | awk {'print $9'}`
-               testuser=`grep "^FORCE_OWNER_OK=${thefilename}:" ${CUSTOMFILE} | awk -F: {'print $2'}`
+               testuser=`grep "^FORCE_OWNER_OK=${thefilename}:" ${CUSTOMFILE} | awk -F: {'print $2'} | tail -1`
             fi
             if [ "${PERM_CHECK_RESULT}." == "OK." -a "${testuser}." == "."  ];
             then
@@ -1755,7 +1771,7 @@ build_appendix_a() {
       testvar=`echo "${testvar}" | cut -d: -f2`
       if [ "${testvar}." != "${userid}." ]
       then
-	     echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
+         echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
          echo "User <b>${userid}</b> has no entry in /etc/shadow, run pwconv<br>" >> ${htmlfile}
          echo "</td></tr></table>" >> ${htmlfile}
          pwconv_note
@@ -1846,13 +1862,19 @@ build_appendix_a() {
       if [ "${permdata}." == "MISSING." ];
       then
          # home directory does not exist
-         issuppressed=`grep "^HOMEDIR_MISSING_OK=${username2}:" ${CUSTOMFILE}`
+         issuppressed=`grep "^HOMEDIR_MISSING_OK=${username2}:" ${CUSTOMFILE} | tail -1`
          if [ "${issuppressed}." != "." ];
          then
             echo "<tr><td>${username2}</td><td>home directory for <b>${username2}</b> does not exist (${dirname2}), permitted by custom file</td></tr>" >> ${htmlfile}
          else
-            echo "<tr bgcolor=\"${colour_warn}\"><td>${username2}</td><td>home directory for <b>${username2}</b> does not exist (${dirname2})</td></tr>" >> ${htmlfile}
-            inc_counter ${hostid} warning_count
+            # Debian will set /nonexistent for user that do not need home dirs
+            if [ "${dirname2}." == '/nonexistent.' ];
+            then
+               echo "<tr><td>${username2}</td><td>home directory for <b>${username2}</b> does not exist (${dirname2}), permitted</td></tr>" >> ${htmlfile}
+            else
+               echo "<tr bgcolor=\"${colour_warn}\"><td>${username2}</td><td>home directory for <b>${username2}</b> does not exist (${dirname2})</td></tr>" >> ${htmlfile}
+               inc_counter ${hostid} warning_count
+            fi
          fi
       else
          check_homedir_perms "${dataline}" "drXx------" "${hostid}"
@@ -2329,7 +2351,7 @@ build_appendix_b() {
 
    echo "<h2>Appendix B.3 - NFS File Shares</h2>" >> ${htmlfile}
    touch ${WORKDIR}/${hostid}_all_ok
-   ostype=`uname -s`
+   ostype=`grep "^TITLE_OSTYPE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
    if [ "${ostype}." != "SunOS." ];
    then
       testvar=`grep "^PERM_ETC_EXPORTS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2"="$3'}`
@@ -2373,7 +2395,6 @@ build_appendix_b() {
          echo "</td></tr></table>" >> ${htmlfile}
       fi
    else    # Else is SunOS
-
       testvar=`grep "^PERM_ETC_DFS_DFSTAB" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2"="$3'}`
       if [ "${testvar}." != "." ];
       then
@@ -2909,12 +2930,15 @@ appendix_c_check_unused_custom() {
       ipversion=`echo "${dataline}" | awk {'print $3'}`
       echo "TCP${ipversion}-${portnum}:" >> ${WORKDIR}/network_sanitation.wrk
    done
-   cat ${WORKDIR}/active_udp_services.wrk2 | while read dataline
-   do
-      portnum=`echo "${dataline}" | awk {'print $1'}`
-      ipversion=`echo "${dataline}" | awk {'print $3'}`
-      echo "UDP${ipversion}-${portnum}:" >> ${WORKDIR}/network_sanitation.wrk
-   done
+   if [ -f ${WORKDIR}/active_udp_services.wrk2 ];
+   then
+      cat ${WORKDIR}/active_udp_services.wrk2 | while read dataline
+      do
+         portnum=`echo "${dataline}" | awk {'print $1'}`
+         ipversion=`echo "${dataline}" | awk {'print $3'}`
+         echo "UDP${ipversion}-${portnum}:" >> ${WORKDIR}/network_sanitation.wrk
+      done
+   fi
 
    # for ports defined in the custom file as expected to be open make sure
    # they are still in use, if not report the custom entry as obsolete.
@@ -3074,9 +3098,13 @@ build_appendix_c() {
          # to listen on any port (avahi-deamon and rpcbinf for example use
          # random ports that cannot be explicitly defined by port number)
          # must be a full match against the reported process
-         if [ "${CUSTOMFILE}." != "." ];
+         searchmatch=`echo "${searchmatch}"`   # remove training spaces
+	 if [ "${searchmatch}." == "." ];
+	 then
+            echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>Kernel dynamically assigned port</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} warning_count
+         elif [ "${CUSTOMFILE}." != "." ];
          then
-            searchmatch=`echo "${searchmatch}"`   # remove training spaces
             # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the search
             bb=`echo "${searchmatch}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
             processmatch1=`grep "^NETWORK_TCPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
@@ -3107,14 +3135,15 @@ build_appendix_c() {
    echo "</table>" >> ${htmlfile}
 
    # UDP Ports active
-   ostype=`uname -s`
+   ostype=`grep "^TITLE_OSTYPE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
    if [ "${ostype}." == "SunOS." ];
    then
       echo "*WARNING* UDP checks not yet properly implemented for SunOS yet"
    fi
    echo "<br><br><table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"4\"><center>UDP Ports open on the server</center></td></tr>" >> ${htmlfile}
    echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td><td>Process</td></tr>" >> ${htmlfile}
-   cat ${WORKDIR}/active_udp_services.wrk2 | while read dataline
+   # 2>/dev/null to suppress file does not exist error if server had no udp services listening
+   cat ${WORKDIR}/active_udp_services.wrk2 2>/dev/null | while read dataline
    do
       # 80 0.0.0.0
       listenaddr=`echo "${dataline}" | awk {'print $2'}`
@@ -3159,7 +3188,7 @@ build_appendix_c() {
             echo "<tr bgcolor=\"${colour_OK}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>${searchmatch}</td></tr>" >> ${htmlfile}
          fi
       else
-         # get data to populate the descriotion field
+         # get data to populate the description field
          portname=`grep -w "${listenport}.udp" ${WORKDIR}/services` # Use -w for exact word match
          if [ "${portname}." == "." ];
          then
@@ -3167,7 +3196,12 @@ build_appendix_c() {
          else
             desc=`echo "${portname}" | awk {'print $2" "$3" "$4" "$5" "$6'}`
          fi
-         if [ "${CUSTOMFILE}." != "." ];
+	 iskerneltest=`echo "${searchmatch}" | grep "no pid available for pid"`
+	 if [ "${iskerneltest}." != "." ];
+	 then
+            echo "<tr bgcolor=\"${colour_warn}\"><td>${listenport}</td><td>${listenaddr}</td><td>${desc}</td><td>Kernel assigned dynamic port</td></tr>" >> ${htmlfile}
+            inc_counter ${hostid} warning_count
+         elif [ "${CUSTOMFILE}." != "." ];
          then
             aa=`echo "${searchmatch}" | sed 's/ *$//g'`                  # remove trailing spaces
             # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the grep
@@ -3867,12 +3901,12 @@ EOF
          # paths being used in the custom file.
          echo "${dataline} X" >> ${WORKDIR}/suid_allow_list
       done
-      testparm=`grep -i "^SUID_SUPPRESS_DOCKER_OVERLAYS=yes" ${CUSTOMFILE}`
+      testparm=`grep -i "^SUID_SUPPRESS_DOCKER_OVERLAYS=YES" ${CUSTOMFILE}`
       if [ "${testparm}." != "." ];
       then
          suppress_docker="yes"
       fi
-      testparm=`grep -i "^SUID_SUPPRESS_SNAP_OVERLAYS=yes" ${CUSTOMFILE}`
+      testparm=`grep -i "^SUID_SUPPRESS_SNAP_OVERLAYS=YES" ${CUSTOMFILE}`
       if [ "${testparm}." != "." ];
       then
          suppress_snap="yes"
@@ -3952,6 +3986,11 @@ EOF
       echo "<tr><td><pre>" >> ${htmlfile}
       cat ${WORKDIR}/suid_alerts >> ${htmlfile}
       echo "</pre></td></tr></table>" >> ${htmlfile}
+      ostype=`grep "^TITLE_OSTYPE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+      if [ "${ostype}." == "SunOS." ];
+      then
+         echo "<p>SunOS creates SUID files as /proc/PID/objects/a.out for some packages, the scripts do not handle that yet so will alert for those.</p>" >> ${htmlfile}
+      fi
    else
       echo "<table bgcolor=\"${colour_OK}\"><tr><td>No unexpected SUID files found. No action required.</td></tr></table>" >> ${htmlfile}
    fi
@@ -3971,7 +4010,7 @@ EOF
       then
          # Log the detail, this can be a valid expected error
          log_alert_detail "${hostid}" "Docker containers expected, none are running"
-         echo "<br /><table bgcolor=\"${colour_alert}\"><tr><td>The value SUID_SUPPRESS_DOCKER_OVERLAYS=yes was set in ${CUSTOMFILE} but" >> ${htmlfile}
+         echo "<br /><table bgcolor=\"${colour_alert}\"><tr><td>The value SUID_SUPPRESS_DOCKER_OVERLAYS=YES was set in ${CUSTOMFILE} but" >> ${htmlfile}
          echo "no docker overlay2 suid files are on this server. You should remove the override." >> ${htmlfile}
          echo "(note: this can be the case if no containers are defined so this may be OK)</td></tr></table>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
@@ -3994,7 +4033,7 @@ EOF
    else
       if [ "${suppress_snap}." == "yes." ];
       then
-         echo "<br /><table bgcolor=\"${colour_alert}\"><tr><td>The value SUID_SUPPRESS_SNAP_OVERLAYS=yes was set in ${CUSTOMFILE} but" >> ${htmlfile}
+         echo "<br /><table bgcolor=\"${colour_alert}\"><tr><td>The value SUID_SUPPRESS_SNAP_OVERLAYS=YES was set in ${CUSTOMFILE} but" >> ${htmlfile}
          echo "no /snap/core.. suid files are on this server. You should remove the override.</td></tr></table>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
       fi
@@ -4053,6 +4092,7 @@ EOF
 #      F.3.2 - ssh must not allow direct root login
 #      F.3.3 - SSH subsystems
 #      F.3.4 - SSH embedded commands
+#      F.3.5 - SSH listen address
 #      F.4 - selinux config checks
 # ----------------------------------------------------------
 extract_appendix_f_files() {
@@ -4128,7 +4168,7 @@ build_appendix_f() {
    check_file_perms "${testvar}" "-rX-r--r--"
    if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not empty has error text
    then
-      inc_counter ${hostid} a lert_count
+      inc_counter ${hostid} alert_count
       echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>" >> ${htmlfile}
       echo "<p>The file <b>/etc/motd</b> is secured so users other than <b>root</b>" >> ${htmlfile}
       echo "are able to update it.<br>" >> ${htmlfile}
@@ -4200,7 +4240,7 @@ build_appendix_f() {
    echo "automated processing of this information yet. Manually review" >> ${htmlfile}
    echo "the files here to ensure they are kept for the duration required." >> ${htmlfile}
    echo "The report line syntax is days-required;details of the files available.</p>" >> ${htmlfile}
-   # We allow the user to turn of warnings for manual checks needed here
+   # We allow the user to turn off warnings for manual checks needed here
    if [ "${CUSTOMFILE}." != "." ];
    then
       testvar=`grep "^NOWARN_ON_MANUALLOGCHECK=YES" ${CUSTOMFILE}`
@@ -4302,13 +4342,17 @@ build_appendix_f() {
          subsysname=`echo "${subsys}" | awk {'print $2'}`
          subsyscmd=`echo "${subsys}" | awk {'print $3'}`
          isallowed=`grep "^SSHD_SUBSYSTEM_ALLOW=${subsysname}:${subsyscmd}:" ${CUSTOMFILE}`
-         if [ "${isallowed}." == "." ];
+         # always drop sftp top a warning, it is required on Debian servers for SCP now by default
+         if [ "${isallowed}." == "." -a "${subsysname}." != "sftp." ];
          then
             echo "<tr bgcolor=\"${colour_alert}\"><td>${subsys}</td></tr>" >> ${htmlfile}
             inc_counter ${hostid} alert_count
          else
-            isallowed=`grep "^SERVER_IS_ANSIBLE_NODE=yes" ${CUSTOMFILE}`
+            isallowed=`grep "^SERVER_IS_ANSIBLE_NODE=YES" ${CUSTOMFILE}`
             if [ "${isallowed}." != "." -a "${subsysname}." == "sftp." ];   # ansible nodes require sftp
+            then
+               echo "<tr bgcolor=\"${colour_OK}\"><td>${subsys}</td></tr>" >> ${htmlfile}
+            elif [ "${subsysname}." == "sftp." ];   # Debian now requires sftp
             then
                echo "<tr bgcolor=\"${colour_OK}\"><td>${subsys}</td></tr>" >> ${htmlfile}
             else
@@ -4320,6 +4364,7 @@ build_appendix_f() {
       echo "</table>" >> ${htmlfile}
       echo "<p>As a general rule subsystems should be disabled in sshd_config unless needed.</p>" >> ${htmlfile}
       echo "<p>If you use <b>ansible</b> it is permissable to have the sftp subsystem available for ansible, there should be no other subsystems available.</p>" >> ${htmlfile}
+      echo "<p>Also Debian servers now default to using SFTP with the SCP command so it is required for those.</p>" >> ${htmlfile}
    else
       echo "<p>No subsystems are defined in the sshd_config file.</p>" >> ${htmlfile}
    fi
@@ -4338,9 +4383,29 @@ build_appendix_f() {
       inc_counter ${hostid} alert_count
    fi
 
+   echo "<h3>F.3.5 - SSH listen address</h3>" >> ${htmlfile}
+   echo "<p>By default SSHD will accept connections from all interfaces, you should limit what interfaces it listens on to internal facing interfaces.</p>" >> ${htmlfile}
+   ipaddr=`grep "^SSHD_CONFIG_DATA=ListenAddress" ${SRCDIR}/secaudit_${hostid}.txt | grep -v '0.0.0.0' | tail -l`
+   if [ "${ipaddr}." == "." ];
+   then
+      isdeb=`grep -i "^TITLE_OSVERSION=Debian" ${SRCDIR}/secaudit_${hostid}.txt | tail -l`
+      if [ "${isdeb}." != "." ];
+      then
+         echo "<table><tr bgcolor=\"${colour_warn}\" border=\"1\"><td>No explicit ListenAddress found in sshd_config or it is using 0.0.0.0. It will be using the default of listening on all interfaces</td></tr></table>" >> ${htmlfile}
+         inc_counter ${hostid} warn_count
+      else
+         echo "<table><tr bgcolor=\"${colour_alert}\" border=\"1\"><td>No explicit ListenAddress found in sshd_config or it is using 0.0.0.0. It will be using the default of listening on all interfaces</td></tr></table>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+         log_alert_detail "${hostid}" "Insecure sshd ListenAddress"
+      fi
+      echo "<p>If this is a Debian12 or Debian13 server this is OK as on those SSHD starts before the network is configured so impossible to logon if a specific ListenAddress is used.</p>" >> ${htmlfile}
+   else
+      echo "<table><tr bgcolor=\"${colour_OK}\" border=\"1\"><td>Explicit interfaces are defined in sshd_config. Configured to use ${ipaddr}</td></tr></table>" >> ${htmlfile}
+   fi
+
    # The selinux configuration checks
    echo "<h2>F.4 - SELinux Configuration</h2>" >> ${htmlfile}
-   selinuxinstalled=`grep "^SELINUX_INSTALLED=yes" ${SRCDIR}/secaudit_${hostid}.txt`
+   selinuxinstalled=`grep -i "^SELINUX_INSTALLED=YES" ${SRCDIR}/secaudit_${hostid}.txt`
    if [ "${selinuxinstalled}." != "." ];
    then
       typeset -l lowercasevar1            # all data in here to be lowercase
@@ -4754,13 +4819,27 @@ EOF
          echo "This is acceptable if you are running firewalld on an OS Fedora32/CentOS8/RHEL8 or later which no longer use iptables as a back-end for firewalld." >> ${htmlfile}
          echo "</td></tr></table><br /><br />" >> ${htmlfile}
       else
-         echo "<table bgcolor=\"${colour_alert}\"><tr><td>Neither iptables or netfilter tables with accept rules exist on this server." >> ${htmlfile}
-         echo "<b>This server appears to be not running a firewall !</b>, or no rules are configured</td></tr></table><br /><br />" >> ${htmlfile}
+         # If it is expected that no firewall exists warn instead of alert
+         if [ "${CUSTOMFILE}." != "." -a -f ${CUSTOMFILE} ];
+         then
+            ispermitted=`grep "^NO_FIREWALL_INSTALLED=YES" ${CUSTOMFILE}`
+         else
+            ispermitted=""
+         fi
+         if [ "${ispermitted}." != "." ];
+         then
+            echo "<table bgcolor=\"${colour_warn}\"><tr><td>Neither iptables or netfilter tables with accept rules exist on this server." >> ${htmlfile}
+            echo "<b>This server appears to be not running a firewall !</b>, or no rules are configured</td></tr></table><br />" >> ${htmlfile}
+            inc_counter ${hostid} warn_count
+         else
+            echo "<table bgcolor=\"${colour_alert}\"><tr><td>Neither iptables or netfilter tables with accept rules exist on this server." >> ${htmlfile}
+            echo "<b>This server appears to be not running a firewall !</b>, or no rules are configured</td></tr></table><br />" >> ${htmlfile}
+            inc_counter ${hostid} alert_count
+            log_alert_detail ${hostid} "This server appears to be not running a firewall"
+         fi
 	 echo "<p>On rhel family servers you should install package \"firewalld\" which will install firewalld and nftables, or as I prefer just install iptables and do it all by hand although iptables has been depreciated in favour of nftables</p>" >> ${htmlfile}
 	 echo "<p>On debian servers you should install package \"firewalld\" which will install firewalld, nftables (nft command) and iptables (iptables command)</p>" >> ${htmlfile}
 	 echo "<p>On SunOS family servers IPF (ipfilter) is used as the firewall, <b>these scripts do not yet support ipfilter.</b></p>" >> ${htmlfile}
-         inc_counter ${hostid} alert_count
-         log_alert_detail ${hostid} "This server appears to be not running a firewall"
       fi
    fi
  
@@ -4829,10 +4908,8 @@ EOF
          usecolour="white"
          process=""
          hasdport=`echo "${dataline}" | grep -i "dport"`
-         if [ "${hasdport}." == "." ];
+         if [ "${hasdport}." != "." ];
          then
-            echo "<tr bgcolor=\"${usecolour}\"><td>${iptype}</td><td></td><td>${dataline}</td><td></td><td></td></tr>" >> ${htmlfile}
-         else
             destaddr=`get_daddr ${dataline}`
             destport=`extract_parm_value_not_colon "dport" ${dataline}`
             if [ "${iptype}." == "ip6." -o "${iptype}." == "tcp" ];
@@ -4936,9 +5013,8 @@ EOF
    # If both iptables and netfilter have rules this is an issue
    if [ ${countlines1} -gt 0 -a ${countlines3} -gt 0 ];
    then
-      echo "<br /><br /><table bgcolor=\"${colour_warn}\"><tr><td>Additional alert raised: <b>Both iptables and netfilter rules are in use on this server</b>." >> ${htmlfile}
-      echo "This is known to cause unexpected firewall behaviour !." >> ${htmlfile}
-      echo "(example: If you run docker or docker-ce on a firewalld (netfilter only) server you will see both netfilter and iptables rules added to both as it cannot guess what you use; making iptables a partial ruleset).</td></tr></table>" >> ${htmlfile}
+      echo "<br /><br /><table bgcolor=\"${colour_warn}\"><tr><td>Additional warning raised: <b>Both iptables and netfilter rules are in use on this server</b>." >> ${htmlfile}
+      echo "This may at some point cause issues for you.</td></tr></table>" >> ${htmlfile}
       inc_counter ${hostid} warning_count
    fi
 
@@ -5166,7 +5242,7 @@ build_appendix_k() {
       clear_counter "${hostid}" warning_count
 
       # suppress wanrnings for these ?
-      authkeysallowed=`grep "^ALLOW_AUTHORISED_KEYS=yes" ${CUSTOMFILE}`
+      authkeysallowed=`grep "^ALLOW_AUTHORISED_KEYS=YES" ${CUSTOMFILE}`
 
       cat << EOF > ${htmlfile}
 <html><head><title>Users with ssh authorized_keys files on ${hostid}</title></head><body>
@@ -5181,7 +5257,7 @@ until you realise and regenerate the keys (which is why I consider tools such as
 EOF
       if [ "${authkeysallowed}." == "." ];
       then 
-         echo "<p>Warnings in this section can be suppressed with the custom file entry 'ALLOW_AUTHORISED_KEYS=yes'.</p>" >> ${htmlfile}
+         echo "<p>Warnings in this section can be suppressed with the custom file entry 'ALLOW_AUTHORISED_KEYS=YES'.</p>" >> ${htmlfile}
       fi
 
       echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>Userid</td><td>RSA keys</td><td>Non-RSA keys</td></tr>" >> ${htmlfile}
@@ -5404,12 +5480,9 @@ EOF
 <p>There are entries in the sudoers file that allow the sudo command to be issued on 'all' servers.
 This is a risk, you should explicitly identify the server names the commands can be used on.</p>
 <p>This is often seen in environments where sysadmins deploy a common sudoers file across
-multiple servers and are lazy, tools such as 'puppet' can easily be used to create secure custom
-files from simple facter information and templates as well as more complicated string editing rules
-and there should never be an occasion where a file must be deployed with 'ALL' used as a servername
-(however I'm pretty sure tools such as 'ansible' do not have useful templating features that can achieve 
-such results but in that case there should be a deployable file per server, never should 'ALL' be used
-as a server name).</p>
+multiple servers, the risk is where commands are expected to only be run on specific servers
+not ALL servers, so while ALL itself is not dangerous deploying a common file across all
+servers is so you must review any entries using ALL.</p>
 <p>On newly installed RHEL based servers there will always be by default entries for 
 "root ALL=(ALL) ALL" and "%wheel ALL=(ALL) ALL" as at install time the installed does
 not know what hostname you are giving your server so must use ALL= as a servername;
@@ -5967,7 +6040,7 @@ perform_single_server_processing() {
    # added here so the Note: message is at the start of the log along with notes
    # for system file and webserver owners. Obviously the check is done again
    # in the suid checks themselved to use the value :-)
-   testparm=`grep -i "^SUID_SUPPRESS_DOCKER_OVERLAYS=yes" ${CUSTOMFILE}`
+   testparm=`grep -i "^SUID_SUPPRESS_DOCKER_OVERLAYS=YES" ${CUSTOMFILE}`
    if [ "${testparm}." != "." ];
    then
       log_message "Note: docker suid file alert suppression configured in custom file"
@@ -6135,7 +6208,7 @@ single_server_sanity_checks() {
    then
       echo "***** In order to process server ${hostname} we must also process"
       echo ".     the servers listed below as they are missing required files"
-      echo ".     needed to build the main index page."
+      echo ".     needed to build the main index page or there has been a processing version change."
       cat ${WORK1}
       read -p "Do you wish to continue (y/n)?" testvar
       if [ "${testvar}." != "y." -a "${testvar}." != "Y." ];
