@@ -8,7 +8,7 @@
 #
 # On Debian which most of my servers are now, no puppet user created
 #HOMEDIR_MISSING_OK=puppet:
-ALLOW_DIRPERM_SYSTEM=puppet
+ALLOW_DIRPERM_SYSTEM=puppet:
 #
 # Firewalls need to permit outbound traffic on 8140 to contact the puppetserver
 TCP_OUTBOUND_SUPPRESS=:8140:Puppet agent outbound to puppet server

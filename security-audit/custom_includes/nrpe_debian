@@ -4,7 +4,7 @@
 #
 #   ADD_SYSTEM_FILE_OWNER=nrpe    (nrpe user not used on debian, it uses nagios for nrpe)
 ADD_SYSTEM_FILE_OWNER=nagios
-ALLOW_DIRPERM_SYSTEM=nagios
+ALLOW_DIRPERM_SYSTEM=nagios:
 #
 TCP_PORTV4_ALLOWED=:5666:NRPE
 #

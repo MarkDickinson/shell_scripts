@@ -25,8 +25,8 @@ NOWARN_ON_CUSTOMFILE=YES
 ALLOW_AUTHORISED_KEYS=yes
 #
 # Additional sudoers entries with ALL servers
-SUDOERS_ALLOW_ALL_COMMANDS=mark
-SUDOERS_ALLOW_ALL_SERVERS=mark
+SUDOERS_ALLOW_ALL_COMMANDS=mark:
+SUDOERS_ALLOW_ALL_SERVERS=mark:
 #
 # I do not know why networkmanager opens this port
 UDP_PORTV4_ALLOWED=:68:opened by networkmanager
@@ -41,32 +41,32 @@ UDP_PORTV6_ALLOWED=:111:RPC portmap daemon (portmap)
 #
 # The below are server specific so cannot be used in ALL.custom,
 # needed for desktop machines so set for your environment
-NETWORK_UDPV4_PROCESS_ALLOW=avahi-daemon: running [example-rocky8.local]
-NETWORK_UDPV6_PROCESS_ALLOW=avahi-daemon: running [example-rocky8.local]
+NETWORK_UDPV4_PROCESS_ALLOW=avahi-daemon: running [example-rocky8.local]:
+NETWORK_UDPV6_PROCESS_ALLOW=avahi-daemon: running [example-rocky8.local]:
 #
 ADD_SYSTEM_FILE_OWNER=clamupdate
 ADD_SYSTEM_FILE_OWNER=snort
 ADD_SYSTEM_FILE_OWNER=gdm
 ADD_SYSTEM_FILE_OWNER=puppet
 #
-ALLOW_OWNER_ROOT=dovecot
-ALLOW_OWNER_ROOT=insights
+ALLOW_OWNER_ROOT=dovecot:
+ALLOW_OWNER_ROOT=insights:
 #
 # System directory perms
 # These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
-ALLOW_DIRPERM_SYSTEM=openvpn
-ALLOW_DIRPERM_SYSTEM=geoclue
-ALLOW_DIRPERM_SYSTEM=clamav
-ALLOW_DIRPERM_SYSTEM=qemu
-ALLOW_DIRPERM_SYSTEM=openvpn
-ALLOW_DIRPERM_SYSTEM=dovecot
-ALLOW_DIRPERM_SYSTEM=bacula
-ALLOW_DIRPERM_SYSTEM=rpcbind
-ALLOW_DIRPERM_SYSTEM=insights
+ALLOW_DIRPERM_SYSTEM=openvpn:
+ALLOW_DIRPERM_SYSTEM=geoclue:
+ALLOW_DIRPERM_SYSTEM=clamav:
+ALLOW_DIRPERM_SYSTEM=qemu:
+ALLOW_DIRPERM_SYSTEM=openvpn:
+ALLOW_DIRPERM_SYSTEM=dovecot:
+ALLOW_DIRPERM_SYSTEM=bacula:
+ALLOW_DIRPERM_SYSTEM=rpcbind:
+ALLOW_DIRPERM_SYSTEM=insights:
 #
 FORCE_PERM_OK=/var/log/freshclam.log:-rw-rw-r--
 FORCE_OWNER_OK=/etc/fetchmailrc.example:mail
-ALLOW_DIRPERM_EXPLICIT=bacula drwxrwx---
+ALLOW_DIRPERM_EXPLICIT=bacula drwxrwx---:
 #
 HOMEDIR_MISSING_OK=gluster:
 HOMEDIR_MISSING_OK=gnome-initial-setup:
@@ -76,8 +76,8 @@ HOMEDIR_MISSING_OK=puppet:
 /usr/libexec/clevis-luks-udisks2
 #
 # Additional suid files expected
-SUID_ALLOW=/usr/libexec/sssd/proxy_child
-SUID_ALLOW=/usr/libexec/sssd/krb5_child
-SUID_ALLOW=/usr/libexec/sssd/ldap_child
-SUID_ALLOW=/usr/libexec/sssd/selinux_child
-SUID_ALLOW=/usr/bin/vmware-user-suid-wrapper
+SUID_ALLOW=/usr/libexec/sssd/proxy_child:
+SUID_ALLOW=/usr/libexec/sssd/krb5_child:
+SUID_ALLOW=/usr/libexec/sssd/ldap_child:
+SUID_ALLOW=/usr/libexec/sssd/selinux_child:
+SUID_ALLOW=/usr/bin/vmware-user-suid-wrapper:

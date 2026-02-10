@@ -7,8 +7,8 @@
 # do not exist on the system. Also suppress alerts for suid
 # files in docker overlays.
 #
-ALLOW_OWNER_ROOT=dockerroot
-ALLOW_DIRPERM_EXPLICIT=dockerroot drwx--x--x
+ALLOW_OWNER_ROOT=dockerroot:
+ALLOW_DIRPERM_EXPLICIT=dockerroot drwx--x--x:
 SUID_SUPPRESS_DOCKER_OVERLAYS=yes
 DOCKER_ORPHANS_SUPPRESS=YES
 #

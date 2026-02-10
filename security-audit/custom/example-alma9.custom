@@ -21,10 +21,10 @@ NETWORK_PORT_NOLISTENER_TCPV6_OK=9090:on puppet isbound to a V4 explicit address
 NETWORK_PORT_NOLISTENER_UDPV4_OK=53:not listening on puppet (CentOS8)
 #
 # Custom directory perms for this directory on this server
-ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
-ALLOW_DIRPERM_SYSTEM=rpcbind
+ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---:
+ALLOW_DIRPERM_SYSTEM=rpcbind:
 #
 # ---------------------------------------------
 # Additional rules specific to this server
 # ---------------------------------------------
-SUID_ALLOW=/usr/sbin/fping
+SUID_ALLOW=/usr/sbin/fping:

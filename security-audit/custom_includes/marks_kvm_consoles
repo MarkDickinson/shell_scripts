@@ -2,7 +2,7 @@
 # KVM console addresses used on my KVM hosts
 # Included File: ../custom_includes/marks_kvm_consoles
 #
-TCP_PORTV4_ALLOWED=:5910:VNC console tftpboot 
+TCP_PORTV4_ALLOWED=:5910:VNC console tftpboot
 TCP_PORTV4_ALLOWED=:5911:VNC console nagios2
 TCP_PORTV4_ALLOWED=:5912:VNC console vpnserver
 TCP_PORTV4_ALLOWED=:5913:VNC console Tails40

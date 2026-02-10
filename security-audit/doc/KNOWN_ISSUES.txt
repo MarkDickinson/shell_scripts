@@ -5,6 +5,13 @@ are supported, partial support for SunOS (openindiana) are also implemented.
 Do not expect these scripts to work properly on other servers such as Ubuntu;
 because every distro puts some key files in different places and I only test
 on OS releases I run.
+
+In BETA (not fully tested)
+==========================
+New UNSET_VAR custom file entry code added but not fully tested, only tested against
+a network process allow so far as that was my immediate need.
+READ CHANGES.txt, custom file changes are needed for this functionality and an example
+script to perform the migration changes so you do not have to edit dozens of files is provided.
  
 Known Bugs with the current release that need fixing
 ====================================================
@@ -12,6 +19,16 @@ Known Bugs with the current release that need fixing
   "bin/process_server_details.sh: line 4422: ----------------------------------: command not found"
   which is not the contents of line 4422. A rerun with no changes does not have the same issue.
   Ocurrence is completely random so hard to track down. Does not affect any results produced
+* similar to above issue, the below has been seen (archive flag not selected)
+   11-02-2026 11:35 - ...DONE, completed processing server xxxxxxx
+   test/process_server_details.sh: line 6406: mp}.tar.gz: command not found
+   11-02-2026 11:35 - ...DONE, report archive created as /reports_.tar.gz
+   test/process_server_details.sh: line 6417: syntax error near unexpected token `fi'
+   test/process_server_details.sh: line 6417: `fi'
+  which also does not re-appear if just rerun without any changes
+- the above two may be memory corruption starting on my test server ???, it has 32Gb of memory
+  so inlikely to be a limitation on a small 6000 bash script there.
+
 * if process one server is passed a servername no data file exists for it does not clear the
   lockfile; need to add that one line between the error msg and the script exit (minor, no hurry)
 * if you ^C or kill a running processing script the lockfile remains, you must use the

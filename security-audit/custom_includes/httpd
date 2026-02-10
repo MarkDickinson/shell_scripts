@@ -3,8 +3,8 @@
 # >>> Included File: ../custom_includes/httpd
 #
 ADD_SYSTEM_FILE_OWNER=apache
-ALLOW_OWNER_ROOT=www
-ALLOW_DIRPERM_SYSTEM=www
+ALLOW_OWNER_ROOT=www:
+ALLOW_DIRPERM_SYSTEM=www:
 TCP_PORTV6_ALLOWED=:80:http server
 TCP_PORTV6_ALLOWED=:443:http server ssl port
 TCP_PORTV6_ALLOWED=:8443:apache nss port

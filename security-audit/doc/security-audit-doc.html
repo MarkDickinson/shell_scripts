@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.24 of the processing script<br />
-Version 0.24 of the data collection script<br />
-Last updated 04 February 2026  (replacing Nov 2021 document)
+Version 0.25 of the processing script<br />
+Version 0.25 of the data collection script<br />
+Last updated 10 February 2026
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -693,15 +693,18 @@ root rather than the expected owner.
 </p>
 <p>
 The syntax of a directory ownership override is...<br>
-<span style="background-color: #FFCCFF"><b>ALLOW_OWNER_ROOT=<em>dirname</em></b><br><br></span>
+<span style="background-color: #FFCCFF"><b>ALLOW_OWNER_ROOT=<em>dirname:</em></b><br><br></span>
 
 For example...<br>
-<span style="background-color: #D7FFFF"><b>ALLOW_OWNER_ROOT=bin</b><br></span>
+<span style="background-color: #D7FFFF"><b>ALLOW_OWNER_ROOT=bin:</b><br></span>
 (You cannot provide any leading / of leading directory path,
 the dirname is the basename of the directory being checked.
 <b>be carefull</b> in it's use as it will treat /bin and /usr/tmp/bin
 for example with the same rule and allow the root owner (which is
 probably OK for system directories)).
+</p>
+<p>
+The trailing : is mandatory.
 </p>
 <p>
 <em>Note</em>: home directories must be owned by the user defined
@@ -735,10 +738,13 @@ will be acceptable for it <b>if it is owned by a system user</b>.
 <p>
 To request a directory be treated as a system directory the
 format of the custom file entry is...<br>
-<span style="background-color: #FFCCFF"><b>ALLOW_DIRPERM_SYSTEM=<em>dirname</em></b><br><br></span>
+<span style="background-color: #FFCCFF"><b>ALLOW_DIRPERM_SYSTEM=<em>dirname:</em></b><br><br></span>
 
 For example...<br>
-<span style="background-color: #D7FFFF"><b>ALLOW_DIRPERM_SYSTEM=bin</b></span>
+<span style="background-color: #D7FFFF"><b>ALLOW_DIRPERM_SYSTEM=bin:</b></span>
+</p>
+<p>
+The trailing : is mandatory.
 </p>
 
 <p>
@@ -909,13 +915,16 @@ server.</p>
 These can be turned of by including in the custom
 file used for a server the entry below<br>
 <pre><b><span style="background-color: #FFCCFF">
-  SUID_ALLOW=/path/.../filename
+  SUID_ALLOW=/path/.../filename:
 </span></b></pre>
 </p>
 <p>
 Note that in this custom file entry the <b>full path and filename must be provided</b>
 rather than just the filename part, for obvious reasons;
 don't want users having their own versions of programs that need suid bits set.
+</p>
+<p>
+The trailing : is mandatory.
 </p>
 <p>
 It is also important to note that any SUID_ALLOW entries in a custom file that refer to files
@@ -1159,7 +1168,7 @@ any rouge user application can use the port which is undesirable.
 <br /><b>Important to note the : after the port is mandatory</b> even if you do not
 add a description.
 </td></tr>
-<tr><td>ALLOW_OWNER_ROOT=<em>directoryname</em></td><td>
+<tr><td>ALLOW_OWNER_ROOT=<em>directoryname:</em></td><td>
 Allows a directory that is expected to be owned by a user other than root to
 be accepted as OK for reporting if the directory is owned by the root user.
 This is needed as many system users have home directories of /bin, /sbin or /root
@@ -1170,11 +1179,11 @@ the name so use with caution</b> (ie: if =bin is used then /bin, /usr/bin,
 /home/fred/bin, /rootkit/hacker/bin
 will be accepted as OK to be owned by root if not owned by the default owner).<br />
 Examples<br />
-ALLOW_OWNER_ROOT=bin<br />
-ALLOW_OWNER_ROOT=sbin<br />
-ALLOW_OWNER_ROOT=root
+ALLOW_OWNER_ROOT=bin:<br />
+ALLOW_OWNER_ROOT=sbin:<br />
+ALLOW_OWNER_ROOT=root:
 </td></tr>
-<tr><td>ALLOW_DIRPERM_SYSTEM=<em>directoryname</em></td><td>
+<tr><td>ALLOW_DIRPERM_SYSTEM=<em>directoryname:</em></td><td>
 This can be used to override alerts for <b>user home directories</b> that need to have shared
 (read) access, obviously direcories such as /bin and /sbin that are configured as some user home
 directories but need to permit other users to traverse down them so
@@ -1183,9 +1192,9 @@ this configuration option can be used for <b>user home directories </b> director
 directories secured as drwxr-xr-x, drwxr-x--x, drwx--x--x, dr-xr-xr-x, dr-xr-x--- or drwxr-x---
 to be accepted as OK.<br />
 Examples<br />
-ALLOW_DIRPERM_SYSTEM=bin<br />
-ALLOW_DIRPERM_SYSTEM=sbin<br />
-ALLOW_DIRPERM_SYSTEM=adm<br />
+ALLOW_DIRPERM_SYSTEM=bin:<br />
+ALLOW_DIRPERM_SYSTEM=sbin:<br />
+ALLOW_DIRPERM_SYSTEM=adm:<br />
 <b>It is important to note that the override will apply to any directory matching
 the name so use with caution</b> (ie: if =bin is used then /bin, /usr/bin,
 /home/fred/bin, /rootkit/hacker/bin
@@ -1220,7 +1229,7 @@ Unlike other overrides this is specific to one file and the full path and filena
 must be specified, plus the expected permissions seperated by a colon. It is expected there would be very few of these entries in a
 configuration file (I currentrly have zero).
 </td></tr>
-<tr><td>FORCE_ANYFILE_OK=<em>filename fileperms</em></td><td>
+<tr><td>FORCE_ANYFILE_OK=<em>filename fileperms:</em></td><td>
 Allow a file of this name to be forced OK <em>under any directory</em> if
 it fails initial default checks.
 A risk as this check will be performed on any file matching the
@@ -1228,8 +1237,8 @@ basename of the full file path, but Fedora now generates lots of dynamic PCI bus
 under the /sys/devices/pciNNNN:NN path as --w--w----. and we do not
 want them generating false alerts.
 Examples<br />
-FORCE_ANYFILE_OK=remove --w--w----<br />
-FORCE_ANYFILE_OK=rescan --w--w----<br />
+FORCE_ANYFILE_OK=remove --w--w----:<br />
+FORCE_ANYFILE_OK=rescan --w--w----:<br />
 The risk is minimised by the override requiring the file permissions that
 are expected to be explicitly provided. <em>Also</em> this parameter is only
 used if the filename being checked has already failed all previous checks,
@@ -1245,17 +1254,17 @@ Unlike other overrides this is specific to one file and the full path and filena
 must be specified, it is expected there would be very few of these entries in a
 configuration file (I currentrly have zero).
 </td></tr>
-<tr><td>SUID_ALLOW=<em>fullpathandfilename</em></td><td>
+<tr><td>SUID_ALLOW=<em>fullpathandfilename:</em></td><td>
 There will always be setuid files on a *nix system, and you should keep track of them.
 This setting is used to define every setuid file you expect to exist on the server 
 being checked. Any setuid file on the server not defined by these entries will
 be reported as a critical issue.<br />
 Examples<br />
-SUID_ALLOW=/usr/sbin/sendmail.sendmail<br />
-SUID_ALLOW=/usr/sbin/userhelper<br />
-SUID_ALLOW=/usr/bin/lockfile<br />
-SUID_ALLOW=/usr/bin/sudo<br />
-SUID_ALLOW=/usr/bin/crontab<br />
+SUID_ALLOW=/usr/sbin/sendmail.sendmail:<br />
+SUID_ALLOW=/usr/sbin/userhelper:<br />
+SUID_ALLOW=/usr/bin/lockfile:<br />
+SUID_ALLOW=/usr/bin/sudo:<br />
+SUID_ALLOW=/usr/bin/crontab:<br />
 Unlike other overrides this is specific to one file and the full path and filename
 must be specified. <em>It should also be noted that the report will alert on any
 entries defined this way where the file does not exist on the server to ensure
@@ -1425,12 +1434,13 @@ suppresses the warnings.<br />
 This does not affect the 'root' user as an alert will always be raised
 if root has ssh keys; that should never be allowed.
 </td></tr>
-<tr><td>SUDOERS_ALLOW_ALL_SERVERS=value<br />SUDOERS_ALLOW_ALL_COMMANDS=value</td><td>
+<tr><td>SUDOERS_ALLOW_ALL_SERVERS=value:<br />SUDOERS_ALLOW_ALL_COMMANDS=value:</td><td>
 In all cases 'value' is the user or %group the sudoers rule is for.<br />
 These paramaters can be used to downgrade alert severity levels with the following rules<br />
 * if a rule is for all servers and all commands both parameters must be used to downgrade alert to warning<br />
 * if a rule is for all servers but restricted commands allow_all_servers can downgrade from warning to OK<br />
 * if a rule is for a specific server and all commands can downgrade from alert to warning with allow_all_commands<br />
+* The trailing : is mandatory<br />
 At no time will a rule allowing all commands be downgraded below a warning as it is a risk
 </td></tr>
 <tr><td>INCLUDE_CUSTOM_RULES=filename</td><td>
@@ -1475,6 +1485,15 @@ from an alert to a warning. On some servers a firewall may not have been install
 (you always should) and this is needed for the SunOS checks at the moment as I
 have not implemented tests for IPF (ipfilter) yet so those family servers will always
 decide there is no firewall.
+</td></tr>
+<tr><td>UNSET_VAR=@var until first :@</td><td>
+Added in version 0.25.<br />
+For those rare cases where a default package may have been removed from a server
+causing default custom rules for the server to alert on missing users, dirs, suid files
+etc when using a generic server_OS base ruleset.<br />
+This will comment out any custom entry where the text between the start and end @ bytes
+exactly matches up to the first : field; the match text must end on a : or this
+value will be ignored.
 </td></tr>
 </table>
 

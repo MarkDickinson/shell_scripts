@@ -27,12 +27,12 @@ UDP_NETWORKMANAGER_FIREWALL_DOWNGRADE=:69:
 # Server specic rules now
 # --------------------------------------------------
 HOMEDIR_MISSING_OK=www-data:
-ALLOW_DIRPERM_EXPLICIT=mail drwxrwsr-x
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwsr-x:
 # I have NFS and SMB disks mounted to this so those
 # packages are installed on this server.
-SUID_ALLOW=/usr/sbin/mount.nfs
-SUID_ALLOW=/usr/sbin/exim4
-SUID_ALLOW=/usr/sbin/mount.cifs
+SUID_ALLOW=/usr/sbin/mount.nfs:
+SUID_ALLOW=/usr/sbin/exim4:
+SUID_ALLOW=/usr/sbin/mount.cifs:
 #
 TCP_PORTV6_ALLOWED=:546:NetworkManager
 NETWORK_PORT_NOLISTENER_TCPV6_OK=546:NetworkManager
@@ -47,8 +47,8 @@ ADD_SYSTEM_FILE_OWNER=mark
 # TO INVESTIGATE (maybe remove packages)
 # --------------------------------------------------------------
 # package xserver-xorg-legacy
-SUID_ALLOW=/usr/lib/xorg/Xorg.wrap
+SUID_ALLOW=/usr/lib/xorg/Xorg.wrap:
 # package evolution-data-server
-SUID_ALLOW=/usr/libexec/camel-lock-helper-1.2
+SUID_ALLOW=/usr/libexec/camel-lock-helper-1.2:
 # package mailutils
-SUID_ALLOW=/usr/bin/dotlock.mailutils
+SUID_ALLOW=/usr/bin/dotlock.mailutils:

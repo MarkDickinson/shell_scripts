@@ -12,7 +12,7 @@ TCP_PORTV4_ALLOWED=:9102:Bacula FD
 #
 # Permit the below securiry permissions on the /etc/bacula directory
 # if desired.
-ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
+ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---:
 #
 # Firewalls need an outbound rule to contact the baculs-sd servers
 TCP_OUTBOUND_SUPPRESS=:9103:Contact bacula sd

@@ -4,13 +4,13 @@
 #
 ADD_SYSTEM_FILE_OWNER=smmta
 ALLOW_OWNER_OVERRIDE=sendmail:smmta:
-SUID_ALLOW=/usr/bin/procmail
-SUID_ALLOW=/usr/bin/mail-lock
-SUID_ALLOW=/usr/bin/mail-touchlock
-SUID_ALLOW=/usr/bin/mail-unlock
-SUID_ALLOW=/usr/libexec/sendmail/sendmail
-SUID_ALLOW=/usr/libexec/sendmail/mailstats
-SUID_ALLOW=/usr/bin/dotlock.mailutils
+SUID_ALLOW=/usr/bin/procmail:
+SUID_ALLOW=/usr/bin/mail-lock:
+SUID_ALLOW=/usr/bin/mail-touchlock:
+SUID_ALLOW=/usr/bin/mail-unlock:
+SUID_ALLOW=/usr/libexec/sendmail/sendmail:
+SUID_ALLOW=/usr/libexec/sendmail/mailstats:
+SUID_ALLOW=/usr/bin/dotlock.mailutils:
 TCP_PORTV4_ALLOWED=:25:sendmail
 TCP_PORTV4_ALLOWED=:587:sendmail
-ALLOW_DIRPERM_EXPLICIT=sendmail drwxr-s--x
+ALLOW_DIRPERM_EXPLICIT=sendmail drwxr-s--x:

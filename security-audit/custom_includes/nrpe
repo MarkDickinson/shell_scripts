@@ -4,14 +4,14 @@
 #
 ADD_SYSTEM_FILE_OWNER=nrpe
 ADD_SYSTEM_FILE_OWNER=nagios
-ALLOW_DIRPERM_SYSTEM=nagios
+ALLOW_DIRPERM_SYSTEM=nagios:
 #
 TCP_PORTV4_ALLOWED=:5666:NRPE
 #
 # If nagios-plugins-all or selected plugins are installed for nrpe use,
 # these are the setuid ones.
 #
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_dhcp
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_icmp
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_ide_smart
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_dhcp:
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_icmp:
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_ide_smart:
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping:

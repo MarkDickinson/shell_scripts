@@ -4,4 +4,4 @@
 #
 TCP_PORTV4_ALLOWED=:8140:puppetserver
 ADD_SYSTEM_FILE_OWNER=puppet
-ALLOW_DIRPERM_EXPLICIT=puppetserver drwxrwx---
+ALLOW_DIRPERM_EXPLICIT=puppetserver drwxrwx---:

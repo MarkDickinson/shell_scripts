@@ -2,14 +2,14 @@
 # Common rules for servers running NFS to provide remote disk mounts
 # >>> Included File: ../custom_includes/nfs_server
 #
-NETWORK_UDPV4_PROCESS_ALLOW=/usr/sbin/rpc.mountd 
-NETWORK_UDPV6_PROCESS_ALLOW=/usr/sbin/rpc.mountd 
-NETWORK_UDPV4_PROCESS_ALLOW=/sbin/rpc.statd 
-NETWORK_UDPV6_PROCESS_ALLOW=/sbin/rpc.statd 
+NETWORK_UDPV4_PROCESS_ALLOW=/usr/sbin/rpc.mountd:
+NETWORK_UDPV6_PROCESS_ALLOW=/usr/sbin/rpc.mountd:
+NETWORK_UDPV4_PROCESS_ALLOW=/sbin/rpc.statd:
+NETWORK_UDPV6_PROCESS_ALLOW=/sbin/rpc.statd:
 TCP_PORTV4_ALLOWED=:2049:nfs
 TCP_PORTV6_ALLOWED=:2049:nfs
 #
-SUID_ALLOW=/usr/sbin/mount.nfs
+SUID_ALLOW=/usr/sbin/mount.nfs:
 #
 NETWORK_PORT_NOLISTENER_TCPV4_OK=2049:nfs may not be running
 NETWORK_PORT_NOLISTENER_TCPV6_OK=2049:nfs may not be running

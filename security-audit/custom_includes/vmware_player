@@ -3,14 +3,14 @@
 # >>> Included File: ../custom_includes/vmware_player
 #
 # vmpware-player installs these files suid
-SUID_ALLOW=/usr/lib/vmware/bin/vmware-vmx-debug
-SUID_ALLOW=/usr/lib/vmware/bin/vmware-vmx
-SUID_ALLOW=/usr/lib/vmware/bin/vmware-vmx-stats
-SUID_ALLOW=/usr/sbin/vmware-authd
+SUID_ALLOW=/usr/lib/vmware/bin/vmware-vmx-debug:
+SUID_ALLOW=/usr/lib/vmware/bin/vmware-vmx:
+SUID_ALLOW=/usr/lib/vmware/bin/vmware-vmx-stats:
+SUID_ALLOW=/usr/sbin/vmware-authd:
 #
 # This propcess starts at server boot
-TCP_PORTV4_ALLOWED=:902:/usr/sbin/vmware-authdlauncher 
-TCP_PORTV6_ALLOWED=:902:/usr/sbin/vmware-authdlauncher 
+TCP_PORTV4_ALLOWED=:902:/usr/sbin/vmware-authdlauncher
+TCP_PORTV6_ALLOWED=:902:/usr/sbin/vmware-authdlauncher
 #
 # It may be responsible for opening udp port 546 but the opener
 # is NetworkManager so I'm not sure yet. Still to hunt what uses that down.

@@ -1,66 +1,66 @@
-# 
+#
 # Common settings for a Debian11 server install with no additional products installed
 # >>> Included File: ../custom_includes/server_Debian11
 #
 # Additional users that can be considered system file owners
 ADD_SYSTEM_FILE_OWNER=nagios man
-# ADD_SYSTEM_FILE_OWNER=Debian-exim   
+# ADD_SYSTEM_FILE_OWNER=Debian-exim
 # On the above..,  I use sendmail, but the debian exim4 package (which is not exim complient)
 # is intalled by default on new servers. Note that removing the exim4 package does not
-# remove the userid/group created when it was installed (a security issue I would think) 
+# remove the userid/group created when it was installed (a security issue I would think)
 # so you have to do a "userdel Debian-exim" plus a "rm -rf /var/spool/exim4" manually
 # after removing the package
 #
 # Directory ownership overrides as required
-ALLOW_OWNER_ROOT=dev
-ALLOW_OWNER_ROOT=proc
-ALLOW_OWNER_ROOT=www-data
-ALLOW_OWNER_ROOT=backup
-ALLOW_OWNER_ROOT=systemd
-ALLOW_OWNER_ROOT=misc
-ALLOW_OWNER_ROOT=games
-ALLOW_OWNER_ROOT=daemon
-ALLOW_OWNER_ROOT=bin
-ALLOW_OWNER_ROOT=sbin
-ALLOW_OWNER_ROOT=mail
-ALLOW_OWNER_ROOT=backups
-ALLOW_OWNER_ROOT=sshd
-ALLOW_OWNER_ROOT=exim4
-ALLOW_OWNER_ROOT=libvirt
-ALLOW_OWNER_ROOT=nfs
+ALLOW_OWNER_ROOT=dev:
+ALLOW_OWNER_ROOT=proc:
+ALLOW_OWNER_ROOT=www-data:
+ALLOW_OWNER_ROOT=backup:
+ALLOW_OWNER_ROOT=systemd:
+ALLOW_OWNER_ROOT=misc:
+ALLOW_OWNER_ROOT=games:
+ALLOW_OWNER_ROOT=daemon:
+ALLOW_OWNER_ROOT=bin:
+ALLOW_OWNER_ROOT=sbin:
+ALLOW_OWNER_ROOT=mail:
+ALLOW_OWNER_ROOT=backups:
+ALLOW_OWNER_ROOT=sshd:
+ALLOW_OWNER_ROOT=exim4:
+ALLOW_OWNER_ROOT=libvirt:
+ALLOW_OWNER_ROOT=nfs:
 ALLOW_OWNER_OVERRIDE=sendmail:smmta:
 #
 # Directory permission overrides for shared system directories
 # These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
-ALLOW_DIRPERM_SYSTEM=sys
-ALLOW_DIRPERM_SYSTEM=proc
-ALLOW_DIRPERM_SYSTEM=games
-ALLOW_DIRPERM_SYSTEM=man
-ALLOW_DIRPERM_SYSTEM=www-data
-ALLOW_DIRPERM_SYSTEM=backups
-ALLOW_DIRPERM_SYSTEM=systemd
-ALLOW_DIRPERM_SYSTEM=rpcbind
-ALLOW_DIRPERM_SYSTEM=misc
-ALLOW_DIRPERM_SYSTEM=sbin
-ALLOW_DIRPERM_SYSTEM=dev
-ALLOW_DIRPERM_SYSTEM=sshd
-ALLOW_DIRPERM_SYSTEM=tpm
-ALLOW_DIRPERM_SYSTEM=avahi-daemon
-ALLOW_DIRPERM_SYSTEM=speech-dispatcher
-ALLOW_DIRPERM_SYSTEM=colord
-ALLOW_DIRPERM_SYSTEM=gdm3
-ALLOW_DIRPERM_SYSTEM=libvirt
-ALLOW_DIRPERM_SYSTEM=mta-sts
-ALLOW_DIRPERM_SYSTEM=nfs
+ALLOW_DIRPERM_SYSTEM=sys:
+ALLOW_DIRPERM_SYSTEM=proc:
+ALLOW_DIRPERM_SYSTEM=games:
+ALLOW_DIRPERM_SYSTEM=man:
+ALLOW_DIRPERM_SYSTEM=www-data:
+ALLOW_DIRPERM_SYSTEM=backups:
+ALLOW_DIRPERM_SYSTEM=systemd:
+ALLOW_DIRPERM_SYSTEM=rpcbind:
+ALLOW_DIRPERM_SYSTEM=misc:
+ALLOW_DIRPERM_SYSTEM=sbin:
+ALLOW_DIRPERM_SYSTEM=dev:
+ALLOW_DIRPERM_SYSTEM=sshd:
+ALLOW_DIRPERM_SYSTEM=tpm:
+ALLOW_DIRPERM_SYSTEM=avahi-daemon:
+ALLOW_DIRPERM_SYSTEM=speech-dispatcher:
+ALLOW_DIRPERM_SYSTEM=colord:
+ALLOW_DIRPERM_SYSTEM=gdm3:
+ALLOW_DIRPERM_SYSTEM=libvirt:
+ALLOW_DIRPERM_SYSTEM=mta-sts:
+ALLOW_DIRPERM_SYSTEM=nfs:
 #
 # Directory permission overrides for shared system directories
 # These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
-ALLOW_DIRPERM_EXPLICIT=mail drwxrwsrwt
-ALLOW_DIRPERM_EXPLICIT=exim4 drwxr-x---
-ALLOW_DIRPERM_EXPLICIT=sendmail drwxr-s--x
-ALLOW_DIRPERM_EXPLICIT=chrony drwxr-x---
-ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
-ALLOW_DIRPERM_EXPLICIT=postgresql drwxr-xr-x
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwsrwt:
+ALLOW_DIRPERM_EXPLICIT=exim4 drwxr-x---:
+ALLOW_DIRPERM_EXPLICIT=sendmail drwxr-s--x:
+ALLOW_DIRPERM_EXPLICIT=chrony drwxr-x---:
+ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx:
+ALLOW_DIRPERM_EXPLICIT=postgresql drwxr-xr-x:
 #
 # Allow a file of this name to be forced OK under any directory if
 # it fails initial default checks.
@@ -68,8 +68,8 @@ ALLOW_DIRPERM_EXPLICIT=postgresql drwxr-xr-x
 # under the /sys/devices/pciNNNN:NN path as --w--w----. we do not
 # want them generating false alerts.
 # Risk is minimised be specifying the only permitted value.
-FORCE_ANYFILE_OK=remove --w--w----
-FORCE_ANYFILE_OK=rescan --w--w----
+FORCE_ANYFILE_OK=remove --w--w----:
+FORCE_ANYFILE_OK=rescan --w--w----:
 #
 # Common network ports used by F33 in a default install
 TCP_PORTV4_ALLOWED=:22:ssh
@@ -102,36 +102,36 @@ NETWORK_PORT_NOLISTENER_UDPV4_OK=547:dhcpv6-server
 #
 # SUID files on a Debian 12 server install KVM system
 #
-SUID_ALLOW=/usr/lib/dbus-1.0/dbus-daemon-launch-helper
-SUID_ALLOW=/usr/lib/openssh/ssh-keysign
-SUID_ALLOW=/usr/lib/cockpit/cockpit-session
-SUID_ALLOW=/usr/bin/newgrp
-SUID_ALLOW=/usr/bin/chfn
-SUID_ALLOW=/usr/bin/procmail
-SUID_ALLOW=/usr/bin/ntfs-3g
-SUID_ALLOW=/usr/bin/passwd
-SUID_ALLOW=/usr/bin/gpasswd
-SUID_ALLOW=/usr/bin/pkexec
-SUID_ALLOW=/usr/bin/chsh
-SUID_ALLOW=/usr/bin/sudo
-SUID_ALLOW=/usr/bin/umount
-SUID_ALLOW=/usr/bin/mount
-SUID_ALLOW=/usr/bin/fusermount
-SUID_ALLOW=/usr/bin/fusermount3
-SUID_ALLOW=/usr/bin/su
-SUID_ALLOW=/usr/sbin/pppd
-SUID_ALLOW=/usr/sbin/sensible-mda
-SUID_ALLOW=/usr/lib/x86_64-linux-gnu/utempter/utempter
-SUID_ALLOW=/usr/bin/ssh-agent
-SUID_ALLOW=/usr/bin/mutt_dotlock
-SUID_ALLOW=/usr/bin/chage
-SUID_ALLOW=/usr/bin/write
-SUID_ALLOW=/usr/bin/lockfile
-SUID_ALLOW=/usr/bin/crontab
-SUID_ALLOW=/usr/bin/expiry
-SUID_ALLOW=/usr/bin/dotlockfile
-SUID_ALLOW=/usr/bin/wall
-SUID_ALLOW=/usr/sbin/unix_chkpwd
+SUID_ALLOW=/usr/lib/dbus-1.0/dbus-daemon-launch-helper:
+SUID_ALLOW=/usr/lib/openssh/ssh-keysign:
+SUID_ALLOW=/usr/lib/cockpit/cockpit-session:
+SUID_ALLOW=/usr/bin/newgrp:
+SUID_ALLOW=/usr/bin/chfn:
+SUID_ALLOW=/usr/bin/procmail:
+SUID_ALLOW=/usr/bin/ntfs-3g:
+SUID_ALLOW=/usr/bin/passwd:
+SUID_ALLOW=/usr/bin/gpasswd:
+SUID_ALLOW=/usr/bin/pkexec:
+SUID_ALLOW=/usr/bin/chsh:
+SUID_ALLOW=/usr/bin/sudo:
+SUID_ALLOW=/usr/bin/umount:
+SUID_ALLOW=/usr/bin/mount:
+SUID_ALLOW=/usr/bin/fusermount:
+SUID_ALLOW=/usr/bin/fusermount3:
+SUID_ALLOW=/usr/bin/su:
+SUID_ALLOW=/usr/sbin/pppd:
+SUID_ALLOW=/usr/sbin/sensible-mda:
+SUID_ALLOW=/usr/lib/x86_64-linux-gnu/utempter/utempter:
+SUID_ALLOW=/usr/bin/ssh-agent:
+SUID_ALLOW=/usr/bin/mutt_dotlock:
+SUID_ALLOW=/usr/bin/chage:
+SUID_ALLOW=/usr/bin/write:
+SUID_ALLOW=/usr/bin/lockfile:
+SUID_ALLOW=/usr/bin/crontab:
+SUID_ALLOW=/usr/bin/expiry:
+SUID_ALLOW=/usr/bin/dotlockfile:
+SUID_ALLOW=/usr/bin/wall:
+SUID_ALLOW=/usr/sbin/unix_chkpwd:
 #
 # Force explicit files as OK when checked, full path is needed
 # /etc/dumpdates is normally also writeable by group disk
@@ -146,8 +146,8 @@ FORCE_PERM_OK=/var/log/lastlog:-rw-rw-r--
 # under the /sys/devices/pciNNNN:NN path as --w--w----. we do not
 # want them generating false alerts.
 # Risk is minimised be specifying the only permitted value.
-FORCE_ANYFILE_OK=remove --w--w----
-FORCE_ANYFILE_OK=rescan --w--w----
+FORCE_ANYFILE_OK=remove --w--w----:
+FORCE_ANYFILE_OK=rescan --w--w----:
 #
 ## These userids are permitted to have missing (not physically existing) home directories
 HOMEDIR_MISSING_OK=lp:
@@ -163,7 +163,7 @@ HOMEDIR_MISSING_OK=cockpit-ws:
 #
 # The below two entries (root and the group %sudo) are added by
 # default to /etc/sudoers when Debian is installed.
-SUDOERS_ALLOW_ALL_SERVERS=root
-SUDOERS_ALLOW_ALL_COMMANDS=root
-SUDOERS_ALLOW_ALL_SERVERS=%sudo
-SUDOERS_ALLOW_ALL_COMMANDS=%sudo
+SUDOERS_ALLOW_ALL_SERVERS=root:
+SUDOERS_ALLOW_ALL_COMMANDS=root:
+SUDOERS_ALLOW_ALL_SERVERS=%sudo:
+SUDOERS_ALLOW_ALL_COMMANDS=%sudo:

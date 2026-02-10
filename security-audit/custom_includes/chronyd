@@ -6,8 +6,8 @@ UDP_PORTV4_ALLOWED=:123:chronyd
 UDP_PORTV4_ALLOWED=:323:chronyd
 UDP_PORTV6_ALLOWED=:323:chronyd
 ADD_SYSTEM_FILE_OWNER=chrony
-ALLOW_DIRPERM_SYSTEM=chrony
-# For servers where I only open explicit ports for outbound traffic 
+ALLOW_DIRPERM_SYSTEM=chrony:
+# For servers where I only open explicit ports for outbound traffic
 # the below two lines stop alerting on the outbound firewal rules
 TCP_OUTBOUND_SUPPRESS=:123:Contact local network ntp servers
 UDP_OUTBOUND_SUPPRESS=:123:Contact local network ntp servers

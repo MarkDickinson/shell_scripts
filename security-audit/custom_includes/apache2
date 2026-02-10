@@ -3,8 +3,8 @@
 # >>> Included File: ../custom_includes/apache2
 #
 ADD_SYSTEM_FILE_OWNER=www-data
-ALLOW_OWNER_ROOT=www-data
-ALLOW_DIRPERM_SYSTEM=www-data
+ALLOW_OWNER_ROOT=www-data:
+ALLOW_DIRPERM_SYSTEM=www-data:
 TCP_PORTV6_ALLOWED=:80:http server ipv6:WILD
 TCP_PORTV6_ALLOWED=:443:http server ssl port ipv6:WILD
 TCP_PORTV6_ALLOWED=:8443:apache nss port

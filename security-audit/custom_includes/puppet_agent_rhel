@@ -4,7 +4,7 @@
 # >>> Included File: ../custom_includes/puppet_agent_rhel
 #
 ADD_SYSTEM_FILE_OWNER=puppet
-ALLOW_DIRPERM_SYSTEM=puppet
+ALLOW_DIRPERM_SYSTEM=puppet:
 #
 # Firewalls need to permit outbound traffic on 8140 to contact the puppetserver
 TCP_OUTBOUND_SUPPRESS=:8140:Puppet agent outbound to puppet server

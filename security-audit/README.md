@@ -2,6 +2,10 @@
 
 No Guarantees that these are fit for purpose in your environment.
 
+YOU SHOULD NEVER RUN UNKNOWN SCRIPTS AS ROOT. The collector script needs to run as root so
+unless you are happy to look through thousands of lines of bash script to make sure it will
+not damage your machines you should not use this.
+
 These scripts Check for common security issues _on Linux Servers_ not normally checked on a regular
 basis by system administrators. It is designed for Fedora/CentOS/RHEL servers although with a few
 exceptions works perfectly well on Debian based servers like Ubuntu and Kali.
@@ -242,4 +246,4 @@ I have an OpenIndiana VM I fire up occasionally, so support for processing SunOS
 data collection is partially implemented fom version 0.23 and will be ongoing
 (as a low priotity when I get time).
 
-And anything else I think f as time goes by.
+And anything else I think of as time goes by.

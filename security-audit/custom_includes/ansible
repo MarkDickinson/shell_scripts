@@ -1,4 +1,4 @@
-# 
+#
 # Common options for servers with 'ansible' installed
 # >>> Included File: ../custom_includes/ansible
 #
@@ -8,8 +8,8 @@ SSHD_SUBSYSTEM_ALLOW=sftp:/usr/libexec/openssh/sftp-server:RHEL based servers
 SSHD_SUBSYSTEM_ALLOW=sftp:/usr/lib/openssh/sftp-server:Debian based servers
 #
 SERVER_IS_ANSIBLE_NODE=yes
-SUDOERS_ALLOW_ALL_SERVERS=%ansible
-SUDOERS_ALLOW_ALL_COMMANDS=%ansible
+SUDOERS_ALLOW_ALL_SERVERS=%ansible:
+SUDOERS_ALLOW_ALL_COMMANDS=%ansible:
 #
 EXACT_ALERT_REASON=Insecure sudoers entry NOPASWD:%ansible ALL=(ALL) NOPASSWD: ALL
 # And add some notes to append to the expected alert report.

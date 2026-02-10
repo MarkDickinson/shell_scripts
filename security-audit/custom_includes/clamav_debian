@@ -5,4 +5,4 @@
 #   Packages: clamav
 #
 ADD_SYSTEM_FILE_OWNER=clamav
-ALLOW_DIRPERM_SYSTEM=clamav
+ALLOW_DIRPERM_SYSTEM=clamav:

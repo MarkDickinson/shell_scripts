@@ -13,7 +13,7 @@
 # data and not as a comment.
 #
 # You may override this on an individual server basis if
-# you create a file in this directory named 
+# you create a file in this directory named
 # <hostname>.custom (ie: falcon.custom). If a custom
 # file exists for a specific server it will be used
 # instead of this one.
@@ -31,7 +31,7 @@
 # processing rules will occur
 # -- if the port is bound to specific addresses the port is
 #    considered OK
-# -- if the port is listening on all interfaces it is reported as 
+# -- if the port is listening on all interfaces it is reported as
 #    a warning and the server warning count incremented
 # -- if the optional :WILD parameter is used to indicate that
 #    you require the port to listen on all interfaces no counters
@@ -45,11 +45,11 @@
 # Notes: The ":" around the port number is to make exact
 #        matching agaist the port number easier for the
 #        processing script.
-#        The optional :WILD means this port is expected to be bound 
+#        The optional :WILD means this port is expected to be bound
 #        to wildcard interfaces 0.0.0.0 and ::: and overrides the
 #        default of reporting ports listening on all interfaces as
-#        insecure. ONLY set that for ports you know cannot be 
-#        configured to a specific interface or has a site reason 
+#        insecure. ONLY set that for ports you know cannot be
+#        configured to a specific interface or has a site reason
 #        to listen on all interfaces.
 #
 # Common TCP ports on Fedora systems
@@ -126,8 +126,8 @@ RAW_PORTV6_ALLOWED=:58:NetworkManager
 #         NETWORK_RAWV6_PROCESS_ALLOW=/the/full/programname and parms
 #
 # Common values required for Fedora systems
-NETWORK_UDPV4_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
-NETWORK_UDPV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
+NETWORK_UDPV4_PROCESS_ALLOW=/usr/bin/rpcbind -w -f:
+NETWORK_UDPV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f:
 # The below are server specific so cannot be used in ALL.custom,
 # needed for desktop machines so set for your environment
 #NETWORK_UDPV4_PROCESS_ALLOW=avahi-daemon: running [phoenix.local]
@@ -146,12 +146,12 @@ NETWORK_UDPV6_PROCESS_ALLOW=/usr/bin/rpcbind -w -f
 # These options prevent those ports alerting as obsolete (not being used)
 # firewall rules and obsolete cuestom file entries.
 #
-# Syntax: NETWORK_PORT_NOLISTENER_TCPV4_OK=portnum:optional comment 
-#         NETWORK_PORT_NOLISTENER_TCPV6_OK=portnum:optional comment 
+# Syntax: NETWORK_PORT_NOLISTENER_TCPV4_OK=portnum:optional comment
+#         NETWORK_PORT_NOLISTENER_TCPV6_OK=portnum:optional comment
 #         NETWORK_PORT_NOLISTENER_UDPV4_OK=portnum:optional comment
-#         NETWORK_PORT_NOLISTENER_UDPV6_OK=portnum:optional comment 
-#         NETWORK_PORT_NOLISTENER_RAWV4_OK=portnum:optional comment 
-#         NETWORK_PORT_NOLISTENER_RAWV6_OK=portnum:optional comment 
+#         NETWORK_PORT_NOLISTENER_UDPV6_OK=portnum:optional comment
+#         NETWORK_PORT_NOLISTENER_RAWV4_OK=portnum:optional comment
+#         NETWORK_PORT_NOLISTENER_RAWV6_OK=portnum:optional comment
 # The trailing : is required to permit explicit port matching.
 #
 # A desription/comment can be used after the : to comment for this file however
@@ -239,69 +239,69 @@ ADD_SYSTEM_FILE_OWNER=setroubleshoot
 # case where many system users have home directories that are
 # system directories that need to be owned by root and not the
 # userid that has it defined as their home directory.
-ALLOW_OWNER_ROOT=bin
-ALLOW_OWNER_ROOT=sbin
-ALLOW_OWNER_ROOT=daemon
-ALLOW_OWNER_ROOT=lpd
-ALLOW_OWNER_ROOT=sync
-ALLOW_OWNER_ROOT=shutdown
-ALLOW_OWNER_ROOT=halt
-ALLOW_OWNER_ROOT=rpm
-ALLOW_OWNER_ROOT=nfs
-ALLOW_OWNER_ROOT=postfix
-ALLOW_OWNER_ROOT=mail
-ALLOW_OWNER_ROOT=mqueue
-ALLOW_OWNER_ROOT=smmsp
-ALLOW_OWNER_ROOT=sshd
-ALLOW_OWNER_ROOT=dev
-ALLOW_OWNER_ROOT=fs
-ALLOW_OWNER_ROOT=gdm
-ALLOW_OWNER_ROOT=adm
-ALLOW_OWNER_ROOT=httpd
-ALLOW_OWNER_ROOT=dnsmasq
-ALLOW_OWNER_ROOT=pcp
-ALLOW_OWNER_ROOT=root
-ALLOW_OWNER_ROOT=usage
-ALLOW_OWNER_ROOT=unbound
-ALLOW_OWNER_ROOT=ntp
+ALLOW_OWNER_ROOT=bin:
+ALLOW_OWNER_ROOT=sbin:
+ALLOW_OWNER_ROOT=daemon:
+ALLOW_OWNER_ROOT=lpd:
+ALLOW_OWNER_ROOT=sync:
+ALLOW_OWNER_ROOT=shutdown:
+ALLOW_OWNER_ROOT=halt:
+ALLOW_OWNER_ROOT=rpm:
+ALLOW_OWNER_ROOT=nfs:
+ALLOW_OWNER_ROOT=postfix:
+ALLOW_OWNER_ROOT=mail:
+ALLOW_OWNER_ROOT=mqueue:
+ALLOW_OWNER_ROOT=smmsp:
+ALLOW_OWNER_ROOT=sshd:
+ALLOW_OWNER_ROOT=dev:
+ALLOW_OWNER_ROOT=fs:
+ALLOW_OWNER_ROOT=gdm:
+ALLOW_OWNER_ROOT=adm:
+ALLOW_OWNER_ROOT=httpd:
+ALLOW_OWNER_ROOT=dnsmasq:
+ALLOW_OWNER_ROOT=pcp:
+ALLOW_OWNER_ROOT=root:
+ALLOW_OWNER_ROOT=usage:
+ALLOW_OWNER_ROOT=unbound:
+ALLOW_OWNER_ROOT=ntp:
 # home dir of multiple users (ie:rtkit)
-ALLOW_OWNER_ROOT=proc
+ALLOW_OWNER_ROOT=proc:
 #
 # Directory permission overrides for home directories that can
 # be considered to be shared system directories
 # These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
-ALLOW_DIRPERM_SYSTEM=bin
-ALLOW_DIRPERM_SYSTEM=sbin
-ALLOW_DIRPERM_SYSTEM=adm
-ALLOW_DIRPERM_SYSTEM=lpd
-ALLOW_DIRPERM_SYSTEM=backuppc
-ALLOW_DIRPERM_SYSTEM=sshd
-ALLOW_DIRPERM_SYSTEM=mysql
-ALLOW_DIRPERM_SYSTEM=rpcuser
-ALLOW_DIRPERM_SYSTEM=nfsnobody
-ALLOW_DIRPERM_SYSTEM=usage
-ALLOW_DIRPERM_SYSTEM=ntp
-ALLOW_DIRPERM_SYSTEM=dnsmasq
-ALLOW_DIRPERM_SYSTEM=unbound
-ALLOW_DIRPERM_SYSTEM=httpd
-ALLOW_DIRPERM_SYSTEM=postfix
-ALLOW_DIRPERM_SYSTEM=nagios
-ALLOW_DIRPERM_SYSTEM=puppet
-ALLOW_DIRPERM_SYSTEM=colord
-ALLOW_DIRPERM_SYSTEM=root
+ALLOW_DIRPERM_SYSTEM=bin:
+ALLOW_DIRPERM_SYSTEM=sbin:
+ALLOW_DIRPERM_SYSTEM=adm:
+ALLOW_DIRPERM_SYSTEM=lpd:
+ALLOW_DIRPERM_SYSTEM=backuppc:
+ALLOW_DIRPERM_SYSTEM=sshd:
+ALLOW_DIRPERM_SYSTEM=mysql:
+ALLOW_DIRPERM_SYSTEM=rpcuser:
+ALLOW_DIRPERM_SYSTEM=nfsnobody:
+ALLOW_DIRPERM_SYSTEM=usage:
+ALLOW_DIRPERM_SYSTEM=ntp:
+ALLOW_DIRPERM_SYSTEM=dnsmasq:
+ALLOW_DIRPERM_SYSTEM=unbound:
+ALLOW_DIRPERM_SYSTEM=httpd:
+ALLOW_DIRPERM_SYSTEM=postfix:
+ALLOW_DIRPERM_SYSTEM=nagios:
+ALLOW_DIRPERM_SYSTEM=puppet:
+ALLOW_DIRPERM_SYSTEM=colord:
+ALLOW_DIRPERM_SYSTEM=root:
 #
 # If home directories fail all checks a test for an allowed
 # override for expected OK perms can be provided here
-ALLOW_DIRPERM_EXPLICIT=mail drwxrwxr-x
-ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T
-ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwxr-x:
+ALLOW_DIRPERM_EXPLICIT=avahi-autoipd drwxrwx--T:
+ALLOW_DIRPERM_EXPLICIT=bacula drwxr-x---:
 #
 # The below two are probably Fedora specific, some system userids
 # are defined with the home directories below, which are actually
 # symbolic links so will always fail checks.
 # (home directories that are links may be handled in version 0.07)
-ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
-ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx:
+ALLOW_DIRPERM_EXPLICIT=sbin lrwxrwxrwx:
 #
 # The below are examples of suppressing warning alerts for users
 # that have home directories defined that simply do not exist, for
@@ -343,15 +343,15 @@ FORCE_PERM_OK=/var/log/btmp:-rw-rw----
 # want them generating false alerts.
 # Risk is minimised be specifying the only permitted value.
 # Syntax: FORCE_ANYFILE_OK=file exactperm
-FORCE_ANYFILE_OK=remove --w--w----
-FORCE_ANYFILE_OK=rescan --w--w----
+FORCE_ANYFILE_OK=remove --w--w----:
+FORCE_ANYFILE_OK=rescan --w--w----:
 #
 # Only warn for /var file security failures, cuts out a lot
 # of alerts as a lot of stuff in /var is owned by many different
 # userids.
 ALLOW_SLOPPY_VAR=WARN
 #
-# Consider it OK if a file under /var is group writeable but the 
+# Consider it OK if a file under /var is group writeable but the
 # group also matches the userid owning the file
 ALLOW_VAR_FILE_GROUPWRITE=YES
 #
@@ -362,39 +362,39 @@ ALLOW_VAR_FILE_GROUPWRITE=YES
 # ---------------------------------------------------------------
 # SUID files expected on Fedora 32 server
 # ---------------------------------------------------------------
-SUID_ALLOW=/usr/sbin/sendmail.sendmail
-SUID_ALLOW=/usr/sbin/userhelper
-SUID_ALLOW=/usr/bin/lockfile
-SUID_ALLOW=/usr/bin/sudo
-SUID_ALLOW=/usr/bin/crontab
-SUID_ALLOW=/usr/bin/gpasswd
-SUID_ALLOW=/usr/bin/at
-SUID_ALLOW=/usr/bin/locate
-SUID_ALLOW=/usr/bin/newgrp
-SUID_ALLOW=/usr/bin/screen
-SUID_ALLOW=/usr/bin/chage
-SUID_ALLOW=/usr/bin/write
-SUID_ALLOW=/usr/bin/passwd
-SUID_ALLOW=/usr/libexec/openssh/ssh-keysign
-SUID_ALLOW=/usr/libexec/utempter/utempter
-SUID_ALLOW=/usr/libexec/cockpit-session
-SUID_ALLOW=/usr/bin/mount
-SUID_ALLOW=/usr/bin/su
-SUID_ALLOW=/usr/bin/umount
-SUID_ALLOW=/usr/bin/pkexec
-SUID_ALLOW=/usr/sbin/pam_timestamp_check
-SUID_ALLOW=/usr/sbin/mount.nfs
-SUID_ALLOW=/usr/sbin/unix_chkpwd
-SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1
-SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper
-SUID_ALLOW=/usr/sbin/usernetctl
-SUID_ALLOW=/usr/sbin/mtr-packet
-SUID_ALLOW=/usr/sbin/grub2-set-bootflag
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_dhcp
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_icmp
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_ide_smart
-SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping
-SUID_ALLOW=/usr/lib64/mariadb/plugin/auth_pam_tool_dir/auth_pam_tool
+SUID_ALLOW=/usr/sbin/sendmail.sendmail:
+SUID_ALLOW=/usr/sbin/userhelper:
+SUID_ALLOW=/usr/bin/lockfile:
+SUID_ALLOW=/usr/bin/sudo:
+SUID_ALLOW=/usr/bin/crontab:
+SUID_ALLOW=/usr/bin/gpasswd:
+SUID_ALLOW=/usr/bin/at:
+SUID_ALLOW=/usr/bin/locate:
+SUID_ALLOW=/usr/bin/newgrp:
+SUID_ALLOW=/usr/bin/screen:
+SUID_ALLOW=/usr/bin/chage:
+SUID_ALLOW=/usr/bin/write:
+SUID_ALLOW=/usr/bin/passwd:
+SUID_ALLOW=/usr/libexec/openssh/ssh-keysign:
+SUID_ALLOW=/usr/libexec/utempter/utempter:
+SUID_ALLOW=/usr/libexec/cockpit-session:
+SUID_ALLOW=/usr/bin/mount:
+SUID_ALLOW=/usr/bin/su:
+SUID_ALLOW=/usr/bin/umount:
+SUID_ALLOW=/usr/bin/pkexec:
+SUID_ALLOW=/usr/sbin/pam_timestamp_check:
+SUID_ALLOW=/usr/sbin/mount.nfs:
+SUID_ALLOW=/usr/sbin/unix_chkpwd:
+SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1:
+SUID_ALLOW=/usr/libexec/dbus-1/dbus-daemon-launch-helper:
+SUID_ALLOW=/usr/sbin/usernetctl:
+SUID_ALLOW=/usr/sbin/mtr-packet:
+SUID_ALLOW=/usr/sbin/grub2-set-bootflag:
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_dhcp:
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_icmp:
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_ide_smart:
+SUID_ALLOW=/usr/lib64/nagios/plugins/check_fping:
+SUID_ALLOW=/usr/lib64/mariadb/plugin/auth_pam_tool_dir/auth_pam_tool:
 # ---------------------------------------------------------------
 # SUID files expected on a CentOS8 server
 # ---------------------------------------------------------------
@@ -507,7 +507,7 @@ ALLOW_AUTHORISED_KEYS=yes
 #     root	ALL=(ALL) 	ALL
 #     %wheel	ALL=(ALL)	ALL
 # Overrides for sudoers checks
-SUDOERS_ALLOW_ALL_SERVERS=root
-SUDOERS_ALLOW_ALL_COMMANDS=root
-SUDOERS_ALLOW_ALL_SERVERS=%wheel
-SUDOERS_ALLOW_ALL_COMMANDS=%wheel
+SUDOERS_ALLOW_ALL_SERVERS=root:
+SUDOERS_ALLOW_ALL_COMMANDS=root:
+SUDOERS_ALLOW_ALL_SERVERS=%wheel:
+SUDOERS_ALLOW_ALL_COMMANDS=%wheel:

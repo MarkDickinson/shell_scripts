@@ -2,8 +2,8 @@
 # This include file suppresses firewall alerts cause by NetworkManager
 # opening ports 67, 68 and 69 in the firewall.
 # I have not been able to find out why.
-# On some servers where I use DNS a couple of those are OK, but 
-# thay are randomly (as far as I can tell) on servers as servers with 
+# On some servers where I use DNS a couple of those are OK, but
+# thay are randomly (as far as I can tell) on servers as servers with
 # identical packages, services and even moving KVMs between servers
 # to ensure servers are running exactly the same software... have
 # different ports opened in the firewall in this range.

@@ -10,7 +10,7 @@ TCP_PORTV6_ALLOWED=:445:smbd
 TCP_PORTV4_ALLOWED=:137:nmbd
 TCP_PORTV4_ALLOWED=:138:nmbd
 #
-SUID_ALLOW=/usr/sbin/mount.cifs
+SUID_ALLOW=/usr/sbin/mount.cifs:
 #
 NETWORK_PORT_NOLISTENER_TCPV4_OK=137:I dont need to start nmbd
 NETWORK_PORT_NOLISTENER_TCPV4_OK=138:I dont need to start nmbd

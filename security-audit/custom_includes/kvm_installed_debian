@@ -1,2 +1,2 @@
 # The below only exists on Debian11 servers with KVM virtualisation installed
-SUID_ALLOWED=/usr/libexec/spice-client-glib-usb-acl-helper
+SUID_ALLOWED=/usr/libexec/spice-client-glib-usb-acl-helper:

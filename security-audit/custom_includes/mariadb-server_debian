@@ -4,5 +4,5 @@
 #
 ADD_SYSTEM_FILE_OWNER=mysql
 TCP_PORTV4_ALLOWED=:3306:MySQL server
-ALLOW_DIRPERM_SYSTEM=mysql
-SUID_ALLOW=/usr/lib/mysql/plugin/auth_pam_tool_dir/auth_pam_tool
+ALLOW_DIRPERM_SYSTEM=mysql:
+SUID_ALLOW=/usr/lib/mysql/plugin/auth_pam_tool_dir/auth_pam_tool:

@@ -123,6 +123,18 @@ extract_parm_value() {
 #    1 - running interactive (with a STDIN)
 #    0 - not interactive (STDIN closed or /dev/null)
 #
+# T O D O - additional tests that may be more useful
+#   If readlink is installed (on most linux servers) you can also
+#   use the below to obtain the device being used for stdin (0) and stdout (1)
+#   which may be of more use to me in scripts that redirect input and output
+#   Should test for pts and whatever xterm uses to decide if a terminal or batch.
+#      $ readlink /proc/self/fd/0
+#      /dev/pts/0
+#      $ readlink /proc/self/fd/1
+#      /dev/pts/0
+#   readlink is just a note for now, I will probably need it
+#   also depending on where you use it you could get "pipe:[nnnnnn]"
+#
 # *********************************************************************
 interactive_shell() {
    if [[ -t 0 ]]; then

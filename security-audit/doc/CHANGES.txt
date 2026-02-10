@@ -11,6 +11,40 @@ should cope with expected new information missing. Ideally you would keep the co
 and processing script versions the same but still works if you do not.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.24 and version 0.25 are
+-------------------------------------------------------------------------------------
+(1) Logic change that will change lots of alerts to OK. The checks that tested to
+    ensure that only the owner of a system file (in /usr, /bin, /etc etc.) could
+    update it that would alert if there was group write as well as owner write have
+    been updated so that if group write permissions are set a check is done on the
+    entries in /etc/group to see if additional users are in the group; if there are
+    no additional users in the group the updateable only by file owner test will now
+    be considered OK. If there are additional group members alerts will be raised as
+    in 0.24 and earlier for files writeable by others. 
+    This is in response to lots of packages installing files with group write and I 
+    am getting sick of resecuring them to 644.
+(2) BREAKING CHANGE **** <<<<<<<<<<<<<< ****
+    The below customfile values id used must now have values terminated with a :
+    which is needed for implementation of (3), to stop =rpc matching =rpcbind
+    also in a grep for example, a grep of =rpc: would not match =rpcbind: so it
+    is safe to use (3) with this requirement
+      ALLOW_OWNER_ROOT
+      ALLOW_DIRPERM_SYSTEM
+      SUID_ALLOW
+      SUDOERS_ALLOW_ALL_SERVERS
+      SUDOERS_ALLOW_ALL_COMMANDS
+      ALLOW_DIRPERM_EXPLICIT
+      FORCE_ANYFILE_OK
+    >> Sample script ../doc/update_custom_files.sh may help with this.
+(3) New customfile parameter UNSET_VAR=@line to match@ 
+    This is available for those cases server_OS files are ok for 99% of your
+    servers but that last 1% have had default packages removed causing alerts
+    for things like expected users and directories not existing, or tcpv6 disabled
+    and alerts for no tcpv6 listeners that exist on other servers.
+    In order to avoid issues this parameter can only be used against custom file
+    settings where a value ends with a :
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.23 and version 0.24 are
 -------------------------------------------------------------------------------------
 (1) Breaking change: all custom file variables containing =YES should now be

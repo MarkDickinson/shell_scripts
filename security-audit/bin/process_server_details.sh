@@ -496,6 +496,33 @@
 #                   (4) Cleaned up the table showing netfilter checks a lot
 #                   (5) Added check for sshd listen address not 
 #                       listening on all interfaces
+# MID: 2026/02/09 - Version 0.25 (version bump as a visible results change)
+#                   (1) In the checks to ensure only a system file owner
+#                       can write to a file added a new test for 'if group
+#                       writeable it is OK is only the file owner is in the
+#                       group' as that is still only owner only write. If
+#                       there are additional users in the group fall
+#                       through to origional exception checks and alerts.
+#                       This does not affect the ALLOW_VAR_FILE_GROUPWRITE
+#                       parameter other than that test will be skipped if
+#                       if there are no other users in the group.
+#                   (2) Added customfile option UNSET_VAR=@line to match@
+#                       for edge cases where a server_xx file may work
+#                       on 99% of servers but 1% do not have expected
+#                       users/dirs/suid files etc. existing if packages
+#                       have been removed from a default server build.
+#                   (3) BREAKING CHANGE to ensure unset matches exact
+#                       values the following should now have each value
+#                       terminated with a :
+#                       If not terminated with : most existing tests will
+#                       still work OK but UNSET_VAR cannot be used on them.
+#                         ALLOW_OWNER_ROOT
+#                         ALLOW_DIRPERM_SYSTEM
+#                         SUID_ALLOW
+#                         SUDOERS_ALLOW_ALL_SERVERS
+#                         SUDOERS_ALLOW_ALL_COMMANDS
+#                         ALLOW_DIRPERM_EXPLICIT
+#                         FORCE_ANYFILE_OK
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -552,7 +579,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.24"
+PROCESSING_VERSION="0.25"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -947,10 +974,8 @@ locate_custom_file() {
       # Search for any includes in the custom file, we will build a
       # seperate 'master' custom file that includes them all.
       #
-      if [ -f ${RESULTS_DIR}/customfile_merged ];
-      then
-         /bin/rm ${RESULTS_DIR}/customfile_merged
-      fi
+      # If an old file exists remove it
+      delete_file "${RESULTS_DIR}/customfile_merged"
       # Use any custom includes first 
       grep "^INCLUDE_CUSTOM_RULES=" ${CUSTOMFILE} | while read includeline
       do
@@ -975,8 +1000,44 @@ locate_custom_file() {
       done
       # Then append the server specific customfile
       grep -v "^INCLUDE_CUSTOM_RULES=" ${CUSTOMFILE} >> ${RESULTS_DIR}/customfile_merged
+      #
+      # v0.25 - lots of mucking about for UNSET_VAR= tests against the custom file
+      hasUnsets=`grep "^UNSET_VAR=@" ${RESULTS_DIR}/customfile_merged | wc -l`
+      if [ ${hasUnsets} -gt 0 ];
+      then
+         log_message "processing custom file unset commands found" 
+         delete_file "${RESULTS_DIR}/sedlist_work"
+         # Unset line syntax is UNSET_VAR=@line to match@  , @ is delimiters
+         grep "^UNSET_VAR=@" ${RESULTS_DIR}/customfile_merged | while read unsetline
+         do
+            actualvar=`echo "${unsetline}" | awk -F@ {'print $2'}`
+            if [ "${actualvar}." != "." ];
+            then
+               # We only allow unset on values that can be terminated with a :
+               # in the custom file to stop things like =rpc also matching =rpcbind
+               # so of limited use until all values are terminated with : in future
+               testcolon=${actualvar:$(( ${#actualvar} - 1)):1}
+               if [ "${testcolon}." == ":." ];
+               then
+                  echo " s'${actualvar}'# UNSET_VAR ${actualvar}'g" >> ${RESULTS_DIR}/sedlist_work
+               else
+                  log_message "Ignoring (not a trailing : value) ${unsetline}"
+	       fi
+            fi
+         done
+         # only do this bit if anything was found
+         if [ -f ${RESULTS_DIR}/sedlist_work ];
+	 then
+            cat "${RESULTS_DIR}/customfile_merged" | sed -f ${RESULTS_DIR}/sedlist_work >> "${RESULTS_DIR}/customfile_merged2"
+            # and rename new file back to what we expect
+            mv "${RESULTS_DIR}/customfile_merged2" "${RESULTS_DIR}/customfile_merged"
+            # and remeber to clean up workfile
+            delete_file "${RESULTS_DIR}/sedlist_work"
+	 fi
+      fi
+      # It is the merged customfile used for processing now
       CUSTOMFILE="${RESULTS_DIR}/customfile_merged"
-      # log_message "DEBUG----: switched to custom file ${CUSTOMFILE}"
+      # log_message "DEBUG----: switched to merged custom file ${CUSTOMFILE}"
    else
       log_message "DEBUG: *ERROR* locate_custom_file invoked before dir ${RESULTS_DIR} exists, not using include files"
    fi
@@ -986,7 +1047,7 @@ locate_custom_file() {
 # because I can
 # ---------------------------------------------------------------
 marks_banner() {
-   echo "${MYNAME} - (c)Mark Dickinson 2004-2023"
+   echo "${MYNAME} - (c)Mark Dickinson 2004-2026"
    echo "Security auditing toolkit version ${PROCESSING_VERSION}"
 } # end of marks_banner
 
@@ -1237,7 +1298,7 @@ check_homedir_perms() {
        then
           dirname=`echo "${databuffer}" | awk {'print $9'}`
           dirname=`echo "${dirname}" | awk -F\= {'print $1'}`
-          testvar=`grep "^ALLOW_DIRPERM_SYSTEM=${dirname}" ${CUSTOMFILE} | tail -1`
+          testvar=`grep "^ALLOW_DIRPERM_SYSTEM=${dirname}:" ${CUSTOMFILE} | awk -F: {'print $1'} | tail -1`
           if [ "${testvar}." != "." ];
           then
              testperm=${saveperm:0:10}
@@ -1251,7 +1312,8 @@ check_homedir_perms() {
           if [ "${PERM_CHECK_RESULT}." != "OK." ];
           then
              # added 'tail -1' as if a custom file replicated entries the check here fails as two lines <> one line
-             testvar=`grep "^ALLOW_DIRPERM_EXPLICIT=${dirname}" ${CUSTOMFILE} | tail -1`
+             # yes we want the trailing space in grep, should be =dir perms so the space stops partial matches here
+             testvar=`grep "^ALLOW_DIRPERM_EXPLICIT=${dirname} " ${CUSTOMFILE} | awk -F: {'print $1'} | tail -1`
              if [ "${testvar}." != "." ];
              then
                 testvar=`echo "${testvar}" | awk -F\= {'print $2'} | awk {'print $2'}`
@@ -1276,9 +1338,20 @@ check_homedir_perms() {
             # Can ownership be overridden to root, check the custom file
             if [ "${CUSTOMFILE}." != "." ];
             then
+               # FIDDLE NEEDED IN PARSING HERE
+               # Data line syntax expected is
+               # drwxrwxrwx.   1 root root     7 Sep  4 08:52 www=www-data www-data
+               # but if a symbolic link we have (on Debian anyway)
+               # lrwxrwxrwx.   1 root root     7 Sep  4 08:52 bin -> usr/bin=bin bin
                dirname=`echo "${databuffer}" | awk {'print $9'}`
-               dirname=`echo "${dirname}" | awk -F\= {'print $1'}`
-               testvar=`grep "^ALLOW_OWNER_ROOT=${dirname}" ${CUSTOMFILE} | tail -1`
+               # below should not cause issues with a link, if no = in data it should return what is in the buffer
+               tempdir="${dirname}"  # it doesn't, it will erase the buffer so save what we have first
+	       dirname=`echo "${dirname}" | awk -F\= {'print $1'}`  # ie:www=www-data www-data (dir=owner grp)
+               if [ "${dirname}." == "." ];  # and if above awk with = erased it put value found from first awk back
+               then
+                  dirname="${tempdir}"
+               fi
+               testvar=`grep "^ALLOW_OWNER_ROOT=${dirname}:" ${CUSTOMFILE} | awk -F: {'print $1'} | tail -1`
             else 
                testvar=""
             fi
@@ -1405,7 +1478,7 @@ check_file_perms() {
       then
          thefilename=`echo "${databuffer}" | awk -F\= {'print $1'} | awk {'print $9'}`
          thefilename=`basename "${thefilename}"`
-         testvar=`grep "^FORCE_ANYFILE_OK=${thefilename}" ${CUSTOMFILE} | tail -1`
+         testvar=`grep "^FORCE_ANYFILE_OK=${thefilename}" ${CUSTOMFILE} | awk -F: {'print $1'} | tail -1`
          if [ "${testvar}." != "." ];
          then
             perm=`echo "${databuffer}" | awk {'print $1'}`
@@ -2053,9 +2126,8 @@ build_appendix_a() {
       echo "<p>The default attributes used when adding a new user need to be set to" >> ${htmlfile}
       echo "reasonable values, the defaults are generally unaceptable. These are" >> ${htmlfile}
       echo "the values obtained from /etc/login.defs, /etc/security/pwquality.conf and /etc/security/pwquality.conf.d/*.conf files," >> ${htmlfile} 
-      echo "if they exist for server ${hostid} (pwquality.conf files are used on PAM systems)." >> ${htmlfile} 
-      echo "<br>Note: a Debian12 new install has comments in login.defs saying the minlen is now set in /etc/pam.d files, but I cannot find anything relevent in those fles yet to check." >> ${htmlfile} 
-      echo "<br>Note: For SunOS systems these are set in /etc/default/passwd.</p>" >> ${htmlfile} 
+      echo "if they exist and are not commented." >> ${htmlfile} 
+      echo "<br />Note: For SunOS systems these are set in /etc/default/passwd.</p>" >> ${htmlfile} 
       # Get and ensure values exist for the data being checked
       ostype=`grep "^TITLE_OSTYPE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
       if [ "${ostype}." == "Linux." ];
@@ -2729,7 +2801,7 @@ appendix_c_check_unused_process_port() {
    dataversion="$2"
    grep "^NETWORK_${datatype}V${dataversion}_PROCESS_ALLOW=" ${CUSTOMFILE} | while read dataline
    do
-      processallow=`echo "${dataline}" | awk -F\= {'print $2'}`
+      processallow=`echo "${dataline}" | awk -F\= {'print $2'} | awk -F: {'print $1'}`
       bb=`echo "${processallow}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
       exists=`grep "${bb}" ${SRCDIR}/secaudit_${hostid}.txt | grep "^NETWORK_${datatype}V${dataversion}_PORT_"`
       if [ "${exists}." == "." ];   # if no fuser provided info use the netstat process name info
@@ -2969,7 +3041,7 @@ appendix_c_check_unused_custom() {
 
    # New in version 0.12 - now we have running process info check that process_allow
    # entries actually have a matching process running
-   grep "^NETWORK_...V._PROCESS_ALLOW=" ${CUSTOMFILE} | while read dataline
+   grep "^NETWORK_...V._PROCESS_ALLOW=" ${CUSTOMFILE} | awk -F: {'print $1'} | while read dataline
    do
       psline=`echo "${dataline}" | awk -F\= {'print $2'}`
       psline=`echo "${psline}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
@@ -3107,7 +3179,7 @@ build_appendix_c() {
          then
             # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the search
             bb=`echo "${searchmatch}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
-            processmatch1=`grep "^NETWORK_TCPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+            processmatch1=`grep "^NETWORK_TCPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'} | awk -F: {'print $1'}`
             processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`                  # remove trailing spaces
             if [ "${processmatch1}." == "${searchmatch}." ]
             then
@@ -3206,7 +3278,7 @@ build_appendix_c() {
             aa=`echo "${searchmatch}" | sed 's/ *$//g'`                  # remove trailing spaces
             # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the grep
             bb=`echo "${aa}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
-            processmatch1=`grep "^NETWORK_UDPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+            processmatch1=`grep "^NETWORK_UDPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'} | awk -F: {'print $1'}`
             processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`     # remove trailing spaces
             if [ "${processmatch1}." == "${aa}." ]
             then
@@ -3276,7 +3348,7 @@ build_appendix_c() {
          then
             # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the grep
             bb=`echo "${programname}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
-            processmatch1=`grep "^NETWORK_RAWV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+            processmatch1=`grep "^NETWORK_RAWV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'} | awk -F: {'print $1'}`
             processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`     # remove trailing spaces
             if [ "${processmatch1}." == "${programname}." ]
             then
@@ -3700,6 +3772,28 @@ EOF
       totalcount=$((${totalcount} + 1))
       echo "${totalcount}" > ${WORKDIR}/system_totals_count
       check_file_perms "${dataline}" "XXXXX-XX-X"
+
+      # 2026/Jan/09 - if group write but only the owner in the group then
+      #               we will consider the file as only updateable by owner
+      if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not OK has error text
+      then
+         fileuser=`echo "${dataline}" | awk {'print $3'}`
+         filegroup=`echo "${dataline}" | awk {'print $4'}`
+         # if any data in group member field after removing owner and commans then there are additional users
+         getgroupinfo=`grep "^ETC_GROUP_FILE=${filegroup}:"`
+	 if [ "${getgroupinfo}." != "." ];   # if not empty group exists (todo, report orphan groups)
+         then
+            addstogroup=`echo "${getgroupinfo}" | awk -F: {'print $4'} | sed -e"s/${fileuser}//g" | sed -e"s/,//g"`
+            if [ "${addstogroup}." == "." ];  # if empty no other users in the group
+            then
+               # if the only member in the group was the user then group write is ok
+               check_file_perms "${dataline}" "XXXXXXXX-X"
+            fi
+         fi
+         # else group not found, a number would be an orphan group
+      fi
+      # 2026/Jan/09 - end insert on test of if only group member
+
       if [ "${PERM_CHECK_RESULT}." != "OK." ]; # if not OK has error text
       then
          if [ "${allowsloppyvar}." == "NO." -a "${allowvargroupwrite}." != "YES." ];
@@ -3895,7 +3989,7 @@ EOF
    if [ "${CUSTOMFILE}." != "." ];
    then
       # save the allowed suid files now as well
-      grep "^SUID_ALLOW" ${CUSTOMFILE} | awk -F\= '{print $2}' | while read dataline
+      grep "^SUID_ALLOW" ${CUSTOMFILE} | awk -F\= '{print $2}' | awk -F: {'print $1'} | while read dataline
       do
          # note we add the space-X to force exact matches on filenames, to prevent
          # paths being used in the custom file.
@@ -4492,11 +4586,11 @@ build_appendix_g() {
    if [ "${CUSTOMFILE}." != "." ];
    then
       # A customsation file was used. Record the details
-      echo "<p>A customisation file was used for this server. File used was <b>${CUSTOMFILE}</b>.</p>" >> ${htmlfile}
+      echo "<p>A customisation file was used for this server.</p>" >> ${htmlfile}
       echo "<p>Using a customisation file could hide some possible security vulnerabilies" >> ${htmlfile}
       echo "on the system, so you need to review the customisation file occasionally." >> ${htmlfile}
       echo "The contents of the customisation file are recorded here for you to review.</p>" >> ${htmlfile}
-      echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td><center>${CUSTOMFILE}</center></td></tr>" >> ${htmlfile}
+      echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td><center>Customistion data used</center></td></tr>" >> ${htmlfile}
       echo "<tr><td><pre>" >> ${htmlfile}
       cat ${CUSTOMFILE} >> ${htmlfile}
       echo "</pre>" >> ${htmlfile}
@@ -4590,7 +4684,7 @@ iptables_check_logic() {
       else    # else process was not .
          bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
          # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-         procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
+         procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'} | awk -F: {'print $1'}`
          if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
          then
             usecolour="${colour_override_insecure}"
@@ -4965,7 +5059,7 @@ EOF
                      else
                         bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
                         # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-                        procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
+                        procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'} | awk -F: {'print $1'}`
                         if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
                         then
                            usecolour="${colour_override_insecure}"
@@ -5049,19 +5143,6 @@ build_appendix_i() {
 <h1>Appendix I - Processes running at snapshot time on ${hostid}</h1>
 <p>
 These are the processes that were running on the server at the time the snapshot was taken.
-</p>
-<p>
-At some point checks may be added to alert on processes that should not be running,
-or processes that should be running but are not. <b>However</b> you should be using
-something like nagios/nrpe to monitor and if needed stop/start processes in psudo-real-time rather than
-a toolkit that only runs occasionally.
-</p>
-<p>
-Currently this appendix is just a list of what was running at the time the snapshot was taken
-as it has almost zero overhead to capture and process. If anyone can think of a use for it
-let me know... the next release <em><b>may</b></em> report on processes that are not part
-of a package to record 3rd party manually installed products, but then again that would
-alert on all user scripts so maybe not.
 </p>
 EOF
       echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
@@ -5497,8 +5578,8 @@ EOF
             userorgroup=`echo "${xx}" | awk {'print $1'}`
             if [ -f ${CUSTOMFILE} ];
             then
-               isdowngradeserver=`grep "^SUDOERS_ALLOW_ALL_SERVERS=${userorgroup}" ${CUSTOMFILE}`
-               isdowngradecommand=`grep "^SUDOERS_ALLOW_ALL_COMMANDS=${userorgroup}" ${CUSTOMFILE}`
+               isdowngradeserver=`grep "^SUDOERS_ALLOW_ALL_SERVERS=${userorgroup}:" ${CUSTOMFILE}`
+               isdowngradecommand=`grep "^SUDOERS_ALLOW_ALL_COMMANDS=${userorgroup}:" ${CUSTOMFILE}`
             else
                isdowngradeserver=""
                isdowngradecommand=""
@@ -5523,7 +5604,7 @@ EOF
             userorgroup=`echo "${xx}" | awk {'print $1'}`
             if [ -f ${CUSTOMFILE} ];
             then
-               isdowngradeserver=`grep "^SUDOERS_ALLOW_ALL_SERVERS=${userorgroup}" ${CUSTOMFILE}`
+               isdowngradeserver=`grep "^SUDOERS_ALLOW_ALL_SERVERS=${userorgroup}:" ${CUSTOMFILE}`
             else
                isdowngradeserver=""
             fi

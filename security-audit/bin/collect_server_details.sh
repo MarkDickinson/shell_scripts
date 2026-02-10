@@ -184,13 +184,14 @@
 #              in the processing script id OSTYPE is SunOS (processing
 #              script still uses login.defs/pwquality.conf if Linux)
 # 2026/01/25 - Version bump to 0.24 to match processing script
+# 2026/02/09 - Version bump to 0.25 to match processing script
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.24"    # capture script version
+EXTRACT_VERSION="0.25"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc

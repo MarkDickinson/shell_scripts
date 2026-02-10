@@ -14,26 +14,26 @@
 ADD_SYSTEM_FILE_OWNER=gdm colord setroubleshoot smmsp abrt backuppc
 #
 # These are all on a F33x laptop, and do not exist on a F33 server install
-SUID_ALLOW=/opt/google/chrome/chrome-sandbox
-SUID_ALLOW=/usr/sbin/seunshare
-SUID_ALLOW=/usr/libexec/Xorg.wrap
-SUID_ALLOW=/usr/libexec/spice-gtk-x86_64/spice-client-glib-usb-acl-helper
-SUID_ALLOW=/usr/libexec/BackupPC/BackupPC_Admin
-SUID_ALLOW=/usr/libexec/kde4/kpac_dhcp_helper
-SUID_ALLOW=/usr/libexec/qemu-bridge-helper
-SUID_ALLOW=/usr/bin/ksu
-SUID_ALLOW=/usr/bin/fusermount-glusterfs
-SUID_ALLOW=/usr/bin/fusermount
-SUID_ALLOW=/usr/bin/staprun
-SUID_ALLOW=/usr/sbin/lockdev
-SUID_ALLOW=/usr/libexec/abrt-action-install-debuginfo-to-abrt-cache
-SUID_ALLOW=/usr/libexec/kde4/kdesud
-SUID_ALLOW=/usr/bin/fetchmail
+SUID_ALLOW=/opt/google/chrome/chrome-sandbox:
+SUID_ALLOW=/usr/sbin/seunshare:
+SUID_ALLOW=/usr/libexec/Xorg.wrap:
+SUID_ALLOW=/usr/libexec/spice-gtk-x86_64/spice-client-glib-usb-acl-helper:
+SUID_ALLOW=/usr/libexec/BackupPC/BackupPC_Admin:
+SUID_ALLOW=/usr/libexec/kde4/kpac_dhcp_helper:
+SUID_ALLOW=/usr/libexec/qemu-bridge-helper:
+SUID_ALLOW=/usr/bin/ksu:
+SUID_ALLOW=/usr/bin/fusermount-glusterfs:
+SUID_ALLOW=/usr/bin/fusermount:
+SUID_ALLOW=/usr/bin/staprun:
+SUID_ALLOW=/usr/sbin/lockdev:
+SUID_ALLOW=/usr/libexec/abrt-action-install-debuginfo-to-abrt-cache:
+SUID_ALLOW=/usr/libexec/kde4/kdesud:
+SUID_ALLOW=/usr/bin/fetchmail:
 # The below were on some of my servers but not others ?.
 #   installed by package package util-linux-user
-SUID_ALLOW=/usr/bin/chsh
-SUID_ALLOW=/usr/bin/chfn
+SUID_ALLOW=/usr/bin/chsh:
+SUID_ALLOW=/usr/bin/chfn:
 #   installed by package fuse3
-SUID_ALLOW=/usr/bin/fusermount3
+SUID_ALLOW=/usr/bin/fusermount3:
 #   installed by package kf5-kdesu
-SUID_ALLOW=/usr/libexec/kf5/kdesud
+SUID_ALLOW=/usr/libexec/kf5/kdesud:

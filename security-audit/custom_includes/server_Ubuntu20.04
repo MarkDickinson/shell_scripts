@@ -24,7 +24,7 @@ TCP_PORTV4_ALLOWED=:53:name-domain server
 UDP_PORTV4_ALLOWED=:53:name-domain server
 #
 # Common RAW ports on Fedora systems, if tcpipv6 is enabled on the server
-RAW_PORTV6_ALLOWED=:58:NetworkManager ipv6 
+RAW_PORTV6_ALLOWED=:58:NetworkManager ipv6
 #
 ADD_SYSTEM_FILE_OWNER=syslog
 ADD_SYSTEM_FILE_OWNER=daemon
@@ -32,75 +32,75 @@ ADD_SYSTEM_FILE_OWNER=man
 ADD_SYSTEM_FILE_OWNER=landscape
 ADD_SYSTEM_FILE_OWNER=pollinate
 #
-ALLOW_OWNER_ROOT=dev
-ALLOW_OWNER_ROOT=games
-ALLOW_OWNER_ROOT=mail
-ALLOW_OWNER_ROOT=backups
-ALLOW_OWNER_ROOT=systemd
-ALLOW_OWNER_ROOT=uuidd
-ALLOW_OWNER_ROOT=lxd
-ALLOW_OWNER_ROOT=sshd
-ALLOW_OWNER_ROOT=sbin
-ALLOW_OWNER_ROOT=bin
+ALLOW_OWNER_ROOT=dev:
+ALLOW_OWNER_ROOT=games:
+ALLOW_OWNER_ROOT=mail:
+ALLOW_OWNER_ROOT=backups:
+ALLOW_OWNER_ROOT=systemd:
+ALLOW_OWNER_ROOT=uuidd:
+ALLOW_OWNER_ROOT=lxd:
+ALLOW_OWNER_ROOT=sshd:
+ALLOW_OWNER_ROOT=sbin:
+ALLOW_OWNER_ROOT=bin:
 #
 # Directory permission overrides for home directories that can
 # be considered to be shared system directories
 # These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
-ALLOW_DIRPERM_SYSTEM=dev
-ALLOW_DIRPERM_SYSTEM=games
-ALLOW_DIRPERM_SYSTEM=man
-ALLOW_DIRPERM_SYSTEM=backups
-ALLOW_DIRPERM_SYSTEM=systemd
-ALLOW_DIRPERM_SYSTEM=tpm
-ALLOW_DIRPERM_SYSTEM=uuidd
-ALLOW_DIRPERM_SYSTEM=landscape
-ALLOW_DIRPERM_SYSTEM=pollinate
-ALLOW_DIRPERM_SYSTEM=lxd
-ALLOW_DIRPERM_SYSTEM=sbin
-ALLOW_DIRPERM_SYSTEM=sshd
+ALLOW_DIRPERM_SYSTEM=dev:
+ALLOW_DIRPERM_SYSTEM=games:
+ALLOW_DIRPERM_SYSTEM=man:
+ALLOW_DIRPERM_SYSTEM=backups:
+ALLOW_DIRPERM_SYSTEM=systemd:
+ALLOW_DIRPERM_SYSTEM=tpm:
+ALLOW_DIRPERM_SYSTEM=uuidd:
+ALLOW_DIRPERM_SYSTEM=landscape:
+ALLOW_DIRPERM_SYSTEM=pollinate:
+ALLOW_DIRPERM_SYSTEM=lxd:
+ALLOW_DIRPERM_SYSTEM=sbin:
+ALLOW_DIRPERM_SYSTEM=sshd:
 #
 # If home directories fail all checks a test for an allowed
 # override for expected OK perms can be provided here
-ALLOW_DIRPERM_EXPLICIT=mail drwxrwsr-x
-ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx
+ALLOW_DIRPERM_EXPLICIT=mail drwxrwsr-x:
+ALLOW_DIRPERM_EXPLICIT=bin lrwxrwxrwx:
 #
 FORCE_PERM_OK=/var/log/wtmp:-rw-rw-r--
 FORCE_PERM_OK=/var/log/btmp:-rw-rw----
 FORCE_PERM_OK=/var/log/lastlog:-rw-rw-r--
 #
-SUID_ALLOW=/usr/lib/x86_64-linux-gnu/utempter/utempter
-SUID_ALLOW=/usr/bin/ssh-agent
-SUID_ALLOW=/usr/bin/expiry
-SUID_ALLOW=/usr/bin/bsd-write
-SUID_ALLOW=/usr/bin/wall
-SUID_ALLOW=/usr/sbin/pam_extrausers_chkpwd
-SUID_ALLOW=/usr/lib/eject/dmcrypt-get-device
-SUID_ALLOW=/usr/lib/dbus-1.0/dbus-daemon-launch-helper
-SUID_ALLOW=/usr/lib/openssh/ssh-keysign
-SUID_ALLOW=/usr/lib/policykit-1/polkit-agent-helper-1
-SUID_ALLOW=/usr/lib/snapd/snap-confine
-SUID_ALLOW=/usr/bin/chsh
-SUID_ALLOW=/usr/bin/fusermount
-SUID_ALLOW=/usr/bin/chfn
-SUID_ALLOW=/usr/bin/at
-SUID_ALLOW=/usr/bin/su
-SUID_ALLOW=/usr/bin/pkexec
-SUID_ALLOW=/usr/bin/umount
-SUID_ALLOW=/usr/bin/mount
-SUID_ALLOW=/usr/sbin/unix_chkpwd
-SUID_ALLOW=/usr/bin/newgrp
-SUID_ALLOW=/usr/bin/sudo
-SUID_ALLOW=/usr/bin/passwd
-SUID_ALLOW=/usr/bin/gpasswd
-SUID_ALLOW=/usr/bin/chage
-SUID_ALLOW=/usr/bin/crontab
+SUID_ALLOW=/usr/lib/x86_64-linux-gnu/utempter/utempter:
+SUID_ALLOW=/usr/bin/ssh-agent:
+SUID_ALLOW=/usr/bin/expiry:
+SUID_ALLOW=/usr/bin/bsd-write:
+SUID_ALLOW=/usr/bin/wall:
+SUID_ALLOW=/usr/sbin/pam_extrausers_chkpwd:
+SUID_ALLOW=/usr/lib/eject/dmcrypt-get-device:
+SUID_ALLOW=/usr/lib/dbus-1.0/dbus-daemon-launch-helper:
+SUID_ALLOW=/usr/lib/openssh/ssh-keysign:
+SUID_ALLOW=/usr/lib/policykit-1/polkit-agent-helper-1:
+SUID_ALLOW=/usr/lib/snapd/snap-confine:
+SUID_ALLOW=/usr/bin/chsh:
+SUID_ALLOW=/usr/bin/fusermount:
+SUID_ALLOW=/usr/bin/chfn:
+SUID_ALLOW=/usr/bin/at:
+SUID_ALLOW=/usr/bin/su:
+SUID_ALLOW=/usr/bin/pkexec:
+SUID_ALLOW=/usr/bin/umount:
+SUID_ALLOW=/usr/bin/mount:
+SUID_ALLOW=/usr/sbin/unix_chkpwd:
+SUID_ALLOW=/usr/bin/newgrp:
+SUID_ALLOW=/usr/bin/sudo:
+SUID_ALLOW=/usr/bin/passwd:
+SUID_ALLOW=/usr/bin/gpasswd:
+SUID_ALLOW=/usr/bin/chage:
+SUID_ALLOW=/usr/bin/crontab:
 #
-SUDOERS_ALLOW_ALL_SERVERS=root
-SUDOERS_ALLOW_ALL_COMMANDS=root
-SUDOERS_ALLOW_ALL_SERVERS=%sudo
-SUDOERS_ALLOW_ALL_COMMANDS=%sudo
-SUDOERS_ALLOW_ALL_SERVERS=%admin
-SUDOERS_ALLOW_ALL_COMMANDS=%admin
+SUDOERS_ALLOW_ALL_SERVERS=root:
+SUDOERS_ALLOW_ALL_COMMANDS=root:
+SUDOERS_ALLOW_ALL_SERVERS=%sudo:
+SUDOERS_ALLOW_ALL_COMMANDS=%sudo:
+SUDOERS_ALLOW_ALL_SERVERS=%admin:
+SUDOERS_ALLOW_ALL_COMMANDS=%admin:
 #
 SSHD_SUBSYSTEM_ALLOW=sftp:/usr/lib/openssh/sftp-server:
 #
@@ -110,6 +110,6 @@ SSHD_SUBSYSTEM_ALLOW=sftp:/usr/lib/openssh/sftp-server:
 # Unbuntu now uses SNAP to install a lot of software. SNAP packages
 # contain their own copied of setuid SUID files. As SNAP packages
 # are installed under pretty random directory names they cannot be
-# coded in any explicit lists. 
+# coded in any explicit lists.
 # SNAP packages are a security risk !.
 SUID_SUPPRESS_SNAP_OVERLAYS=yes

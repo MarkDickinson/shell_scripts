@@ -6,8 +6,8 @@ ADD_SYSTEM_FILE_OWNER=nova
 ADD_SYSTEM_FILE_OWNER=neutron
 ADD_SYSTEM_FILE_OWNER=qemu
 ADD_SYSTEM_FILE_OWNER=openvswitch
-ALLOW_DIRPERM_SYSTEM=nova
-ALLOW_DIRPERM_SYSTEM=neutron
+ALLOW_DIRPERM_SYSTEM=nova:
+ALLOW_DIRPERM_SYSTEM=neutron:
 #
 # A huge range of ports are added to the firewall for compute nodes,
 # most have nothing using them but we must define them all to avoid
