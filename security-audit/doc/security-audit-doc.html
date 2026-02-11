@@ -559,10 +559,10 @@ permitted to create customised overide files.
 <p>
 There are two types of override files
 <ul>
-<li>ALL.custom        - will override defaults for all processed servers</li>
+<li>ALL.custom        - will override defaults for processed servers if there is no server specific file</li>
 <li><em>hostname</em>.custom - will override defaults for a specific hostname</li>
 </ul>
-There are only limited things that can be overridden, as you system
+There are only limited things that can be overridden, as your system
 is either secure or not. The overrides allowed are for things that
 may not necessarily make it insecure such as you wishing an application
 to listen on a tcp-ip port as OK which would be a specific server
@@ -580,6 +580,9 @@ A server specific custom file is not merged with the default
 ALL.custom file, it replaces it. As such if you create a server
 specific custom file ensure you copy any values you put in the
 global custom file into the server specific ones if required.
+<em>Use the INCLUDE_CUSTOM_RULES where possible</em> so rules
+for applications can be added/removed using those rather than
+having huge custom files per server.
 </p>
 <p>
 <b>I M P O R T A N T :</b><br>
@@ -596,6 +599,11 @@ The expected tree structure is...
 </pre>
 ...all script references to custom files are relative to the bin
 directory (../custom/*) so please keep this directory structure.
+</p>
+<p>
+<b>I M P O R T A N T :</b><br>
+Any line with # in column 1 is a comment line, <em>do not put comments
+at the end of a data line</em>.
 </p>
 
 <H3>2. Network Port Overrides</H3>

@@ -2801,7 +2801,14 @@ appendix_c_check_unused_process_port() {
    dataversion="$2"
    grep "^NETWORK_${datatype}V${dataversion}_PROCESS_ALLOW=" ${CUSTOMFILE} | while read dataline
    do
-      processallow=`echo "${dataline}" | awk -F\= {'print $2'} | awk -F: {'print $1'}`
+      # may be : in process name data field so do not break on that using awk
+      # processallow=`echo "${dataline}" | awk -F\= {'print $2'} | awk -F: {'print $1'}` IS BAD
+      # if the last byte is the delimiter : remove it
+      if [ "${dataline:$(( ${#dataline} - 1)):1}." == ":." ];
+      then
+         dataline="${dataline:0:$(( ${#dataline} - 1 ))}" 
+      fi
+      processallow=`echo "${dataline}" | awk -F\= {'print $2'}`
       bb=`echo "${processallow}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
       exists=`grep "${bb}" ${SRCDIR}/secaudit_${hostid}.txt | grep "^NETWORK_${datatype}V${dataversion}_PORT_"`
       if [ "${exists}." == "." ];   # if no fuser provided info use the netstat process name info
@@ -3041,8 +3048,13 @@ appendix_c_check_unused_custom() {
 
    # New in version 0.12 - now we have running process info check that process_allow
    # entries actually have a matching process running
-   grep "^NETWORK_...V._PROCESS_ALLOW=" ${CUSTOMFILE} | awk -F: {'print $1'} | while read dataline
+   grep "^NETWORK_...V._PROCESS_ALLOW=" ${CUSTOMFILE} | while read dataline
    do
+      # if the last byte is the delimiter : remove it (do not awk on it as may be embedded in cmmand as well)
+      if [ "${dataline:$(( ${#dataline} - 1)):1}." == ":." ];
+      then
+         dataline="${dataline:0:$(( ${#dataline} - 1 ))}" 
+      fi
       psline=`echo "${dataline}" | awk -F\= {'print $2'}`
       psline=`echo "${psline}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
       isrunning=`grep "${psline}" ${SRCDIR}/secaudit_${hostid}.txt  | grep "PROCESS_RUNNING"`
@@ -3179,7 +3191,12 @@ build_appendix_c() {
          then
             # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the search
             bb=`echo "${searchmatch}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
-            processmatch1=`grep "^NETWORK_TCPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'} | awk -F: {'print $1'}`
+            processmatch1=`grep "^NETWORK_TCPV${ipversion}_PROCESS_ALLOW=${bb}:" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
+      # if the last byte is the delimiter : remove it (do not awk on it as may be embedded in cmmand as well)
+            if [ "${processmatch1:$(( ${#processmatch1} - 1)):1}." == ":." ];
+            then
+               processmatch1="${processmatch1:0:$(( ${#processmatch1} - 1 ))}" 
+            fi
             processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`                  # remove trailing spaces
             if [ "${processmatch1}." == "${searchmatch}." ]
             then
@@ -3278,7 +3295,11 @@ build_appendix_c() {
             aa=`echo "${searchmatch}" | sed 's/ *$//g'`                  # remove trailing spaces
             # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the grep
             bb=`echo "${aa}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
-            processmatch1=`grep "^NETWORK_UDPV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'} | awk -F: {'print $1'}`
+            processmatch1=`grep "^NETWORK_UDPV${ipversion}_PROCESS_ALLOW=${bb}:" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
+            if [ "${processmatch1:$(( ${#processmatch1} - 1)):1}." == ":." ];
+            then
+               processmatch1="${processmatch1:0:$(( ${#processmatch1} - 1 ))}" 
+            fi
             processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`     # remove trailing spaces
             if [ "${processmatch1}." == "${aa}." ]
             then
@@ -3348,7 +3369,13 @@ build_appendix_c() {
          then
             # grep needs [ and ] changed to \[ and \] for searches so into a temp var for the grep
             bb=`echo "${programname}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`
-            processmatch1=`grep "^NETWORK_RAWV${ipversion}_PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | awk -F\= {'print $2'} | awk -F: {'print $1'}`
+            processmatch1=`grep "^NETWORK_RAWV${ipversion}_PROCESS_ALLOW=${bb}:" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
+            # if last nyte is the : delimiter remove it, cannot parse with awk as : can be included in
+	    # the process command lines
+            if [ "${processmatch1:$(( ${#processmatch1} - 1)):1}." == ":." ];
+            then
+               processmatch1="${processmatch1:0:$(( ${#processmatch1} - 1 ))}" 
+            fi
             processmatch1=`echo "${processmatch1}" | sed 's/ *$//g'`     # remove trailing spaces
             if [ "${processmatch1}." == "${programname}." ]
             then
@@ -4684,7 +4711,13 @@ iptables_check_logic() {
       else    # else process was not .
          bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
          # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-         procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'} | awk -F: {'print $1'}`
+         procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}:" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
+         # if last nyte is the : delimiter remove it, cannot parse with awk as : can be included in
+         # the process command lines
+         if [ "${procallow:$(( ${#procallow} - 1)):1}." == ":." ];
+         then
+            proc="${procallow:0:$(( ${#procallow} - 1 ))}" 
+         fi
          if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
          then
             usecolour="${colour_override_insecure}"
@@ -5059,7 +5092,13 @@ EOF
                      else
                         bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
                         # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
-                        procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'} | awk -F: {'print $1'}`
+                        procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}:" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
+                        # if last nyte is the : delimiter remove it, cannot parse with awk as : can be included in
+                        # the process command lines
+                        if [ "${procallow:$(( ${#procallow} - 1)):1}." == ":." ];
+                        then
+                           proc="${procallow:0:$(( ${#procallow} - 1 ))}" 
+                        fi
                         if [ "${process}." == "${procallow}." ];   # not a permitted process match, alert
                         then
                            usecolour="${colour_override_insecure}"

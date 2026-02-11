@@ -19,15 +19,15 @@ Known Bugs with the current release that need fixing
   "bin/process_server_details.sh: line 4422: ----------------------------------: command not found"
   which is not the contents of line 4422. A rerun with no changes does not have the same issue.
   Ocurrence is completely random so hard to track down. Does not affect any results produced
-* similar to above issue, the below has been seen (archive flag not selected)
+* similar to above issue, the below has been seen (with archive flag not selected)
    11-02-2026 11:35 - ...DONE, completed processing server xxxxxxx
    test/process_server_details.sh: line 6406: mp}.tar.gz: command not found
    11-02-2026 11:35 - ...DONE, report archive created as /reports_.tar.gz
    test/process_server_details.sh: line 6417: syntax error near unexpected token `fi'
    test/process_server_details.sh: line 6417: `fi'
-  which also does not re-appear if just rerun without any changes
+  which also cannot be repeated if just rerun without any changes (just up-arrow and enter for rerun)
 - the above two may be memory corruption starting on my test server ???, it has 32Gb of memory
-  so inlikely to be a limitation on a small 6000 bash script there.
+  so unlikely to be a limitation on a small 6000 bash script there.
 
 * if process one server is passed a servername no data file exists for it does not clear the
   lockfile; need to add that one line between the error msg and the script exit (minor, no hurry)
@@ -37,6 +37,10 @@ Known Bugs with the current release that need fixing
   Nowhere in the directory path of the processing script can there be an underscore</b> ( _ )
   character used, the underscore character is used by the script for parsing and having it
   in the directory path will cause problems. Not really an issue, just do not do it
+* Not a bug but take note:
+  In customisation files do not put comments on the end of a data line unless it is
+  part of the data line syntax and it has a field for them s they will be treated as
+  part of the data. Comments are only lines with # in column 1
 * >>> Updates to support data collected from OpenIndiana/SunOS are still in progress
   and incomplete. 
 
