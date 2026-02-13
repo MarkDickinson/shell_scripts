@@ -865,6 +865,54 @@ update_globals() {
 # ---------------------------------------------------------------
 # Helper routines for working out firewall rule port numbers
 # ---------------------------------------------------------------
+# This function has been added to cope with a openstack control
+# and network server that generates iptables rules for ranges
+# 5900-5999 and 49152-49215, and I think manually coding an allow
+# line for each one is not really an option; especially as there
+# are already other range entries with one line per port and those
+# can be replaced by this.
+# Example Input data format expected
+#    TCP_PORTV4_GENERATE_RANGE_ALLOWED=:5900-5999:description
+# Output lines produced
+#    TCPV4_PORT_ALLOWED=:port:description
+#    NETWORK_PORT_NOLISTENER_TCPV4_OK=port:description
+# Notes:
+#  Obviously TCP_PORTV6, UDP_PPORTV4 and UDP_PORTV6 can be used as well
+#
+# This function is only called during the intial build of a merged custom
+# file for a server to generate the dozens (or for nova hundreds) of port
+# allow and nolisten entries in the range.
+config_request_generate_range() {
+   configLine="$1"
+   sanitycheck=`echo "${configLine}" | grep "^..._PORT.._GENERATE_RANGE_ALLOWED=:"`
+   if [ "${sanitycheck}." == "." ];
+   then
+      log_message "**script error** bad data passed to generate_range:${configLine}"
+      return
+   fi
+   rangeval=`echo "${configLine}" | awk -F: {'print $2'}`
+   startval=`echo "${rangeval}" | awk -F\- {'print $1'}`
+   endval=`echo "${rangeval}" | awk -F\- {'print $2'}`
+   startval=`must_be_number "${startval}"`
+   endval=`must_be_number "${endval}"`
+   starttext="${configLine:0:11}"
+   starttext="${starttext}ALLOWED=:"
+   endtext=`echo "${configLine}" | awk -F: {'print $3'}`
+   iptype="${configLine:0:3}"
+   ipver="${configLine:8:2}"
+   if [ ${startval} -eq 0 -o ${endval} -eq 0 -o ${endval} -lt ${startval} ];
+   then
+      log_message "Discarded bad range in ${configLine}"
+   else
+      while [ ${startval} -le ${endval} ];
+      do
+         echo "${starttext}${startval}:${endtext} (range generated)"
+         echo "NETWORK_PORT_NOLISTENER_${iptype}${ipver}_OK=${startval}:${endtext} (range generated)"
+         startval=$(( ${startval} + 1 ))
+      done
+   fi
+} # end of config_request_generate_range
+
 # Can be passed a number, or a number range as nnn-nnn or nnn:nnn
 # A single number if non-numeric will just write out the data passed
 # A number range will write out the numbers in the range
@@ -976,7 +1024,7 @@ locate_custom_file() {
       #
       # If an old file exists remove it
       delete_file "${RESULTS_DIR}/customfile_merged"
-      # Use any custom includes first 
+      # Use any custom includes first as they are generic applications
       grep "^INCLUDE_CUSTOM_RULES=" ${CUSTOMFILE} | while read includeline
       do
          includefile=`echo "${includeline}" | awk -F\= {'print $2'} | awk {'print $1'}`
@@ -998,7 +1046,8 @@ locate_custom_file() {
             log_message ".   ***ERROR*** include file ${includefile} does not exist, skipped"
          fi
       done
-      # Then append the server specific customfile
+      # Then append the server specific customfile, which may contain overrides for the includes
+      # so must be appended last.
       grep -v "^INCLUDE_CUSTOM_RULES=" ${CUSTOMFILE} >> ${RESULTS_DIR}/customfile_merged
       #
       # v0.25 - lots of mucking about for UNSET_VAR= tests against the custom file
@@ -1034,6 +1083,18 @@ locate_custom_file() {
             # and remeber to clean up workfile
             delete_file "${RESULTS_DIR}/sedlist_work"
 	 fi
+      fi
+      # v0.25 - after the UNSET_VAR= tests in case we unset the range generate entries
+      rangelines=`grep "^..._PORT.._GENERATE_RANGE_ALLOWED=:" "${RESULTS_DIR}/customfile_merged" | wc -l`
+      # only muck about if there is something to do for this server
+      if [ ${rangelines} -gt 0 ];
+      then
+         log_message "Generate range entries found, adding to custom file"
+         grep "^..._PORT.._GENERATE_RANGE_ALLOWED=:" "${RESULTS_DIR}/customfile_merged" | while read dataline
+         do
+            config_request_generate_range "${dataline}" >> "${RESULTS_DIR}/customfile_merged"
+         done
+         sync
       fi
       # It is the merged customfile used for processing now
       CUSTOMFILE="${RESULTS_DIR}/customfile_merged"
@@ -4517,7 +4578,7 @@ build_appendix_f() {
       else
          echo "<table><tr bgcolor=\"${colour_alert}\" border=\"1\"><td>No explicit ListenAddress found in sshd_config or it is using 0.0.0.0. It will be using the default of listening on all interfaces</td></tr></table>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
-         log_alert_detail "${hostid}" "Insecure sshd ListenAddress"
+         log_alert_detail "${hostid}" "Insecure sshd ListenAddress is being used"
       fi
       echo "<p>If this is a Debian12 or Debian13 server this is OK as on those SSHD starts before the network is configured so impossible to logon if a specific ListenAddress is used.</p>" >> ${htmlfile}
    else

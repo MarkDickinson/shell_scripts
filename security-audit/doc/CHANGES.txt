@@ -43,6 +43,19 @@ Noteable changes implemented between version 0.24 and version 0.25 are
     and alerts for no tcpv6 listeners that exist on other servers.
     In order to avoid issues this parameter can only be used against custom file
     settings where a value ends with a :
+(4) New customfile parameters
+    iptype_PORTVn_GENERATE_RANGE_ALLOWED=:start-end:description
+    where iptype is TCP or UDP and n is 4 or 6.
+    This generates for the port range a whole lot of
+      iptype_PORTvn_ALLOWED and NETWORK_PORT_NOLISTENER_iptypeVn_OK
+    config file entries during processing, but it is inadvisable.
+    OPENING A WIDE RANGE AS EXPECTED/ALLOWED IS INSECURE AND SHOULD NOT BE USED.
+    The only justification I have for adding this customfile entry is on my home
+    network lab openstack nova (even tho nothing is using 99% of the ports) adds
+    iptables rules for ports 5900-5999 and 49152-49215 and I really did not want
+    to manually add a custom file entry line for each one.
+    Lines added this way will be tagged as '(range generated)' in the reports
+    produced so in later versions of the scripts I can add a new color code :-)
 
 -------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.23 and version 0.24 are

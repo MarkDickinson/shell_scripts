@@ -1503,6 +1503,19 @@ This will comment out any custom entry where the text between the start and end 
 exactly matches up to the first : field; the match text must end on a : or this
 value will be ignored.
 </td></tr>
+<tr><td>XXX_PORTXX_GENERATE_RANGE_ALLOWED=:start-end:description</td><td>
+Added in version 0.25.<br />
+May be TCP_PORTV4_GENERATE_RANGE_ALLOWED, TCP_PORTV6_GENERATE_RANGE_ALLOWED, UDP_PORTV4_GENERATE_RANGE_ALLOWED or UDP_PORTV6_GENERATE_RANGE_ALLOWED<br />
+This will generate allow and nolisten_ok lines for every port from start until end.
+<b><em>This should be cnsidered unwise/insecure</em></b> as wide ranges could easily hide
+malicious activity.<br />
+However I have added this featue as openstack nova will add iptables rules for ports
+5900-5999 and 49152-49215 and I did not want to have to manually add a line for each
+one of the ports. A nolisten_ok is added as while it adds the iptables rules in a home
+lab 99% of them are not used.<br />
+Recomended you do not use this config file parameter unless absolutely necesary and
+you cannot customise the application to use a limited port range.
+</td></tr>
 </table>
 
 <hr>
