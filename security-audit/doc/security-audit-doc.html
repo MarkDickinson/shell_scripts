@@ -92,7 +92,10 @@ CentOS8, Debian 12 and Debian13. Also partial support for OpenIndiana has been i
 
 <h3>1.3 Toolkit Overview</h3>
 <p>
-This toolkit does basic security checks of a <b><big>Linux</big></b> server.
+This toolkit does basic security checks of a <b><big>Linux</big></b> server,
+and now has partial SunOS(openindiana) checks also.
+</p>
+<p>
 It is comprised of two parts, a data collection script to run on each server,
 and a processing script to process the collected files on a central reporting
 server.
@@ -125,22 +128,37 @@ summarises violations across all servers, and provides
 links down to the details for each server.
 </p>
 <p>
-It checks for
+The main processing script has a '--indexonly' option which is intended
+for environments with lots of servers where processing takes so long you
+end up having to use a few seperate processing servers; the results from
+each can be copied to a main one and merged into the index of the main 
+one so you have a single view.<br />
+I have not quite got to that point as there is also a --checkchanged=proces
+flag which will run processing only on data files that have been updated
+since they were last processed; so it is possible to run captures on sets
+of servers on different days so only a few need to be processed each day.
+</p>
+<p>
+It checks for 
 </p>
 <ul>
-<li>user sanitation checks, .ssh rc or config files present , are they in ftpusers (or users in ftpusers that are no longer valid users) etc</li>
 <li>some system settings, password minlen+expiry, motd</li>
 <li>server environment such as firewall running or not, SELinux installed or not</li>
-<li>if a firewall any unexpected firewall ports open</li>
+<li>firewall (iptables or netfilter (netfilter used by firewalld now)) to check only expected ports are open.
+Note: ipfilter firewalls are not yet supported</li>
+<li>network checks (requires netstat), ports that are listening are checked against ports that are expected to be listening,
+unexpected ones alerted on, hosts.allow|deny etc.</li>
 <li>badly secured system files (many packages have bad install settings), orphaned files etc.</li>
-<li>sshd config, and any config or user scripts they may run on a ssh connection etc)</li>
-<li>cron script file securities (excluding anacron jobs), make sure scripts run by cron are only editable by the crontab user etc</li>
 <li>suid file checks to find unexpected ones (with customisation flags to suppress alerts if desired
  for all the ones it will always find in docker image filesystems and snap packages; which are still
  a risk of course)</li>
-<li>and it checks customistion files used; entries for users, suid files, firewall ports etc. that
- are in the customisation file but do not actually exist on the server are also alerted on so
- you can fic customisation files</li>
+<li>cron script file securities (excluding anacron jobs), make sure scripts run by cron are only editable by the crontab user, checks cron.allow|deny and at.allow|deny</li>
+<li>sshd config, permitroot, listenaddress, and any config or user scripts they may run on a ssh connection etc)</li>
+<li>checks for various possible backdoors such as commands being configured to run in sshd, ssh and
+users authorized_keys files, if users have .ssh/rc files and so on</li>
+<li>and it checks customistion files used against reality, if you have overrides
+for users, network ports, suid files etc. that no longer exist on the
+server it will report on obsolete custom file entries</li>
 </ul>
 <p>
 The easiest way to see what it does is to run it.
@@ -150,7 +168,7 @@ It allows customisation of configurable rules on a
 global, or per server basis. The customiation configuration files support
 'include' of configuration snippets, so if you had for example three servers
 running mariadb their customisation files would have a one line include of
-a mariadb config rather than having to code the full rules in each servers config
+a mariadb config rather than having to code the full mariadb rules in each servers config
 file.
 </p>
 
@@ -223,12 +241,14 @@ a report. So how to we obtain it ?.
 <p>
 Obtaining the data to be processed is simple to achieve,
 simply...
+</p>
 <ol>
 <li>copy the bin/collect_server_details.sh script to each server</li>
 <li>as the root user (to gain access to files being recorded), run it</li>
 <li>copy the *.txt (and optional *.tar) files produced in your current directory to your
 reporting servers incoming data directory.</li>
 </ol>
+<p>
 You should try to automate the running of the data capture so
 it runs at regular intervals. Then on the reporting server you
 can setup a job to pull the data from each remote server on
@@ -243,7 +263,7 @@ results in a long processing time. I do a full scan infrequently
 </p>
 <p>
 By default the script will record all file permissions under
-system (and selected user) directories. This can result in well
+system and user directories. This can result in well
 over 50,000 file permissions to be checked (I believe the top I hit was around 170,000 files),
 and result in an extremely long processing time per server.
 </p>
@@ -265,7 +285,7 @@ file paths as these must be reported on</b>.
 <pre>
 Normal syntax          : <span style="background-color: #FFCCFF">bin/collect_server_details.sh</span>
 Limiting capture syntax: <span style="background-color: #FFCCFF">bin/collect_server_details.sh --scanlevel=<em><b>n</b></em></span>
-Example                : <span style="background-color: #D7FFFF">bin/collect_server_details.sh --scanlevel=5</span>
+Example                : <span style="background-color: #D7FFFF">bin/collect_server_details.sh --scanlevel=3</span>
 </pre>
 
 <h2>All collection parameters explained</h2>
@@ -296,6 +316,9 @@ in the file. If this option is used when the processing script processes data co
 a seperate 'appendix W' in the security report is produced to alert on files under these directory paths
 that are not read only. The default is that it is not used.<br />
 <em>This could be used for any directory path that should contain read-only files such as package repositories</em>
+</li>
+<li>--version<br />
+Just displays the collector script version end exits.
 </li>
 </ul>
 
@@ -341,7 +364,10 @@ This is because the script is designed to produce a consolidated report
 of all the servers from a single processing run, providing a global
 summary page for allservers and drill down to each server for details
 of the alerts or warnings produced; so all data collected must be processed on 
-a single reporting server.
+a single reporting server.<br />
+Note: or if processing on multiple servers the results from all can
+be copied to a main reporting one and the --indexonly option used
+to build a merged index containind them all.
 </p>
 
 <h3>Processing the data</h3>
@@ -422,7 +448,7 @@ the index will also be selected for processing automatically if its collected
 datafiles are available to do so (user is prompted to continue or abort <b>so
 this will impact batch jobs</b> however batch jobs are unlikely to
 perform single server reruns</li>
-<li>any existing server results that were created using a different version
+<li>any existing other servers results that were created using a different version
 of the processing script 
 will also be selected for processing automatically if its collected
 datafiles are available to do so (user is prompted to continue or abort <b>so
@@ -462,7 +488,8 @@ being snapshoted after the server was last processed.
 <p>
 Unlike the --oneserver option this option assumes all other servers were processed using
 the current version of the processing script and will not force re-processing of servers
-with obsolete results.
+with obsolete results. It is primarily for overnight batch where no user prompting can
+be permitted so skips all prompts mentioned in the --oneserver option.
 </p>
 
 <H2>Overiding/Customising the default reporting</H2>
@@ -1501,7 +1528,8 @@ causing default custom rules for the server to alert on missing users, dirs, sui
 etc when using a generic server_OS base ruleset.<br />
 This will comment out any custom entry where the text between the start and end @ bytes
 exactly matches up to the first : field; the match text must end on a : or this
-value will be ignored.
+value will be ignored <em>so it cannot be used for all customfile entries just
+those with meaninful unique data up until a :</em>.
 </td></tr>
 <tr><td>XXX_PORTXX_GENERATE_RANGE_ALLOWED=:start-end:description</td><td>
 Added in version 0.25.<br />

@@ -19,6 +19,7 @@
 #            --record-packages=yes|no        default is no
 #            --hwlist=yes|no                 default is yes
 #            --webpathlist=/some/filename    default is no special web path processing
+#            --version                       if used does no other action
 #
 # Parameters:
 #  The optional --scanlevel=N controls the number of
@@ -185,13 +186,27 @@
 #              script still uses login.defs/pwquality.conf if Linux)
 # 2026/01/25 - Version bump to 0.24 to match processing script
 # 2026/02/09 - Version bump to 0.25 to match processing script
+# 2026/02/15 - New version 0.26 so it can be tested in the
+#              processing script
+#          (1) added from= collection from
+#              authorized_keys if present, and fix accidental
+#              recording of rsa key data if no user@host comment.
+#          (2) record the full line of anything not a RSA key in
+#              the authorizxed_keys file to catch new entries I
+#              may not be aware of (ie: command="xx" is a valid
+#              line in that file and is not yet tested for).
+# 2026/03/10 - Still version 0.26 
+#          (1) added the --version flag, may be useful if I ever
+#              need to use ansible to keep remote scripts up-to-date,
+#              as I don't use puppet on all my smaller VMs
+#          (2) command= recording from autorized_keys added [gitea uses command=]
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.25"    # capture script version
+EXTRACT_VERSION="0.26"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -202,6 +217,7 @@ WEBPATHEXCLUDE=""         # only set if above parm is used
 WORKDIR=`pwd`             # where to store temporary files
 
 PARM_ERRORS="no"
+VERSION_ONLY="no"
 while [[ $# -gt 0 ]];
 do
    parm=$1
@@ -262,12 +278,19 @@ do
                       fi
                       shift
                       ;;
+      "--version")    VERSION_ONLY="yes"
+                      ;;
       *)              echo "*error* the parameter ${key} is not a valid parameter"
                       PARM_ERRORS="yes"
                       shift
                       ;;
    esac
 done
+if [ "${VERSION_ONLY}." != "no." ];
+then
+   echo "$0: Version ${EXTRACT_VERSION}"
+   exit 0
+fi
 if [ "${WEBPATHFILE}." != "." ];
 then
     datacount=`cat ${WEBPATHFILE} | grep -v "^#" | wc -l`
@@ -1389,13 +1412,30 @@ do
    then
       echo "USER_HAS_AUTHORIZED_KEYS=${username}" >> ${LOGFILE}
       # for rsa keys we can extract the hostnames they are for
-      grep "ssh-rsa" ${userdir}/.ssh/authorized_keys | awk '{print $NF}' | while read userhost
+      grep "ssh-rsa" ${userdir}/.ssh/authorized_keys | grep -v "^#" | while read rsaline
       do
-         echo "USER_RSA_KEYS_FOR=${username}:${userhost}" >> ${LOGFILE}
+         userhost=`echo "${rsaline}" | awk {'print $NF}'`  # see if last line is user@host syntax
+         ishost=`echo "${userhost}" | grep '@'`      # assume comments are user@host if present
+         if [ "${ishost}." == "." ];
+         then
+            userhost="no host comment"
+         fi
+         # if it wisely has a from= line at the front record that, can change alert to warning in processing
+	 fromdata=`echo "${rsaline}" | grep -i '^from=' | awk {'print $1'}` # will be either from=xx or empty
+         echo "USER_RSA_KEYS_FOR=${username}:${userhost}:${fromdata}" >> ${LOGFILE}
       done
-      # if there are non-rsa keys just record the total number of them
-      otherkeys=`grep -v "ssh-rsa" ${userdir}/.ssh/authorized_keys | wc -l`
+      # if there are non-rsa keys or lines just record the total number of them
+      otherkeys=`grep -v "ssh-rsa" ${userdir}/.ssh/authorized_keys | grep -v "^#" | wc -l`
       echo "USER_NOTRSA_KEYS_COUNT=${username}:${otherkeys}" >> ${LOGFILE}
+      grep -v "ssh-rsa" ${userdir}/.ssh/authorized_keys | grep -v "^#" | while read dataline
+      do
+         echo "USER_NON_RSA_KEYS_FOR=${username}:${dataline}" >> ${LOGFILE}
+      done
+      # added 2026/Mar/11 check for commands also
+      grep -i 'command=' ${userdir}/.ssh/authorized_keys | grep -v "^#" | while read dataline
+      do
+         echo "USER_KEYS_COMMANDS_FOR=${username}:${dataline}" >> ${LOGFILE}
+      done
    fi
 done
 

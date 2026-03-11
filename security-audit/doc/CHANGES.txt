@@ -11,6 +11,27 @@ should cope with expected new information missing. Ideally you would keep the co
 and processing script versions the same but still works if you do not.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.25 and version 0.26 are
+-------------------------------------------------------------------------------------
+(1) new check on authorized_keys file to alert is any user keys file does not
+    contain a from=host prefix to restrict what host a client can connect from
+    using the public key (so the ability for private keys being copied/shared will
+    be visible).
+    New tests only done if collector version used was -ge 0.26 (and processing
+    version -ge 0.26) else new tests are skipped as data would not be collected.
+(2) any imbedded commands within a users authorized_keys file will be more
+    prominantly highlighted [ie: gitea uses a command= line in the authorized_keys file]
+    any command line will be an alert (for now, still thinking about how to handle
+    expected ones as would have to be exact matches so treating all as a a risk)
+(3) added a --version flag to the collector, I may find that useful later as
+    something a script can check
+(4) SunOS specific check, the SUID files it creates as /proc/PID/object/a.out 
+    are now warnings instead of alerts, as they cannot be added to the expected 
+    suid file list as PID changes on every reboot. Intended in future to
+    lookup the process using the PID and add a custom entry to allow for 
+    processes doing that instead of just hard coding as a warning.
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.24 and version 0.25 are
 -------------------------------------------------------------------------------------
 (1) Logic change that will change lots of alerts to OK. The checks that tested to

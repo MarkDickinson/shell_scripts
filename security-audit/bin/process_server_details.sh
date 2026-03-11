@@ -67,7 +67,8 @@
 #      A.7 - no additional users in root group
 #      A.8 - users should not have .ssh/rc files, if they do list contents for review
 #      A.9 - check users .ssh/config files for scripts (ProxyCommand)
-#      A.10 - check users .ssh directory perms
+#      A.10 - check users authorized_keys for commands
+#      A.11 - check users .ssh directory perms
 #   B. Network access
 #      B.1 - check system host equivalences files
 #      B.2 - check user host equivalences files and security of
@@ -523,6 +524,29 @@
 #                         SUDOERS_ALLOW_ALL_COMMANDS
 #                         ALLOW_DIRPERM_EXPLICIT
 #                         FORCE_ANYFILE_OK
+# MID: 2026/02/15 - Version 0.26
+#                   Version bumped to match collector version change,
+#                   new data collected but have to test collector
+#                   version dusring processing as older collector 
+#                   versions do not provide data needed for new checks
+#                   (1) In the authorized_keys check added an additional
+#                       alert if user authorized_keys file contain
+#                       entries without a from= prefix to the key
+#                       limiting what client servers can use it.
+#                   (2) added a new alert if anything in authorized_keys file
+#                       is not a RSA key or is a command= value
+#                   (3) list the data found in (2) in a new table, of interest
+#                       is I found command="xx" is a valid entry (used by gitea)
+#                       and while that one is fine I want to catch all unexpected
+#                       entries in that file; added to Appendix K.
+#                   (4) Changed A.10 (.ssh dirperm check) to A.11, inserted
+#                       a new A.10 to list total command entries found
+#                       in any users authorized_keys file.
+#                   (5) For SunOS SUID file checks downgrade suid files
+#                       from alert to warning if matching a format of
+#                       /proc/PID/object/a.out (in /proc and named a.out)
+#                       as they will always be random so cannot add to
+#                       the expected suid file lists.
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -579,7 +603,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.25"
+PROCESSING_VERSION="0.26"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -2368,8 +2392,29 @@ build_appendix_a() {
       echo "<p>No users have .ssh/config files.</p>" >> ${htmlfile}
    fi
 
-   # A.10 - check users .ssh directory perms
-   echo "<h3>A.10 Check user .ssh directory permissions</h3>" >> ${htmlfile}
+   # A.10 - check users authorized_key files for commands
+   echo "<h3>A.10 Check for commands inserted in authorized_keys files</h3>" >> ${htmlfile}
+   keyscmdcount=`grep "^USER_NON_RSA_KEYS_FOR=" ${SRCDIR}/secaudit_${hostid}.txt | grep -i "command" | wc -l`
+   if [ ${keyscmdcount} -eq 0 ];
+   then
+      echo "<p>No users have commands in their authorized_keys files.</p> " >> ${htmlfile}
+   else
+      echo "<p>The following users have 'command=' entries in their authorized_keys files.</p>" >> ${htmlfile}
+      echo "<p>Refer to Appenix K report to see what the commands are.</p>" >> ${htmlfile}
+      echo "<table><tr bgcolor=\"${colour_banner}\"><td>User</td><td>Command count</td></tr>" >> ${htmlfile}
+      grep "^USER_NON_RSA_KEYS_FOR=" ${SRCDIR}/secaudit_${hostid}.txt | grep -i command \
+         | awk -F\= {'print $2'} | awk -F: {'print $1'} | sort | uniq | while read uname
+      do
+         cmdcount=`grep "^USER_NON_RSA_KEYS_FOR=${uname}" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+         echo "<tr bgcolor=\"${colour_alert}\"><td>${uname}</td><td>${cmdcount}</td></tr>" >> ${htmlfile}
+         inc_counter ${hostid} alert_count
+         log_alert_detail "${hostid}" "User ${uname} has ${cmdcount} commands in authorized_keys"
+      done
+      echo "</table>" >> ${htmlfile}
+   fi
+
+   # A.11 - check users .ssh directory perms
+   echo "<h3>A.11 Check user .ssh directory permissions</h3>" >> ${htmlfile}
    baddircount=`grep "USER-SSH-DIRPERMS=" ${SRCDIR}/secaudit_${hostid}.txt | grep -v "drwx------" | wc -l`
    if [ ${baddircount} -eq 0 ];
    then
@@ -3288,7 +3333,7 @@ build_appendix_c() {
    ostype=`grep "^TITLE_OSTYPE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
    if [ "${ostype}." == "SunOS." ];
    then
-      echo "*WARNING* UDP checks not yet properly implemented for SunOS yet"
+      log_message "*WARNING* UDP checks not yet properly implemented for SunOS yet"
    fi
    echo "<br><br><table border=\"1\" bgcolor=\"${colour_banner}\" width=\"100%\"><tr><td colspan=\"4\"><center>UDP Ports open on the server</center></td></tr>" >> ${htmlfile}
    echo "<tr><td>Port</td><td>Listening address</td><td>Port description</td><td>Process</td></tr>" >> ${htmlfile}
@@ -4106,9 +4151,11 @@ EOF
    do
       echo "${dataline}" >> ${WORKDIR}/suid_file_list
    done
+   # need special handling if a SunOS system so find out what it is
+   ostype=`grep "^TITLE_OSTYPE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
    if [ -f ${WORKDIR}/suid_allow_list ];
    then
-      # if not suppressing docker overlay files and snap/core* overlay fiiles then process all files
+      # if not suppressing docker overlay files and snap/core* overlay files then process all files
       if [ "${suppress_docker}." != "yes." -a "${suppress_snap}." != "yes." ];
       then
          cat ${WORKDIR}/suid_file_list | while read dataline
@@ -4118,8 +4165,22 @@ EOF
             testvar=`grep "${fname} X" ${WORKDIR}/suid_allow_list`
             if [ "${testvar}." == "." ];   # no override for this file
             then
-               inc_counter ${hostid} alert_count
-               echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+               if [ "${ostype}." != "SunOS." ];
+               then
+                  inc_counter ${hostid} alert_count
+                  echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+               else   # SunOS places random suid files as /proc/pid/object/a.out
+                  dirstart=`echo "${fname}" | awk -F\/ {'print $2'}`
+                  isaout=`basename "${fname}"`
+                  if [ "${dirstart}." == "proc." -a "${isaout}." == "a.out." ];
+                  then
+                     inc_counter ${hostid} warning_count
+                     echo "<tr><td bgcolor=\"${colour_warn}\">${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+                  else
+                     inc_counter ${hostid} alert_count
+                     echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+                  fi
+               fi
             fi
          done
       else
@@ -4131,8 +4192,22 @@ EOF
             testvar=`grep "${fname} X" ${WORKDIR}/suid_allow_list`
             if [ "${testvar}." == "." ];   # no override for this file
             then
-               inc_counter ${hostid} alert_count
-               echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+               if [ "${ostype}." != "SunOS." ];
+               then
+                  inc_counter ${hostid} alert_count
+                  echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+               else   # SunOS places random suid files as /proc/pid/object/a.out
+                  dirstart=`echo "${fname}" | awk -F\/ {'print $2'}`
+                  isaout=`basename "${fname}"`
+                  if [ "${dirstart}." == "proc." -a "${isaout}." == "a.out." ];
+                  then
+                     inc_counter ${hostid} warning_count
+                     echo "<tr><td bgcolor=\"${colour_warn}\">${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+                  else
+                     inc_counter ${hostid} alert_count
+                     echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+                  fi
+               fi
             fi
          done
          # record the suppressed docker overlay files
@@ -4157,22 +4232,36 @@ EOF
    else    # no overrides, all are alerts
       cat ${WORKDIR}/suid_file_list | while read dataline
       do
-         inc_counter ${hostid} alert_count
-         echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+        fname=`echo "${dataline}" | awk '{print $9}'`
+        if [ "${ostype}." != "SunOS." ];
+        then
+           inc_counter ${hostid} alert_count
+           echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+        else   # SunOS places random suid files as /proc/pid/object/a.out
+           dirstart=`echo "${fname}" | awk -F\/ {'print $2'}`
+           isaout=`basename "${fname}"`
+           if [ "${dirstart}." == "proc." -a "${isaout}." == "a.out." ];
+           then
+              inc_counter ${hostid} warning_count
+              echo "<tr><td bgcolor=\"${colour_warn}\">${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+           else
+              inc_counter ${hostid} alert_count
+              echo "<tr><td>${dataline}</td></tr>" >> ${WORKDIR}/suid_alerts
+           fi
+        fi
       done
    fi
    if [ -f ${WORKDIR}/suid_alerts ];
    then
-      echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
-      echo "<center>Unexpected files with SUID bits set</center></td></tr>" >> ${htmlfile}
-      echo "<tr><td><pre>" >> ${htmlfile}
-      cat ${WORKDIR}/suid_alerts >> ${htmlfile}
-      echo "</pre></td></tr></table>" >> ${htmlfile}
-      ostype=`grep "^TITLE_OSTYPE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
       if [ "${ostype}." == "SunOS." ];
       then
-         echo "<p>SunOS creates SUID files as /proc/PID/objects/a.out for some packages, the scripts do not handle that yet so will alert for those.</p>" >> ${htmlfile}
+         echo "<p>SunOS creates SUID files as /proc/PID/objects/a.out for some packages, the scripts downgrade those to warnings as an expected issue.</p>" >> ${htmlfile}
       fi
+      echo "<table border=\"1\" bgcolor=\"${colour_alert}\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
+      echo "<center>Unexpected files with SUID bits set</center></td></tr>" >> ${htmlfile}
+      cat ${WORKDIR}/suid_alerts >> ${htmlfile}
+      echo "</table>" >> ${htmlfile}
+      ostype=`grep "^TITLE_OSTYPE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
    else
       echo "<table bgcolor=\"${colour_OK}\"><tr><td>No unexpected SUID files found. No action required.</td></tr></table>" >> ${htmlfile}
    fi
@@ -5093,6 +5182,20 @@ EOF
          then
             iptype=`get_proto ${dataline}` 
          fi
+         # and a last ditch effort if not in any expected location
+         if [ "${iptype}." == "." ];
+	 then
+            testtype=`echo "${dataline}" | grep " udp "`
+            if [ "${testtype}." != "." ];
+            then
+               iptype="udp"
+            fi
+            testtype=`echo "${dataline}" | grep " tcp "`
+            if [ "${testtype}." != "." ];
+            then
+               iptype="tcp"
+            fi
+	 fi
          usecolour="white"
          process=""
          hasdport=`echo "${dataline}" | grep -i "dport"`
@@ -5435,49 +5538,125 @@ needing to change them which may violate password retention standards.</p>
 The reason for this is simply that unlike passwords SSH keys do not ever expire, so if a admin ssh key is
 stolen whever has it will have access to your systems no matter how many times a password is changed
 until you realise and regenerate the keys (which is why I consider tools such as ansible insecure).</p>
+<p>
+This can be somewhat mitigated by ensuring authorized_keys file entries always contain a from=host
+prefix to restrict use of the keys to a specific client host.
+</p>
+<p>
+Any alerts in the table below will be for either root having a authorized_keys file
+which will always alert, or fr any user with a authorized_keys file that has entries
+that do not begin with a from= prefix limiting the key to a specific client.
+</p>
 EOF
       if [ "${authkeysallowed}." == "." ];
       then 
          echo "<p>Warnings in this section can be suppressed with the custom file entry 'ALLOW_AUTHORISED_KEYS=YES'.</p>" >> ${htmlfile}
       fi
-
-      echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>Userid</td><td>RSA keys</td><td>Non-RSA keys</td></tr>" >> ${htmlfile}
-      grep "^USER_HAS_AUTHORIZED_KEYS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read username
-      do
-         tempcount=`grep "^USER_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
-         if [ "${username}." == "root." ];
-         then
-            echo "<tr bgcolor=\"${colour_alert}\"><td>${username}</td><td>${tempcount}</td>" >> ${htmlfile}
-            inc_counter ${hostid} alert_count
-            log_alert_detail ${hostid} "${username} has an authorized_keys file"
-         else
-            if [ "${authkeysallowed}." == "." ];
+      # TITLE_ExtractVersion=0.25 - the from= data only recorded from collector 0.26 onward
+      colvercheck=`grep "TITLE_ExtractVersion=0." ${SRCDIR}/secaudit_${hostid}.txt | awk -F. {'print $2'}`
+      colvercheck=`must_be_number "${colvercheck}"`
+      if [ ${colvercheck} -lt 26 ];
+      then
+         echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>Userid</td><td>RSA keys</td><td>Non-RSA keys</td></tr>" >> ${htmlfile}
+         grep "^USER_HAS_AUTHORIZED_KEYS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read username
+         do
+            tempcount1=`grep "^USER_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+            tempcount2=`grep "^USER_NOTRSA_KEYS_COUNT=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | awk -F: {'print $2'}`
+            if [ "${username}." == "root." ];
             then
-               echo "<tr bgcolor=\"${colour_warn}\"><td>${username}</td><td>${tempcount}</td>" >> ${htmlfile}
-               inc_counter ${hostid} warning_count
+               echo "<tr bgcolor=\"${colour_alert}\"><td>${username}</td><td>${tempcount1}</td><td>${tempcount2}</td></tr>" >> ${htmlfile}
+               inc_counter ${hostid} alert_count
+               log_alert_detail ${hostid} "${username} has an authorized_keys file"
             else
-               echo "<tr><td>${username}</td><td>${tempcount}</td>" >> ${htmlfile}
+               if [ "${authkeysallowed}." == "." ];
+               then
+                  echo "<tr bgcolor=\"${colour_warn}\"><td>${username}</td><td>${tempcount1}</td><td>${tempcount2}</td></tr>" >> ${htmlfile}
+                  inc_counter ${hostid} warning_count
+               else
+                  echo "<tr><td>${username}</td><td>${tempcount1}</td><td>${tempcount2}</td></tr>" >> ${htmlfile}
+               fi
             fi
-         fi
-         tempcount=`grep "^USER_NOTRSA_KEYS_COUNT=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | awk -F: {'print $2'}`
-         echo "<td>${tempcount}</td></tr>" >> ${htmlfile}
-      done
-      echo "</table>" >> ${htmlfile}
+         done
+         echo "</table>" >> ${htmlfile}
+      else   # The from= data was only collected from collector version 0.26+
+         echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>Userid</td><td>RSA keys</td><td>Non-RSA keys</td><td>Without from=</td><td>automatic<br/>commands</td></tr>" >> ${htmlfile}
+         grep "^USER_HAS_AUTHORIZED_KEYS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read username
+         do
+            tempcount1=`grep "^USER_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+            tempcount2=`grep "^USER_NOTRSA_KEYS_COUNT=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | awk -F: {'print $2'}`
+            tempcount3=`grep "^USER_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | grep -i "from=" | wc -l`
+            tempcount3=$(( (${tempcount1} + ${tempcount2}) - ${tempcount3} )) # if -gt 0 keys without from=
+            tempcount4=`grep "^USER_KEYS_COMMANDS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+	    # if user root or without from= -gt 0 ot commands -gt 0
+            if [ "${username}." == "root." -o ${tempcount3} -gt 0 -o ${tempcount4} -gt 0 ];
+            then
+               echo "<tr bgcolor=\"${colour_alert}\"><td>${username}</td><td>${tempcount1}</td><td>${tempcount2}</td><td>${tempcount3}</td><td>${tempcount4}</td></tr>" >> ${htmlfile}
+               inc_counter ${hostid} alert_count
+               if [ "${username}." == "root." ];
+               then
+                  # root should never have one, but allow this to be an 'expected alert' that can be set in custom
+                  log_alert_detail ${hostid} "${username} has an authorized_keys file"
+               else  # else was the tempcount3 or tempcount4 that got us here
+                  # check both with if not if/else as both may be present each needing their own detail line
+                  if [ ${tempcount3} -gt 0 ];
+                  then
+                     log_alert_detail ${hostid} "${username} has key lines without from= in the authorized_keys file"
+                  fi
+                  if [ ${tempcount3} -gt 4 ];
+                  then
+                     log_alert_detail ${hostid} "${username} has commands within the authorized_keys file"
+                  fi
+               fi
+            else  # else totals table only
+               if [ "${authkeysallowed}." == "." ];
+               then
+                  echo "<tr bgcolor=\"${colour_warn}\"><td>${username}</td><td>${tempcount1}</td><td>${tempcount2}</td><td>${tempcount3}</td><td>${tempcount4}</td></tr>" >> ${htmlfile}
+                  inc_counter ${hostid} warning_count
+               else
+                  echo "<tr><td>${username}</td><td>${tempcount1}</td><td>${tempcount2}</td><td>${tempcount3}</td><td>${tempcount4}</td></tr>" >> ${htmlfile}
+               fi
+            fi
+         done
+         echo "</table>" >> ${htmlfile}
+      fi  # if collector version -ge 0.26
 
       # We can list all the userid@host entries for RSA keys 
+      echo "<p>Below is a list of what hosts each user has ssh authorized_keys for (if they added user@host comments to the keys anyway).</p>" >> ${htmlfile}
       grep "^USER_HAS_AUTHORIZED_KEYS" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'} | while read username
       do
+         echo "<h2>Authorized_Keys breakdown</h2>" >> ${htmlfile}
+         echo "<p>For security the actual keys are never copied by this application. The tables below are built from the comments attached to the keys.</p>" >> ${htmlfile}
+         echo "<h3>User ${username} authorized_keys summary</h3>" >> ${htmlfile}
          tempcount=`grep "^USER_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
          if [ ${tempcount} -gt 0 ];
          then
-            echo "<br /><table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>User <b>${username}</b> has RSA keys for the follwing ids</td></tr><tr><td>" >> ${htmlfile}
-            grep "^USER_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | awk -F: {'print $2'} | while read keydesc
+            echo "<br /><table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>User <b>${username}</b> has RSA keys comments and from= if present</td></tr><tr><td>" >> ${htmlfile}
+            grep "^USER_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | awk -F: {'print $2" "$3'} | while read keydesc
             do
                echo "${keydesc}<br />" >> ${htmlfile}
             done
             echo "</td></tr></table>" >> ${htmlfile}
-         else
-            echo "<p>User ${username} has no RSA keys in their authorized_keys file.</p>" >> ${htmlfile}
+         fi
+         # lines that are not rsa keys, may be commands
+         tempcount=`grep "^USER_NON_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt | wc -l`
+         if [ ${tempcount} -gt 0 ];
+         then
+            echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>User <b>${username}</b> has additional lines in authrized_keys</td></tr>" >> ${htmlfile}
+            grep "^USER_NON_RSA_KEYS_FOR=${username}:" ${SRCDIR}/secaudit_${hostid}.txt \
+               | sed -e"s/USER_NON_RSA_KEYS_FOR=${username}://" | while read keydesc
+            do
+               # highlight embedded commands as alerts for now
+               # no additional alert count increments however as for now we just
+               # rely on the one in the main table saying the user has commands
+               iscommand=`echo "${keydesc}" | grep -i 'command='`
+               if [ "${iscommand}." != "." ];
+               then
+                  echo "<tr><td bgcolor=\"${colour_alert}\">${keydesc}</td></tr>" >> ${htmlfile}
+               else
+                  echo "<tr><td>${keydesc}</td></tr>" >> ${htmlfile}
+               fi
+            done
+            echo "</table>" >> ${htmlfile}
          fi
       done
       # Close the appendix page
@@ -5594,9 +5773,12 @@ wish via sudo without being prompted for a password. This should never be allowe
 <p>For sites that use 'ansible' or 'chef' and have a ansible or chef user configured to use an entry allowing
 this <em>it should still never be allowed</em>, and definately never allowed on servers where the user
 can ssh into the server using ssh keys without a password such as ansible, as ssh key files are easier to steal than passwords and
-normal ssh keys do not expire like passwords. If you use ansible you should identify exactly what commands it
+normal ssh keys do not expire like passwords. If you use ansible you should ideally identify exactly what commands it
 neds to run and code explicit command entries for it, do not use ALL (and if you do not know what commands
 ansible is running as root you should not permit it to be used).</p>
+<p>The issue with things like ansible can be somewhat slightly mitigated by ensuring the authorized_keys file
+always is prefixed with a from=ipaddr for each key so the user can only ssh using keys from a specific ipaddr,
+but still unsafe so any entry NOPASSWD:ALL will always be alerted on here.</p>
 <center><table border="1">
 <tr bgcolor="${colour_banner}"><td>Entries that allow users to run any command they want without password prompting</td></tr>
 EOF
