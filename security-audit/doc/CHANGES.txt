@@ -2,8 +2,8 @@ These are the changes that will be obvious to users such as display changes or
 breakage of previous functionality.
 
 For changes made under the covers not visible to users refer to the change history in
-the bash script files, and for new parameters the documentation and example ALL.custom
-file provided.
+the bash script files, and for new parameters the documentation html file and example
+ALL.custom file provided.
 
 Backward compatibility is not guaranteed although most changes for adding additional
 data collection wil be ignored by older processing versions, and newer processing versions
@@ -23,13 +23,12 @@ Noteable changes implemented between version 0.25 and version 0.26 are
     prominantly highlighted [ie: gitea uses a command= line in the authorized_keys file]
     any command line will be an alert (for now, still thinking about how to handle
     expected ones as would have to be exact matches so treating all as a a risk)
-(3) added a --version flag to the collector, I may find that useful later as
-    something a script can check
-(4) SunOS specific check, the SUID files it creates as /proc/PID/object/a.out 
+(3) SunOS specific check, the SUID files it creates as /proc/PID/object/a.out 
     are now warnings instead of alerts, as they cannot be added to the expected 
-    suid file list as PID changes on every reboot. Intended in future to
-    lookup the process using the PID and add a custom entry to allow for 
-    processes doing that instead of just hard coding as a warning.
+    suid file list as PID changes on every reboot coded as warning to review as
+    they will always be there rather than an alert to fix.
+    Intended in future to lookup the process using the PID to automate ok check
+    (far future as it only affects SunOS).
 
 -------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.24 and version 0.25 are

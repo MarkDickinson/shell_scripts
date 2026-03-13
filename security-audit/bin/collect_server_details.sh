@@ -200,6 +200,9 @@
 #              need to use ansible to keep remote scripts up-to-date,
 #              as I don't use puppet on all my smaller VMs
 #          (2) command= recording from autorized_keys added [gitea uses command=]
+#          (3) machine sshd config customisations in sshd_config.d dir
+#              now included in sshd_config collection as I have
+#              corectly moived my customisations there.
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
@@ -1626,6 +1629,24 @@ then
       fi
    fi
 fi
+# Additional overrides may be in here
+if [ -d /etc/ssh/sshd_config.d ];
+then
+   # CAUTION: use *conf to list files as that returns the dir path,
+   #          just * will not include the dir on rhel servers
+   ls /etc/ssh/sshd_config.d/*.conf | while read conffile
+   do
+      xx=`grep -i "Banner" "${conffile}" | grep -v "^#" | tail -1`
+      if [ "${xx}." != "." ];
+      then
+         xx=`echo "${xx}" | awk {'print $2'}`
+         if [ -f ${xx} ];
+         then
+            record_file SSHD_BANNER_DATA "${xx}"
+         fi
+      fi
+   done
+fi
 
 # ======================================================================
 # SSH config settings, global and per user should be checked
@@ -1637,6 +1658,16 @@ fi
 # ======================================================================
 timestamp_action "collecting global ssh config info"
 record_file SSHD_CONFIG_DATA /etc/ssh/sshd_config
+# customistions to the default should be under the sshd_config.d directory
+if [ -d /etc/ssh/sshd_config.d ];  # dir may not exist
+then
+   # CAUTION: listing *conf returns full path of filename, just /* without
+   #          the conf does not return the path on rhel family servers
+   ls /etc/ssh/sshd_config.d/*conf | while read optfile
+   do
+      record_file SSHD_CONFIG_DATA "${optfile}"
+   done
+fi
 
 timestamp_action "collecting user ssh config info"
 # User SSH config files should ideally not have any 'ProxyCommand'

@@ -4587,7 +4587,9 @@ build_appendix_f() {
    echo "<p>SSH should <b>not</b> permit the root account to be logged into directly." >> ${htmlfile}
    echo "That should be considered a major security risk." >> ${htmlfile}
 
-   xx=`grep -i "PermitRootLogin" ${WORKDIR}/sshd_config | grep -v "^#" | grep -i "no"`
+   # the tail -1 is as lots of files from sshd_config.d may have been appended and only the
+   # last will be used by sshd so we only want the lst entry that will be the one used.
+   xx=`grep -i "PermitRootLogin" ${WORKDIR}/sshd_config | grep -v "^#" | tail -1 | grep -i "no"`
    if [ "${xx}." != "." ];
    then
          echo "<table bgcolor=\"${colour_OK}\"><tr><td>" >> ${htmlfile}
