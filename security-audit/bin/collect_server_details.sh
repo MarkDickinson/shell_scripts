@@ -203,13 +203,14 @@
 #          (3) machine sshd config customisations in sshd_config.d dir
 #              now included in sshd_config collection as I have
 #              corectly moived my customisations there.
+# 2026/03/16 - Bump version to 0.27 to match processing script bump.
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.26"    # capture script version
+EXTRACT_VERSION="0.27"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc

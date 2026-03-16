@@ -3,7 +3,7 @@
 # >>> Included File: ../custom_includes/server_Debian11
 #
 # Additional users that can be considered system file owners
-ADD_SYSTEM_FILE_OWNER=nagios man
+ADD_SYSTEM_FILE_OWNER=man
 # ADD_SYSTEM_FILE_OWNER=Debian-exim
 # On the above..,  I use sendmail, but the debian exim4 package (which is not exim complient)
 # is intalled by default on new servers. Note that removing the exim4 package does not
@@ -28,7 +28,6 @@ ALLOW_OWNER_ROOT=sshd:
 ALLOW_OWNER_ROOT=exim4:
 ALLOW_OWNER_ROOT=libvirt:
 ALLOW_OWNER_ROOT=nfs:
-ALLOW_OWNER_OVERRIDE=sendmail:smmta:
 #
 # Directory permission overrides for shared system directories
 # These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
@@ -71,13 +70,24 @@ ALLOW_DIRPERM_EXPLICIT=postgresql drwxr-xr-x:
 FORCE_ANYFILE_OK=remove --w--w----:
 FORCE_ANYFILE_OK=rescan --w--w----:
 #
-# Common network ports used by F33 in a default install
-TCP_PORTV4_ALLOWED=:22:ssh
+# Common network ports used by Debian12 in a default install
+# For SSH must let sshd start listening on all ports so use WILD
+# reason1: it tries to start beofre network is initialised, so cannot bind to interface;
+#          also the same issue with cockpit on debian; if binding to a ip-addr you just
+#          cannot access any server after rebooting it; so listen on unsafe 0.0.0.0 is reqd.
+# reasonN: and nrpe fails a lot on debian with errors on /var/run during startup, and
+#          I don't run puppet everywhere, so cannot recover it
+TCP_PORTV4_ALLOWED=:22:ssh:WILD
+TCP_PORTV6_ALLOWED=:22:ssh if tcpv6 enabled:WILD
+NETWORK_PORT_NOLISTENER_TCPV6_OK=22:ssh tcpv6 may be disabled
+TCP_PORTV4_ALLOWED=:9090:Cockpit (service cockpit.socket):WILD
+TCP_PORTV6_ALLOWED=:9090:Cockpit (service cockpit.socket):WILD
+#
 TCP_PORTV4_ALLOWED=:111:portmapper
 TCP_PORTV6_ALLOWED=:111:portmapper
 UDP_PORTV4_ALLOWED=:111:portmapper
 UDP_PORTV6_ALLOWED=:111:portmapper
-# But is not on all Debian11 servers (its on nagios2 but not vmhost4)
+# But is not on all Debian servers ???
 NETWORK_PORT_NOLISTENER_TCPV4_OK=111:portmapper
 NETWORK_PORT_NOLISTENER_TCPV6_OK=111:portmapper
 NETWORK_PORT_NOLISTENER_UDPV4_OK=111:portmapper
@@ -88,16 +98,19 @@ NETWORK_PORT_NOLISTENER_UDPV6_OK=111:portmapper
 ## TCP_PORTV6_ALLOWED=:5355:systemd-resolved
 ## UDP_PORTV4_ALLOWED=:5355:systemd-resolved
 ## UDP_PORTV6_ALLOWED=:5355:systemd-resolved
-TCP_PORTV4_ALLOWED=:9090:Cockpit (service cockpit.socket)
 RAW_PORTV6_ALLOWED=:58:NetworkManager
 #
 # From F32 onward these are started by default by NetworkManager
+# Debian12 uses 546 UDP as well as TCP
 TCP_PORTV6_ALLOWED=:546:dhcpv6-client
+UDP_PORTV6_ALLOWED=:546:dhcpv6-client
 UDP_PORTV4_ALLOWED=:547:dhcpv6-server
 # However may be manually disabled by the admin by disabling ipv6 completely
 # so allow for them not being active.
 NETWORK_PORT_NOLISTENER_TCPV6_OK=546:dhcpv6-client
+NETWORK_PORT_NOLISTENER_UDPV6_OK=546:dhcpv6-client
 NETWORK_PORT_NOLISTENER_UDPV4_OK=547:dhcpv6-server
+NETWORK_PORT_NOLISTENER_UDPV6_OK=9090:Cockpit TcpV6 port
 #
 #
 # SUID files on a Debian 12 server install KVM system
@@ -123,15 +136,18 @@ SUID_ALLOW=/usr/sbin/pppd:
 SUID_ALLOW=/usr/sbin/sensible-mda:
 SUID_ALLOW=/usr/lib/x86_64-linux-gnu/utempter/utempter:
 SUID_ALLOW=/usr/bin/ssh-agent:
-SUID_ALLOW=/usr/bin/mutt_dotlock:
 SUID_ALLOW=/usr/bin/chage:
-SUID_ALLOW=/usr/bin/write:
 SUID_ALLOW=/usr/bin/lockfile:
 SUID_ALLOW=/usr/bin/crontab:
 SUID_ALLOW=/usr/bin/expiry:
 SUID_ALLOW=/usr/bin/dotlockfile:
 SUID_ALLOW=/usr/bin/wall:
 SUID_ALLOW=/usr/sbin/unix_chkpwd:
+# Below is installed on Debian servers even if selinux is not installed
+# locally, used by semanage as by default uses a remote policy server
+SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1:
+# Below only if 'mutt' installed, I always do
+SUID_ALLOW=/usr/bin/mutt_dotlock:
 #
 # Force explicit files as OK when checked, full path is needed
 # /etc/dumpdates is normally also writeable by group disk
@@ -160,6 +176,10 @@ HOMEDIR_MISSING_OK=nobody:
 HOMEDIR_MISSING_OK=_apt:
 HOMEDIR_MISSING_OK=messagebus:
 HOMEDIR_MISSING_OK=cockpit-ws:
+# below only exists if gnats bug reporting system is installed
+# Not common across all servers, just most of them
+# Moved to gnats
+#HOMEDIR_MISSING_OK=gnats:
 #
 # The below two entries (root and the group %sudo) are added by
 # default to /etc/sudoers when Debian is installed.

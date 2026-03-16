@@ -11,6 +11,15 @@ should cope with expected new information missing. Ideally you would keep the co
 and processing script versions the same but still works if you do not.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.26 and version 0.27 are
+-------------------------------------------------------------------------------------
+(1) Bug fix so version bump. Multiple entries for tcp port custom entries (such as
+    adding overrides) were not being handled correctly; added 'tail -1' as appropriate
+    to only use the last entry (ie: the correct override). The visible change is that
+    for ports defined as WILD (permitted to listen on all interfaces) the report will
+    now be correct instead of being confused by multiple port customfile lines.
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.25 and version 0.26 are
 -------------------------------------------------------------------------------------
 (1) new check on authorized_keys file to alert is any user keys file does not
@@ -29,6 +38,7 @@ Noteable changes implemented between version 0.25 and version 0.26 are
     they will always be there rather than an alert to fix.
     Intended in future to lookup the process using the PID to automate ok check
     (far future as it only affects SunOS).
+(4) Additional checks and info for servers with ansible will show in new A.12
 
 -------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.24 and version 0.25 are

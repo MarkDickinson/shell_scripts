@@ -29,6 +29,7 @@ ALLOW_OWNER_ROOT=sshd:
 ALLOW_OWNER_ROOT=exim4:
 ALLOW_OWNER_ROOT=libvirt:
 ALLOW_OWNER_ROOT=nfs:
+ALLOW_OWNER_ROOT=dhcpcd:
 #
 # Directory permission overrides for shared system directories
 # These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
@@ -46,13 +47,13 @@ ALLOW_DIRPERM_SYSTEM=sbin:
 ALLOW_DIRPERM_SYSTEM=dev:
 ALLOW_DIRPERM_SYSTEM=sshd:
 ALLOW_DIRPERM_SYSTEM=tpm:
-ALLOW_DIRPERM_SYSTEM=avahi-daemon:
 ALLOW_DIRPERM_SYSTEM=speech-dispatcher:
 ALLOW_DIRPERM_SYSTEM=colord:
 ALLOW_DIRPERM_SYSTEM=gdm3:
 ALLOW_DIRPERM_SYSTEM=libvirt:
 ALLOW_DIRPERM_SYSTEM=mta-sts:
 ALLOW_DIRPERM_SYSTEM=nfs:
+ALLOW_DIRPERM_SYSTEM=dhcpcd:
 #
 # Directory permission overrides for shared system directories
 # These may be drwxr-xr-x, drwxr-x--x or drwx--x--x
@@ -71,8 +72,18 @@ ALLOW_DIRPERM_EXPLICIT=postgresql drwxr-xr-x:
 FORCE_ANYFILE_OK=remove --w--w----:
 FORCE_ANYFILE_OK=rescan --w--w----:
 #
-# Common network ports used by F33 in a default install
-TCP_PORTV4_ALLOWED=:22:ssh
+# Common network ports used by Debian13 in a default install
+# For SSH must let sshd start listening on all ports so use WILD
+# reason1: it tries to start beofre network is initialised, so cannot bind to interface;
+#          also the same issue with cockpit on debian; if binding to a ip-addr you just
+#          cannot access any server after rebooting it; so listen on unsafe 0.0.0.0 is reqd.
+# reasonN: and nrpe fails a lot on debian with errors on /var/run during startup, and
+#          I don't run puppet everywhere, so cannot recover it
+TCP_PORTV4_ALLOWED=:22:ssh:WILD
+TCP_PORTV6_ALLOWED=:22:ssh if tcpv6 enabled:WILD
+NETWORK_PORT_NOLISTENER_TCPV6_OK=22:ssh tcpv6 may be disabled
+TCP_PORTV4_ALLOWED=:9090:Cockpit (service cockpit.socket):WILD
+#
 TCP_PORTV4_ALLOWED=:111:portmapper
 TCP_PORTV6_ALLOWED=:111:portmapper
 UDP_PORTV4_ALLOWED=:111:portmapper
@@ -84,34 +95,33 @@ NETWORK_PORT_NOLISTENER_UDPV4_OK=111:portmapper
 NETWORK_PORT_NOLISTENER_UDPV6_OK=111:portmapper
 ## I disable the systemd-resolved.service on all my servers as it
 ## prevents use of local DNS server if using short (non fqdn) server names
+## I use dnsmasq for my home network DNS
 ## TCP_PORTV4_ALLOWED=:5355:systemd-resolved
 ## TCP_PORTV6_ALLOWED=:5355:systemd-resolved
 ## UDP_PORTV4_ALLOWED=:5355:systemd-resolved
 ## UDP_PORTV6_ALLOWED=:5355:systemd-resolved
-TCP_PORTV4_ALLOWED=:9090:Cockpit (service cockpit.socket)
 RAW_PORTV6_ALLOWED=:58:NetworkManager
 #
 # From F32 onward these are started by default by NetworkManager
 TCP_PORTV6_ALLOWED=:546:dhcpv6-client
+UDP_PORTV6_ALLOWED=:546:dhcpv6-client
 UDP_PORTV4_ALLOWED=:547:dhcpv6-server
 # However may be manually disabled by the admin by disabling ipv6 completely
 # so allow for them not being active.
 NETWORK_PORT_NOLISTENER_TCPV6_OK=546:dhcpv6-client
+NETWORK_PORT_NOLISTENER_UDPV6_OK=546:dhcpv6-client
 NETWORK_PORT_NOLISTENER_UDPV4_OK=547:dhcpv6-server
 #
-#
-# SUID files on a Debian 12 server install KVM system
+# SUID files on a Debian 13 server install
 #
 SUID_ALLOW=/usr/lib/dbus-1.0/dbus-daemon-launch-helper:
 SUID_ALLOW=/usr/lib/openssh/ssh-keysign:
-SUID_ALLOW=/usr/lib/cockpit/cockpit-session:
 SUID_ALLOW=/usr/bin/newgrp:
 SUID_ALLOW=/usr/bin/chfn:
 SUID_ALLOW=/usr/bin/procmail:
 SUID_ALLOW=/usr/bin/ntfs-3g:
 SUID_ALLOW=/usr/bin/passwd:
 SUID_ALLOW=/usr/bin/gpasswd:
-SUID_ALLOW=/usr/bin/pkexec:
 SUID_ALLOW=/usr/bin/chsh:
 SUID_ALLOW=/usr/bin/sudo:
 SUID_ALLOW=/usr/bin/umount:
@@ -121,17 +131,18 @@ SUID_ALLOW=/usr/bin/fusermount3:
 SUID_ALLOW=/usr/bin/su:
 SUID_ALLOW=/usr/sbin/pppd:
 SUID_ALLOW=/usr/sbin/sensible-mda:
-SUID_ALLOW=/usr/lib/x86_64-linux-gnu/utempter/utempter:
 SUID_ALLOW=/usr/bin/ssh-agent:
-SUID_ALLOW=/usr/bin/mutt_dotlock:
 SUID_ALLOW=/usr/bin/chage:
-SUID_ALLOW=/usr/bin/write:
 SUID_ALLOW=/usr/bin/lockfile:
 SUID_ALLOW=/usr/bin/crontab:
 SUID_ALLOW=/usr/bin/expiry:
 SUID_ALLOW=/usr/bin/dotlockfile:
-SUID_ALLOW=/usr/bin/wall:
 SUID_ALLOW=/usr/sbin/unix_chkpwd:
+# Below is installed on Debian servers even if selinux is not installed
+# locally, used by semanage as by default uses a remote policy server
+SUID_ALLOW=/usr/lib/polkit-1/polkit-agent-helper-1:
+# Below only if 'mutt' installed, I always do
+SUID_ALLOW=/usr/bin/mutt_dotlock:
 #
 # Force explicit files as OK when checked, full path is needed
 # /etc/dumpdates is normally also writeable by group disk
@@ -155,11 +166,8 @@ HOMEDIR_MISSING_OK=news:
 HOMEDIR_MISSING_OK=uucp:
 HOMEDIR_MISSING_OK=list:
 HOMEDIR_MISSING_OK=irc:
-HOMEDIR_MISSING_OK=gnats:
-HOMEDIR_MISSING_OK=nobody:
-HOMEDIR_MISSING_OK=_apt:
-HOMEDIR_MISSING_OK=messagebus:
-HOMEDIR_MISSING_OK=cockpit-ws:
+# Removed some from above as processing script now allows
+# homedir of /nonexistent as permitted also.
 #
 # The below two entries (root and the group %sudo) are added by
 # default to /etc/sudoers when Debian is installed.
@@ -167,3 +175,9 @@ SUDOERS_ALLOW_ALL_SERVERS=root:
 SUDOERS_ALLOW_ALL_COMMANDS=root:
 SUDOERS_ALLOW_ALL_SERVERS=%sudo:
 SUDOERS_ALLOW_ALL_COMMANDS=%sudo:
+#
+# Now the processing script allows 0.0.0.0 as a warning for Debian servers, simply because sshd will
+# not start on a debian server if a ip-addr is used, because sshd starts before the network
+# configuration is applied.
+#EXACT_ALERT=Insecure sshd ListenAddress
+#EXACT_ALERT_REASON=On Debian sshd starts before network is configured so 0.0.0.0 must be used or it will not start

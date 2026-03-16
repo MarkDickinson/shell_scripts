@@ -4,8 +4,9 @@
 #
 ADD_SYSTEM_FILE_OWNER=jellyfin
 ALLOW_DIRPERM_SYSTEM=nfs:
-UDP_PORTV4_ALLOWED=:7359:jellyfin
-TCP_PORTV4_ALLOWED=:8096:jellyfin-server
-NETWORK_UDPV4_PROCESS_ALLOW=jellyfin:
+# The WILD additional flag on the next two will allow listening on all interfaces to not generate a warning
+UDP_PORTV4_ALLOWED=:7359:jellyfin:WILD
+TCP_PORTV4_ALLOWED=:8096:jellyfin-server:WILD
+NETWORK_UDPV4_PROCESS_ALLOW=/usr/bin/jellyfin --webdir=/usr/share/jellyfin/web --ffmpeg=/usr/lib/jellyfin-ffmpeg/ffmpeg:
 SUDOERS_ALLOW_ALL_SERVERS=jellyfin:
 SUDOERS_ALLOW_ALL_COMMANDS=jellyfin:

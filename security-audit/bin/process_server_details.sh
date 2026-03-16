@@ -555,6 +555,14 @@
 #                       New customfile setting SERVER_ANSIBLE_NODE_GROUPNAME=
 #                       but if not present defaults to 'ansible' so
 #                       only needed if a non-standards setup.
+# MID: 2026/03/16 - Version 0.27 
+#                   (1) Bug fix. Probably crept in back in 0.17 with
+#                       include files and I only just noticed. If
+#                       multiple entries (overrides) for tcp ports then
+#                       instead of just using the last value 'grep's
+#                       were pulling them all up breaking awk logic when
+#                       checking a field, specifically the wildcard one.
+#                       Inserted a tail -1 to greps where needed.
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -611,7 +619,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.26"
+PROCESSING_VERSION="0.27"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -3355,12 +3363,12 @@ build_appendix_c() {
       allowed=""
       if [ -f ${WORKDIR}/allowed_tcp_ports_v${ipversion} ];
       then
-         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_tcp_ports_v${ipversion}`
+         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_tcp_ports_v${ipversion} | tail -1`
          allowwild=`echo "${allowed}" | awk -F: {'print $4'}`
       else    # else fallback to old collector format
          if [ -f ${WORKDIR}/allowed_tcp_ports ];
          then
-            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_tcp_ports`
+            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_tcp_ports | tail -1`
          else
             allowed=""
          fi
@@ -3462,12 +3470,12 @@ build_appendix_c() {
       fi
       if [ -f ${WORKDIR}/allowed_udp_ports_v${ipversion} ];
       then
-         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_udp_ports_v${ipversion}`
+         allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_udp_ports_v${ipversion} | tail -1`
          allowwild=`echo "${allowed}" | awk -F: {'print $4'}`
       else   # else fall back to old version of customfile paramaters
          if [ -f ${WORKDIR}/allowed_udp_ports ];
          then
-            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_udp_ports`
+            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_udp_ports | tail -1`
          else
             allowed=""
          fi
@@ -3575,7 +3583,7 @@ build_appendix_c() {
          usecolour="${colour_alert}"
          if [ -f ${WORKDIR}/allowed_raw_ports_v${ipversion} ];
          then
-            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_raw_ports_v${ipversion}`
+            allowed=`grep ":${listenport}:" ${WORKDIR}/allowed_raw_ports_v${ipversion} | tail -1`
             portdesc=`echo "${allowed}" | awk -F: {'print $3'}`
             allowwild=`echo "${allowed}" | awk -F: {'print $4'}`
          fi
@@ -4769,6 +4777,8 @@ build_appendix_f() {
    ipaddr=`grep "^SSHD_CONFIG_DATA=ListenAddress" ${SRCDIR}/secaudit_${hostid}.txt | grep -v '0.0.0.0' | tail -l`
    if [ "${ipaddr}." == "." ];
    then
+      # For Debian only warn on 0.0.0.0 because on Debian sshd tries to start
+      # before the network is configured so it cannot be bound to an address
       isdeb=`grep -i "^TITLE_OSVERSION=Debian" ${SRCDIR}/secaudit_${hostid}.txt | tail -l`
       if [ "${isdeb}." != "." ];
       then
