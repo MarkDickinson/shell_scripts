@@ -4,10 +4,12 @@
 #
 ADD_SYSTEM_FILE_OWNER=ansible
 #
+# Both the below may exist, an exact match to locate the appropriate is performed
 SSHD_SUBSYSTEM_ALLOW=sftp:/usr/libexec/openssh/sftp-server:RHEL based servers
 SSHD_SUBSYSTEM_ALLOW=sftp:/usr/lib/openssh/sftp-server:Debian based servers
 #
-SERVER_IS_ANSIBLE_NODE=yes
+SERVER_IS_ANSIBLE_NODE=YES
+SERVER_ANSIBLE_NODE_GROUPNAME=ansible
 SUDOERS_ALLOW_ALL_SERVERS=%ansible:
 SUDOERS_ALLOW_ALL_COMMANDS=%ansible:
 #

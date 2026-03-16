@@ -69,6 +69,7 @@
 #      A.9 - check users .ssh/config files for scripts (ProxyCommand)
 #      A.10 - check users authorized_keys for commands
 #      A.11 - check users .ssh directory perms
+#      A.12 - checks on users in ansible group
 #   B. Network access
 #      B.1 - check system host equivalences files
 #      B.2 - check user host equivalences files and security of
@@ -547,6 +548,13 @@
 #                       /proc/PID/object/a.out (in /proc and named a.out)
 #                       as they will always be random so cannot add to
 #                       the expected suid file lists.
+# MID: 2026/03/16 - Version 0.26 (unchanged version)
+#                   (1) Added A.12 checks on members of ansible group,
+#                       should be reviewed occasionally. No version
+#                       bump as just using existing data for checks.
+#                       New customfile setting SERVER_ANSIBLE_NODE_GROUPNAME=
+#                       but if not present defaults to 'ansible' so
+#                       only needed if a non-standards setup.
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -2329,11 +2337,18 @@ build_appendix_a() {
    echo "<p>Many system files are secured for root:root write access, so it is important to" >> ${htmlfile}
    echo "ensure no additional users are permitted in the root group.</p>" >> ${htmlfile}
    testextra=`grep "^ETC_GROUP_FILE=root:" ${SRCDIR}/secaudit_${hostid}.txt | awk -F: {'print $4'}`
-   if [ "${testextra}." != "." ];
+   # also check for root as the only entry being OK, some distros will append it
+   if [ "${testextra}." != "." -a "${testextra}." != "root." ];
    then
-      echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
-      echo "<p>The following additional users are in the root group : ${testextra}</p>" >> ${htmlfile}
-      echo "</td></tr></table>" >> ${htmlfile}
+      echo "<table><tr><td bgcolor=\"${colour_banner}\">Additional users in roor group</td></tr>" >> ${htmlfile}
+      commas_to_list "${testextra}" | while read founduser
+      do
+         if [ "${founduser}." != "root." ];  # root is allowed to be there
+         then
+            echo "<tr><td bgcolor=\"${colour_alert}\">${founduser}</td></tr>" >> ${htmlfile}
+         fi
+      done
+      echo "</table>" >> ${htmlfile}
       inc_counter ${hostid} alert_count
       log_alert_detail ${hostid} "More than one user in the root group"
    else
@@ -2341,7 +2356,6 @@ build_appendix_a() {
       echo "<p>No additional users have been added to the root group.</p>" >> ${htmlfile}
       echo "</td></tr></table>" >> ${htmlfile}
    fi
-
 
    # A.8 - users should not have .ssh/rc files
    echo "<h3>A.8 Users should not have .ssh/rc files</h3>" >> ${htmlfile}
@@ -2433,6 +2447,100 @@ build_appendix_a() {
       echo "</table>" >> ${htmlfile}
    fi
 
+   # A.12 - checks on users in ansible group
+   echo "<h3>A.12 Checks on users in ansible group</h3>" >> ${htmlfile}
+   echo "<p>Many system use ansible, it is important to review all users in the ansible" >> ${htmlfile}
+   echo "group to ensure they still need to be there as in a default ansible install" >> ${htmlfile}
+   echo "these users may issue any command as root.</p>" >> ${htmlfile}
+   ansiblegroupid=""
+   # is ansible expected to be installed ?
+   isansibleiset=`grep "^SERVER_IS_ANSIBLE_NODE=YES" ${CUSTOMFILE}`
+   # if yes see if a group was provided
+   if [ "${isansibleiset}." != "." ];
+   then
+      ansiblegroupid=`grep "^SERVER_ANSIBLE_NODE_GROUPNAME=" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+   fi
+   # if ansible expected but no group provided default to ansible
+   if [ "${isansibleiset}." != "." -a "${ansiblegroupid}." == "." ];
+   then
+      ansiblegroupid="ansible"
+   else
+      echo "<p>The ansible group has been set to ${ansiblegroupid} by custom file entries.</p>" >> ${htmlfile}
+   fi
+   # first possible alert is that ansible is expected but the group does not exist
+   if [ "${isansibleiset}." != "." ];
+   then
+      ansgrpexists=`grep "^ETC_GROUP_FILE=${ansiblegroupid}" ${SRCDIR}/secaudit_${hostid}.txt`
+      if [ "${ansgrpexists}." == "." ];
+      then
+         # log the alert detail before we try and overwrite ansiblegroupid
+         inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "The ansible group ${ansiblegroupid} defined in custom file does not exist"
+         echo "<table bgcolor=\"${colour_alert}\"><tr><td>" >> ${htmlfile}
+         echo "Ansible group ${ansiblegroupid} expected but does not exist on this server" >> ${htmlfile}
+         # they made a typo in custom file ?, check for the default
+         ansiblegroupid=`grep "^ETC_GROUP_FILE=ansible" ${SRCDIR}/secaudit_${hostid}.txt`
+         if [ "${ansiblegroupid}." != "." ];
+         then
+            ansiblegroupid="ansible"    # do not want the entire group entry line
+            echo "<br />The group ${ansiblegroupid} does exist, will check against that" >> ${htmlfile}
+         fi
+         echo "</td></td></table>" >> ${htmlfile}
+      fi
+   fi
+   # if ansible is not expected on the server check for an ansible group to be sure
+   if [ "${ansiblegroupid}." == "." ];
+   then
+      ansiblegroupid=`grep "^ETC_GROUP_FILE=ansible:" ${SRCDIR}/secaudit_${hostid}.txt`
+      if [ "${ansiblegroupid}." != "." -a "${isansibleiset}." == "." ];
+      then
+         echo "<table bgcolor=\"${colour_warn}\"><tr><td>" >> ${htmlfile}
+	 echo "The ansible group exists on this server which is not expected. Investigate using the custom file flag SERVER_IS_ANSIBLE_NODE=YES (see example custom_includes/ansilble)" >> ${htmlfile}
+         echo "</td></td></table>" >> ${htmlfile}
+         inc_counter ${hostid} warn_count
+         ansiblegroupid="ansible"    # do not want the entire group entry line
+      fi
+   fi
+   # If nothing was found at all then we are almost done with the checks
+   if [ "${ansiblegroupid}." == "." ];
+   then
+      if [ "${isansibleiset}." != "." ];
+      then
+         # Alert box will have already been written
+         echo "<p>Ansible is expected to be on this server but either is not or is custom file errors exist.</p>" >> ${htmlfile}
+      else
+         echo "<p>Ansible does not appear to be used on this server.</p>" >> ${htmlfile}
+      fi
+   else  # else check all userids in the group
+      testextra=`grep "^ETC_GROUP_FILE=${ansiblegroupid}:" ${SRCDIR}/secaudit_${hostid}.txt | tail -1 | awk -F: {'print $4'}`
+      # if only one user entry and it matches ansible/ansiblegroupid flag as OK
+      # if entries that do not exist in passwd file flag as alert
+      # others no colour, to be reviewed but not errors
+      if [ "${testextra}." != "." ];
+      then
+         echo "<table border=\"1\"><tr><td bgcolor=\"${colour_banner}\">Users in group ${ansiblegroupid} to review</td></tr>" >> ${htmlfile}
+        commas_to_list "${testextra}" | while read founduser
+        do
+           if [ "${founduser}." == "${ansiblegroupid}." ];  # match with group is good naming standard
+           then
+               echo "<tr><td bgcolor=\"${colour_OK}\">${founduser} exists on server</td></tr>" >> ${htmlfile}
+           else
+              uexists=`grep "^PASSWD_FILE=${founduser}:" ${SRCDIR}/secaudit_${hostid}.txt`
+              if [ "${uexists}." == "." ];
+              then
+                 echo "<tr><td bgcolor=\"${colour_alert}\">${founduser} does not exist on server</td></tr>" >> ${htmlfile}
+                 inc_counter ${hostid} alert_count
+              else
+                 echo "<tr><td>${founduser} exists on server</td></tr>" >> ${htmlfile}
+              fi
+           fi
+        done
+        echo "</table>" >> ${htmlfile}
+      else
+         echo "<p>There are no additional userids appended to the group entry for ${ansiblegroupid}.</p>" >> ${htmlfile}
+      fi
+   fi
+  
    # Close the appendix page
    write_details_page_exit "${hostid}" "${htmlfile}"
 

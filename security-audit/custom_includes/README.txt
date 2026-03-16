@@ -1,13 +1,15 @@
-This directory contains the customised rules for each unique server.
+This directory contains rules that are common across all servers or applications.
 
-If there is no unique customisation file for a servername then the processing script will
-fall back to the default ALL.custom file; this file must exit to provide a fallback.
+They would be included in custom/seerver.custom files with lines like
+INCLUDE ../custom_includes/filename
 
-The naming of customisation files must be servername.custom
-servername must be the unqualified servername (ie: mywebserver.example.com wpuld be mywebserver)
-custom must be the suffix appended to the filename
-so the customised rules file in this example would be mywenserver.custom
+This keeps server custom files small and rules for common applications
+do not have to be manually coded in each server custom file.
 
-Most files would be a set of include lines from the custom_includes directory
-with only individual serve rtweaks needed in unique server files.
-Refer to the example-X.custom files.
+TODO
+One day split into rhel and debian directories so I do not have to keep putting _debian
+on the ones I have to change to fit that; will just make the files in this directory
+more sensible.
+Maybe leave shared ones that work for both here, or in a 'common' subdir but that could
+be even more confusing in the long run.
+

@@ -1457,10 +1457,14 @@ by the sshd_config file. If used the alert raised for the specified subsystem
 is downgraded to a warning.
 </td></tr>
 <tr><td>SERVER_IS_ANSIBLE_NODE=YES</td><td>
-This parameter is only used if the SSHD_SUBSYSTEM_ALLOW parameter has been
-used for the sftp subsystem. If used it identified the server as being
-managed by ansible and as such must have sftp running, in this case the
-warning for the sftp subsystem is altered to OK.
+This parameter should be set if ansible is used on your server.
+It alters behaviour in changing sftp checks (ansible needs sftp so
+it becomes OK rather than a alert) and is used to determine behaviour
+of a few other checks.
+</td></tr>
+<tr><td>SERVER_ANSIBLE_NODE_GROUPNAME=groupname</td><td>
+Defaults to ansible if not set. Used in checks of users in the group
+to make sure they still exist on the server. Only affects A.12 checks.
 </td></tr>
 <tr><td>ALLOW_AUTHORISED_KEYS=YES</td><td>
 By default users with authorized_keys files are warnings, using this
