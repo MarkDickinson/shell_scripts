@@ -563,6 +563,10 @@
 #                       were pulling them all up breaking awk logic when
 #                       checking a field, specifically the wildcard one.
 #                       Inserted a tail -1 to greps where needed.
+# MID: 2026/03/18 - still Version 0.27 
+#                   (1) Added test for SSHD_LISTEN_ON_ALL=WARN"reason in 
+#                       custom file to downgrade that alert to a warning.
+#                       It can never be downgraded to OK as always a risk.
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -1229,7 +1233,18 @@ extract_parm_value_not_colon() {
       # rest will contain all data after the matched substring
       rest=${datastr#*$parmkey}
       rest=`echo ${rest}`       # remove imbedded leading spaces
-      # see if value is within " or ' quotes or btacketed by {}
+
+      # WORKAROUND                                  workaround
+# As we can call this with dports or dport a call using dport
+# leaves the 's ' at the end after the match is used to
+# remove the keyword. Check for that.
+      testvar=${rest:0:2}                      # workaround
+      if [ "${testvar}." == "s ." ];           # workaround
+      then                                     # workaround
+         rest=${rest:2:$((${#rest} - 1))}      # workaround drop the 's '
+      fi                                       # workaround
+
+      # see if value is within " or ' quotes or bracketed by {}
       testvar=${rest:0:1}
       if [ "${testvar}." == "\"." ];        # IF within " quotes
       then
@@ -2042,7 +2057,8 @@ build_appendix_a() {
             echo "<tr><td>${username2}</td><td>home directory for <b>${username2}</b> does not exist (${dirname2}), permitted by custom file</td></tr>" >> ${htmlfile}
          else
             # Debian will set /nonexistent for user that do not need home dirs
-            if [ "${dirname2}." == '/nonexistent.' ];
+            # RHEL will set /nonexisting for user that do not need home dirs
+            if [ "${dirname2}." == '/nonexistent.' -o "${dirname2}." == '/nonexisting.' ];
             then
                echo "<tr><td>${username2}</td><td>home directory for <b>${username2}</b> does not exist (${dirname2}), permitted</td></tr>" >> ${htmlfile}
             else
@@ -2505,7 +2521,7 @@ build_appendix_a() {
          echo "<table bgcolor=\"${colour_warn}\"><tr><td>" >> ${htmlfile}
 	 echo "The ansible group exists on this server which is not expected. Investigate using the custom file flag SERVER_IS_ANSIBLE_NODE=YES (see example custom_includes/ansilble)" >> ${htmlfile}
          echo "</td></td></table>" >> ${htmlfile}
-         inc_counter ${hostid} warn_count
+         inc_counter ${hostid} warning_count
          ansiblegroupid="ansible"    # do not want the entire group entry line
       fi
    fi
@@ -3352,6 +3368,11 @@ build_appendix_c() {
       listenaddr=`echo "${dataline}" | awk {'print $2'}`
       listenport=`echo "${dataline}" | awk {'print $1'}`
       ipversion=`echo "${dataline}" | awk {'print $3'}`
+      if [ "${ipversion}." == "." ];
+      then
+         log_message "**script error** no tcp type in workfile active_tcp_services.wrk2  for ${listenport}, defaulting to 4"
+         ipversion="4"
+      fi
       # get details of process using the port as identified by fuser if available
       # NETWORK_TCPV4_PORT_portnum or NETWORK_TCPV6_PORT_portnum
       searchmatch=`grep "^NETWORK_TCPV${ipversion}_PORT_${listenport}=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
@@ -4013,6 +4034,10 @@ on unsafe file permissions or file ownership problems.
 Basically any file updateable by other than the owner is reported here,
 along with files in system directories owned by non-system users.</p>
 EOF
+   if [ "${allowsloppyvar}." == "OK." ];
+   then
+      echo "<p>ALLOW_SLOPPY_VAR=OK was coded in the customisation file so all warnings for files under /var are suppressed in this report.</p>" >> ${htmlfile}
+   fi
    totalcount=0
    echo "${totalcount}" > ${WORKDIR}/system_totals_count
    delete_file ${WORKDIR}/appendix_e_groupsuppresslist.txt
@@ -4029,7 +4054,7 @@ EOF
          fileuser=`echo "${dataline}" | awk {'print $3'}`
          filegroup=`echo "${dataline}" | awk {'print $4'}`
          # if any data in group member field after removing owner and commans then there are additional users
-         getgroupinfo=`grep "^ETC_GROUP_FILE=${filegroup}:"`
+         getgroupinfo=`grep "^ETC_GROUP_FILE=${filegroup}:" ${SRCDIR}/secaudit_${hostid}.txt | tail -1`
 	 if [ "${getgroupinfo}." != "." ];   # if not empty group exists (todo, report orphan groups)
          then
             addstogroup=`echo "${getgroupinfo}" | awk -F: {'print $4'} | sed -e"s/${fileuser}//g" | sed -e"s/,//g"`
@@ -4133,8 +4158,8 @@ EOF
                      then
                         inc_counter ${hostid} warning_count
                         echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_e_list2
-                     else # else must be set as OK
-                        inc_counter ${hostid} note_count
+                     else # else must be set as OK, record only no counter bumps
+                        echo "${PERM_CHECK_RESULT}: ${dataline}" >> ${WORKDIR}/appendix_e_list3
                      fi
                   else # if skipchecks was set we found something we must alert on
                      inc_counter ${hostid} alert_count
@@ -4190,20 +4215,20 @@ EOF
       cat ${WORKDIR}/appendix_e_list2 >> ${htmlfile}
       echo "</pre></td></tr></table>" >> ${htmlfile}
    fi
-   echo "</b></pre><br><br>" >> ${htmlfile}
 
    # Did we suppress anything from /var ?.
-   notecount=`cat ${WORKDIR}/note_count`
-   if [ "${notecount}." != "0." ];
+   if [ -f ${WORKDIR}/appendix_e_list3 ];
    then
+      notecount=`cat ${WORKDIR}/appendix_e_list3 | wc -l`
       echo "<p>The customisation file for this server requested that any file security" >> ${htmlfile}
-      echo "warnings under the /var filesystem be suppressed.</p>" >> ${htmlfile}
-      echo "<table border=\"0\" bgcolor=\"${colour_warn}\"><tr><td>" >> ${htmlfile}
+      echo "warnings under the /var filesystem be suppressed." >> ${htmlfile}
       echo "There were ${notecount} security warnings suppressed for files under /var" >> ${htmlfile}
-      echo "</td></tr></table>" >> ${htmlfile}
-      echo "<p>If you don't know what these files are review /var, and maybe change" >> ${htmlfile}
-      echo "ALLOW_SLOPPY_VAR=OK to ALLOW_SLOPPY_VAR=WARN to get a list of these files.</p>" >> ${htmlfile}
-      inc_counter ${hostid} warning_count
+      echo "for the files listed below. Review and if just files owned by non-system users that is probably OK.</p>" >> ${htmlfile}
+      echo "<table border=\"1\"><tr bgcolor=\"${colour_banner}\"><td>" >> ${htmlfile}
+      echo "<center>Files under /var with warning counts suppressed</center></td></tr>" >> ${htmlfile}
+      echo "<tr><td><pre>" >> ${htmlfile}
+      cat ${WORKDIR}/appendix_e_list3 >> ${htmlfile}
+      echo "</pre></td></tr></table>" >> ${htmlfile}
    fi
 
    totalcount=`cat ${WORKDIR}/system_totals_count`
@@ -4780,16 +4805,22 @@ build_appendix_f() {
       # For Debian only warn on 0.0.0.0 because on Debian sshd tries to start
       # before the network is configured so it cannot be bound to an address
       isdeb=`grep -i "^TITLE_OSVERSION=Debian" ${SRCDIR}/secaudit_${hostid}.txt | tail -l`
-      if [ "${isdeb}." != "." ];
+      islistenall=`grep "^SSHD_LISTEN_ON_ALL=WARN:" ${CUSTOMFILE} | tail -1`
+      if [ "${isdeb}." != "." -o "${islistenall}." != "." ];
       then
          echo "<table><tr bgcolor=\"${colour_warn}\" border=\"1\"><td>No explicit ListenAddress found in sshd_config or it is using 0.0.0.0. It will be using the default of listening on all interfaces</td></tr></table>" >> ${htmlfile}
-         inc_counter ${hostid} warn_count
+         if [ "${islistenall}." != "." ];
+         then
+            echo "<p>Note: downgraded from alert to warning by <em>\"${islistenall}\"</em> in custom file.</p>" >> ${htmlfile}
+         else	 
+            echo "<p>A ListenAddress of 0.0.0.0 is only a warning for Debian servers as by default sshd starts before the network is configured and will fail to start is an explicit address is used.</p>" >> ${htmlfile}
+         fi
+         inc_counter ${hostid} warning_count
       else
          echo "<table><tr bgcolor=\"${colour_alert}\" border=\"1\"><td>No explicit ListenAddress found in sshd_config or it is using 0.0.0.0. It will be using the default of listening on all interfaces</td></tr></table>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
          log_alert_detail "${hostid}" "Insecure sshd ListenAddress is being used"
       fi
-      echo "<p>If this is a Debian12 or Debian13 server this is OK as on those SSHD starts before the network is configured so impossible to logon if a specific ListenAddress is used.</p>" >> ${htmlfile}
    else
       echo "<table><tr bgcolor=\"${colour_OK}\" border=\"1\"><td>Explicit interfaces are defined in sshd_config. Configured to use ${ipaddr}</td></tr></table>" >> ${htmlfile}
    fi
@@ -5150,7 +5181,9 @@ EOF
             #
             # checking for dpt:nnnn
             #
-            yy=`extract_parm_value "dpt:" ${iprules}`             # dpt:nnnn
+            iprules2=`echo "${iprules}" | sed -e 's/\*/X/g'`    # A * is a comment in the
+                                                          # rules and will list all files so kill it
+            yy=`extract_parm_value "dpt:" ${iprules2}`             # dpt:nnnn
             if [ "${yy}." != "." ];
             then   # only one port
                iptables_check_logic "${hostid}" "${searchtype}" "${ipversion}" "${yy}" \
@@ -5162,7 +5195,7 @@ EOF
             # want to chop of the second part of the data range if extracting
             # a value (the second part of the value would be treated an another field)
             #
-            yy=`extract_data_field "dpts:" ${iprules}`  # dpts:nnnn:nnnn and dpts:nnnn-nnnn
+            yy=`extract_data_field "dpts:" ${iprules2}`  # dpts:nnnn:nnnn and dpts:nnnn-nnnn
             if [ "${yy}." != "." ];
             then
                yy=${yy:5:100}             # chop off the dpts: part
@@ -5180,7 +5213,7 @@ EOF
             # or a mix like   dports nnnn,nnnn,nnnn:nnnn,nnnn,nnnn:nnnn  (embedded ranges)
             # also... dports can be replaced by dport (no s) in the rules as well
             # with the same syntax just to make it more complicated
-            yy=`extract_parm_value_not_colon "dports" ${iprules}`  # dports nnnn:nnnn or dports nnnn,nnnn,nnn:nnn,nnn,...
+            yy=`extract_parm_value_not_colon "dports" ${iprules2}`  # dports nnnn:nnnn or dports nnnn,nnnn,nnn:nnn,nnn,...
             build_a_range_list "${yy}" | while read ipportmin
             do
                iptables_check_logic "${hostid}" "${searchtype}" "${ipversion}" "${ipportmin}" \
@@ -5188,7 +5221,7 @@ EOF
             done
             #
             # same as above block but looking for dport instaead of dports keyword
-            yy=`extract_parm_value_not_colon "dport" ${iprules}`  # dports nnnn:nnnn or dports nnnn,nnnn,nnn:nnn,nnn,...
+            yy=`extract_parm_value_not_colon "dport" ${iprules2}`  # dports nnnn:nnnn or dports nnnn,nnnn,nnn:nnn,nnn,...
             build_a_range_list "${yy}" | while read ipportmin
             do
                iptables_check_logic "${hostid}" "${searchtype}" "${ipversion}" "${ipportmin}" \
@@ -5227,7 +5260,7 @@ EOF
          then
             echo "<table bgcolor=\"${colour_warn}\"><tr><td>Neither iptables or netfilter tables with accept rules exist on this server." >> ${htmlfile}
             echo "<b>This server appears to be not running a firewall !</b>, or no rules are configured</td></tr></table><br />" >> ${htmlfile}
-            inc_counter ${hostid} warn_count
+            inc_counter ${hostid} warning_count
          else
             echo "<table bgcolor=\"${colour_alert}\"><tr><td>Neither iptables or netfilter tables with accept rules exist on this server." >> ${htmlfile}
             echo "<b>This server appears to be not running a firewall !</b>, or no rules are configured</td></tr></table><br />" >> ${htmlfile}
@@ -5377,7 +5410,7 @@ EOF
                         bb=`echo "${process}" | sed -e's/\[/\\\[/g' | sed -e's/\]/\\\]/g'`  # grep needs [ and ] replaced with \[ and \]
                         # WORKAROUND - iptables reports tcp/tcp6/udp/udp6 as just tcp/udp so do not use ipversion in test here
                         procallow=`grep "^NETWORK_${searchtype}V._PROCESS_ALLOW=${bb}:" ${CUSTOMFILE} | tail -1 | awk -F\= {'print $2'}`
-                        # if last nyte is the : delimiter remove it, cannot parse with awk as : can be included in
+                        # if last byte is the : delimiter remove it, cannot parse with awk as : can be included in
                         # the process command lines
                         if [ "${procallow:$(( ${#procallow} - 1)):1}." == ":." ];
                         then
@@ -5965,11 +5998,7 @@ This is a risk, you should explicitly identify the server names the commands can
 <p>This is often seen in environments where sysadmins deploy a common sudoers file across
 multiple servers, the risk is where commands are expected to only be run on specific servers
 not ALL servers, so while ALL itself is not dangerous deploying a common file across all
-servers is so you must review any entries using ALL.</p>
-<p>On newly installed RHEL based servers there will always be by default entries for 
-"root ALL=(ALL) ALL" and "%wheel ALL=(ALL) ALL" as at install time the installed does
-not know what hostname you are giving your server so must use ALL= as a servername;
-that does not excuse you from not changing ALL= to hostname= after installation however.</p>
+servers may be if this is not managed carefully so you must review any entries using ALL.</p>
 <center><table border="1">
 <tr bgcolor="${colour_banner}"><td>Entries that have servername configured unwisely as ALL</td></tr>
 EOF

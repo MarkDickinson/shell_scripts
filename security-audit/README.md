@@ -4,11 +4,12 @@ No Guarantees that these are fit for purpose in your environment.
 
 YOU SHOULD NEVER RUN UNKNOWN SCRIPTS AS ROOT. The collector script needs to run as root so
 unless you are happy to look through thousands of lines of bash script to make sure it will
-not damage your machines you should not use this.
+not damage your machines you should probably not use this.
 
 These scripts Check for common security issues _on Linux Servers_ not normally checked on a regular
-basis by system administrators. It is designed for Fedora/CentOS/RHEL servers although with a few
-exceptions works perfectly well on Debian based servers like Ubuntu and Kali.
+basis by system administrators. It is tested on Fedora/CentOS/RHEL/Debian/Kali servers.
+Most of the functionality (excluding IPF firewall checks) is also implemented
+for SunOS (OpenIndina anyway). _So only tested on servers I use_.
 
 Using the scripts the checks can be automated to provide one place check results can be viewed.
 Additionally automating the processing runs allows you to periodically archive the processing results (an
@@ -18,9 +19,9 @@ or all processes that have opened listening ports on the server.
 For known exceptions customisations can be done to the checks performed on a per-server basis.
 Detailed documentation on all the customisation parameters available is in the file file security-audit-doc.html.
 
-Be warned, the fisrt run against a server will most likely find hundreds of issues to be resolved.
+Be warned, the fisrt run against a server will most likely find high hundreds of issues to be resolved.
 But it is possible to get them down to only a few warnings (there will probably always be warnings) and
-I even have a few servers with zero alerts now.
+I have almost all my servers with zero alerts now so it is possible.
 
 Mostly useful after you have quietened down the initial noise is to see what annoying
 things package updates do to your servers, things like user cockpit-wsinstance becoming
@@ -147,19 +148,20 @@ The processing script should not run as root, it needs no special privs.
 * filesystem checks - reports on all orphaned files and directories (those
   not owned by an existing user). This report 'appendix J' is only
   produced if orphans were found
+* a few possible backdoor checks; look for commands within sshd_config or user
+  authorized_keys files, any user ssh rc or config files etc.
 * checks for common unsafe sudoers configuration entries
 * optional, backs up /etc
 * optional (but default) collect hardware info
-* optional, if 'rpm' is available collect a installed package list
+* optional, if rpm or apt is available collect a installed package list
 
 ## Processing control features
-* customisation files can be provided at a per-server level for known 
-  exception cases; such as files that must be insecure, network ports for
-  applications that just cannot be configured to specific interfaces,
-  user home directories that must be insecure (ie: multiple system users
-  are mapped to /bin or /sbin which must be owned by root (not by the
-  system user such as adm or operator) and must be traversable by other
-  users, and quite a few other customisable cases.
+* customisation files can be provided at a per-server level.
+  A main servername.custom customisation file can include other files, so common
+  applications can be 'included' rather than having to be coded for each server,
+  ie: if you have 10 servers and only 3 use mariadb just include in those 3 the maraidb rules
+  to obtain all the customisations needed for suid files and network ports etc. needed
+  for the checks for that application
 * runtime processing parameter to allow a single server to be re-processed as needed,
   note however automatic re-processing of all servers is forced/performed if a new version
   of the processing script is installed and you try to process a single server
@@ -234,16 +236,11 @@ Most fields are self explainatory, requiring a mention are the points below
 
 ## Planned Enhancements
 
-This will not affect most of you, but on servers running OpenStack it generates a
-lot of complicated firewall rules such as 'dports nnnn,nnnn,nnnn:nnnn,nnnn (yes,
-a range can be imbedded in a list as well as unique ports). To complicate even
-further 'dports' is used in iptables with a : range seperator and 'dport' in netfilter
-with a - range seperator.
-Complicated rules such as that are not handled in V0.17. Changes to handle some of that
-were implemented into V0.18 but it is still a work in progress.
-
 I have an OpenIndiana VM I fire up occasionally, so support for processing SunOS
 data collection is partially implemented fom version 0.23 and will be ongoing
-(as a low priotity when I get time).
+(as a low priority when I get time). Outstanding for that is handling the IPF
+firewall rules used by SunOS, the scripts currently only support iptables and
+netfilter (firewalld uses netfilter now) when looking for possible issues.
 
-And anything else I think of as time goes by.
+And anything else I think of as time goes by. Always something else that is checked
+infrequently that can go in here.

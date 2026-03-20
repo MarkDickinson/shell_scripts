@@ -6,13 +6,6 @@ Do not expect these scripts to work properly on other servers such as Ubuntu;
 because every distro puts some key files in different places and I only test
 on OS releases I run.
 
-In BETA (not fully tested)
-==========================
-New UNSET_VAR custom file entry code added but not fully tested, only tested against
-a network process allow so far as that was my immediate need.
-READ CHANGES.txt, custom file changes are needed for this functionality and an example
-script to perform the migration changes so you do not have to edit dozens of files is provided.
- 
 Known Bugs with the current release that need fixing
 ====================================================
 * when processing a capture with a large number of files _SOMETIMES_ an error is thrown

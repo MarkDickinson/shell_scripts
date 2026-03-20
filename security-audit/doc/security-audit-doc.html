@@ -3,9 +3,9 @@
 <BODY>
 <center>
 <b>This documentation is for</b><br />
-Version 0.25 of the processing script<br />
-Version 0.25 of the data collection script<br />
-Last updated 10 February 2026
+Version 0.27 of the processing script<br />
+Version 0.27 of the data collection script<br />
+Last updated 18 March 2026
 </center>
 <a name="sect0"></a>
 <H1>Index</H1>
@@ -1455,6 +1455,16 @@ This parameter was added for servers that are managed by ansible, and as such
 reguire sftp to be enabled. It can however be used for any subsystem enabled
 by the sshd_config file. If used the alert raised for the specified subsystem
 is downgraded to a warning.
+</td></tr>
+<tr><td>SSHD_LISTEN_ON_ALL=WARN:reasontext</td><td>
+This will downgrade an alert for SSHD listening on all interfaces to a
+warning, you should provide a reasontext (ie: dhcp assigned address) that
+can be used for servers that must listen on all interfaces. It will never
+be permitted to be les than warn as it is always a risk.<br />
+Note: for Debian servers where by default sshd is started before the network
+is configured (so sshd will not start if bound to an address) this parameter
+is not needed as if a Debian server listening on 0.0.0.0 is automatically
+downgraded to a warning for thyat reason; that may be revisted in future.
 </td></tr>
 <tr><td>SERVER_IS_ANSIBLE_NODE=YES</td><td>
 This parameter should be set if ansible is used on your server.
