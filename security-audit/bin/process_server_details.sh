@@ -95,6 +95,7 @@
 #      F.2 - security log retention checks
 #      F.3 - sshd configuration checks
 #      F.4 - selinux configuration checks
+#      F.5 - last patched date within nn days (optional, only if MUST_PATCH_WITHIN_DAYS=nn in custom file)
 #   G. Report on custom file used (if any)
 #   H. Firewall rule checks to determine if open ports in the firewall
 #      rules match ports actualy in use on the server
@@ -567,6 +568,13 @@
 #                   (1) Added test for SSHD_LISTEN_ON_ALL=WARN"reason in 
 #                       custom file to downgrade that alert to a warning.
 #                       It can never be downgraded to OK as always a risk.
+# MID: 2026/05/15 - Version 0.28 
+#                   (1) Added last patched date to the server main index
+#                       display (if collector version contained it)
+#                   (2) If custom file contains MUST_PATCH_WITHIN_DAYS=nn
+#                       setting then check last patch date against the
+#                       number of days permitted (new optional F.5
+#                       which is only produced if setting exists)
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -623,7 +631,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.27"
+PROCESSING_VERSION="0.28"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -905,6 +913,78 @@ update_globals() {
    testvar=$((${testvar} + ${num}))
    echo "${testvar}" > ${filename}
 } # update_globals
+
+# -------------------------------------------------------------------
+# days_in_the_past_num: 
+# input : $1 is a date as YYYY-MM-DD   (must reject a date in the future)
+# output: the number of days in the past
+# notes: expects processing server to use date format YYYY-MM-DD, will test
+#        for YYYY-DD-MM but as all data collected by the collector script
+#        uses YYYY-MM-DD so results may vary if that is used on teh processing server.
+# We do NOT write any error messages (as output is captured by caller),
+# all we do is return 0 if an invalid date has been passed.
+# -- in a routine as while only teh last patching date check uses it 
+#    I wil probably find other places to use it.
+days_in_the_past_num() {
+   # If called unchecked from whats in collector file may be UNKNOWN
+   # else must be YYYY-MM-DD
+   if [ "$1." != "UNKOWN." ];
+   then
+      provideddate=`echo "$1" | grep "....-..-.."`  # quick YYYY-MM-DD possible match check
+   else
+      provideddate="$1"
+   fi
+   if [ "${provideddate}." == "." ];  # failed the grep or nothing in $1
+   then
+      echo "0"
+      return
+   fi
+   if [ "${provideddate}." != "UNKNOWN." ];
+   then
+      lastyear=`echo "${provideddate}" | awk -F\- {'print $1'}`
+      lastmonth=`echo "${provideddate}" | awk -F\- {'print $2'}`
+      lastday=`echo "${provideddate}" | awk -F\- {'print $3'}`
+      # some minimal sanity checks on what was passed      
+      lastyear=`must_be_number "${lastyear}"`
+      lastmonth=`must_be_number "${lastmonth}"`
+      lastday=`must_be_number "${lastday}"`
+      if [ "${lastyear}." == "0." -o "${lastmonth}." == "0." -o "${lastday}." == "0." ];
+      then
+            echo "0"
+            return
+      fi
+      if [ ${lastyear} -lt 1971 -o ${lastmonth} -gt 12 -o ${lastday} -gt 31 ];
+      then
+            echo "0"
+            return
+      fi
+      # simple test to see if month is in field 2, if it is 15 will not work
+      checkdatefmt=`date --date="2026-15-05" 2>/dev/null`
+      if [ "${checkdatefmt}." == "." ];   # would be an error if month in field 2 above
+      then     # so we know the month is in field 2 YYYY-MM-DD
+         lastepocsecs=`date --date="${lastyear}-${lastmonth}-${lastday}" +"%s"`
+      else
+         lastepocsecs=`date --date="${lastyear}-${lastday}-${lastmonth}" +"%s"`
+      fi
+      if [ "${lastepocsecs}." == "." ]; # if neither returned a result
+      then
+         echo "0"
+         return
+      fi
+      currentepocsecs=`date +"%s"`
+      if [ ${lastepocsecs} -gt ${currentepocsecs} ];
+      then
+         echo "0"
+         return
+      fi
+      oneday=$(( 60 * 60 * 24))  # 60 secs * 60 mins * 24 hrs
+      secsdiff=$(( ${currentepocsecs} - ${lastepocsecs} ))
+      daysdiff=$(( ${secsdiff} / ${oneday} ))
+      echo "${daysdiff}"
+   else
+      echo "0"    # UNKOWN, so use 0
+   fi
+} # end of days_in_the_past_num
 
 # ---------------------------------------------------------------
 # Helper routines for working out firewall rule port numbers
@@ -1779,6 +1859,11 @@ write_key_server_info() {
       titlekey=`echo "${titlekey}" | cut -d\= -f1`
       echo "<tr><td>${titlekey}</td><td>${titledata}</td></tr>" >> ${targetfile}
    done
+   last_patched=`grep "LAST_PATCHED_DATE=" ${SRCDIR}/secaudit_${hostid}.txt | awk -F\= {'print $2'}`
+   if [ "${last_patched}." != "." ];    # only if a collector version that provides it (V0.28+)
+   then
+      echo "<tr><td>Last Patched</td><td>${last_patched}</td></tr>" >> ${targetfile}
+   fi
    echo "<tr><td>ProcessVersion</td><td>${PROCESSING_VERSION}</td></tr>" >> ${targetfile}
    echo "</table></center><br><br>" >> ${targetfile}
 } # write_key_info
@@ -2317,7 +2402,12 @@ build_appendix_a() {
       echo "<table border=\"1\"><tr bgcolor=\"${colour_border}\"><td><center>User Default Settings</center></td></tr>" >> ${htmlfile}
       if [ ${maxdays} -gt 61 ];  # doesn't expire in 61 days as a default
       then
-         echo "<tr bgcolor=\"${colour_alert}\"><td>Default password expiry > 61 days, it is ${maxdays}</td></tr>" >> ${htmlfile}
+         if [ "${ostype}." == "SunOS." -a "${maxdays}." == "99999." ];
+         then
+            echo "<tr bgcolor=\"${colour_alert}\"><td>Password expiry MAXWEEKS not set, no expiry</td></tr>" >> ${htmlfile}
+         else
+            echo "<tr bgcolor=\"${colour_alert}\"><td>Default password expiry > 61 days, it is ${maxdays}</td></tr>" >> ${htmlfile}
+         fi
          inc_counter ${hostid} alert_count
          log_alert_detail ${hostid} "Default password expiry > 61 days, it is ${maxdays}"
       else
@@ -2343,7 +2433,7 @@ build_appendix_a() {
       else
          echo "<tr bgcolor=\"${colour_OK}\"><td>Default minimum password length is OK, it is ${minlen}</td></tr>" >> ${htmlfile}
       fi
-      if [ "${ostype}." != "SunOS." ];         # SunOS does not have tghis setting
+      if [ "${ostype}." != "SunOS." ];         # SunOS does not have this setting
       then
          if [ ${warndays} -lt 7 ];  # less than 7 days warning is insufficient
          then
@@ -2354,7 +2444,6 @@ build_appendix_a() {
          fi
       fi
       echo "</table>" >> ${htmlfile}
-##todelete#   fi
 
    # A.7 must be no additional users in the root group
    echo "<h3>A.7 No additional users in the root group</h3>" >> ${htmlfile}
@@ -4881,7 +4970,7 @@ build_appendix_f() {
       unset lowercasevar2         # done with type specefic usage
       echo "</table>" >> ${htmlfile}
    else
-      ispermitted=`grep -i "SELINUX_NOT_INSTALLED=YES" ${CUSTOMFILE}`
+      ispermitted=`grep -i "^SELINUX_NOT_INSTALLED=YES" ${CUSTOMFILE}`
       if [ "${ispermitted}." != "." ];
       then
 	      echo "<p>SELinux is not installed on this server. Permiited by custom file override.</p>" >> ${htmlfile}
@@ -4889,6 +4978,40 @@ build_appendix_f() {
          echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>SELinux is not installed on the server (no /etc/selinux/config file found, provided by selinux-policy)</td></tr></table>" >> ${htmlfile}
          inc_counter ${hostid} alert_count
          log_alert_detail ${hostid} "SELinux is not installed on this server (needs selinux-policy)"
+      fi
+   fi
+
+   # F.5 Check patching is up-to-date, only if we have been asked to
+   max_days_nopatch=`grep "^MUST_PATCH_WITHIN_DAYS=" ${CUSTOMFILE} | awk -F\= {'print $2'}`
+   if [ "${max_days_nopatch}." != "." ];
+   then
+      # will be UNKNOWN if the server is one we have not catered for (not debian/kali/rhel/sunos)
+      last_patched=`grep "^LAST_PATCHED_DATE=" ${SRCDIR}/secaudit_${hostid}.txt | grep -v UNKNOWN | awk -F\= {'print $2'}`
+   else
+      last_patched=""   # else save a grep
+   fi
+   # if - only if a collector version that provides it as used (collector version V0.28+)
+   # if - only if we have been asked to check that (processing version V0.28+)
+   if [ "${max_days_nopatch}." != "." ];
+   then
+      max_days_nopatch=`must_be_number "${max_days_nopatch}"`
+      if [ ${max_days_nopatch} -lt 1 ];
+      then
+         max_days_nopatch=""
+      fi
+   fi
+   if [ "${last_patched}." != "." -a "${max_days_nopatch}." != "." ]; 
+   then
+      echo "<h2>F.5 - Patching up to date check</h2>" >> ${htmlfile}
+      days_since_patched=`days_in_the_past_num "${last_patched}"`
+      if [ ${days_since_patched} -gt ${max_days_nopatch} ];
+      then
+         inc_counter ${hostid} alert_count
+         log_alert_detail ${hostid} "Server not patched in ${days_since_patched} days, limit is ${max_days_nopatch} days"
+         echo "<table bgcolor=\"${colour_alert}\" border=\"1\"><tr><td>Server not patched in ${days_since_patched} days, limit is ${max_days_nopatch} days, last patched on ${last_patched}</td></tr></table>" >> ${htmlfile}
+      else
+         echo "<p>This server was last patched on ${last_patched}, ${days_since_patched} days ago."  >> ${htmlfile}
+         echo "This is within the ${max_days_nopatch} day limit.</p>"  >> ${htmlfile}
       fi
    fi
 

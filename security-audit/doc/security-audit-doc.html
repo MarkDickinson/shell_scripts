@@ -1558,6 +1558,12 @@ lab 99% of them are not used.<br />
 Recomended you do not use this config file parameter unless absolutely necesary and
 you cannot customise the application to use a limited port range.
 </td></tr>
+<tr><td>MUST_PATCH_WITHIN_DAYS=nn</td><td>
+Added in version 0.28.<br />
+If present in a serve custom file then a section F.5 will be created in the report to check that
+the server had been patched within the previous nn days of the data collection
+being run. If not present in the custom file then that report section will not be produced.
+</td></tr>
 </table>
 
 <hr>

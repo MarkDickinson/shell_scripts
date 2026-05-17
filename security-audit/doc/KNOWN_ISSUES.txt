@@ -32,7 +32,7 @@ Known Bugs with the current release that need fixing
   in the directory path will cause problems. Not really an issue, just do not do it
 * Not a bug but take note:
   In customisation files do not put comments on the end of a data line unless it is
-  part of the data line syntax and it has a field for them s they will be treated as
+  part of the data line syntax and it has a field for them as they will be treated as
   part of the data. Comments are only lines with # in column 1
 * >>> Updates to support data collected from OpenIndiana/SunOS are still in progress
   and incomplete. 
@@ -117,6 +117,6 @@ Irritations caused by environments
   outside what is in /etc/services anyway.
 * I always use SSH sessiosn with X11 forwarding, that opens a port range only when a 
   ssh session is active (shows as a process like 'sshd: mark@pts/0' so I have an include file
-  for servers that provide X11 forwarding in the examples that allows tghe ports to be open
+  for servers that provide X11 forwarding in the examples that allows the ports to be open
   in the firewall but also allows it to be OK is they are not in use that you will have to
   customise for your own port ranges if you use X11 forwarding in your own environment

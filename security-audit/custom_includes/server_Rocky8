@@ -22,6 +22,10 @@ NETWORK_PORT_NOLISTENER_TCPV6_OK=111:portmapper
 NETWORK_PORT_NOLISTENER_UDPV4_OK=111:portmapper
 NETWORK_PORT_NOLISTENER_UDPV6_OK=111:portmapper
 #
+# Networkmanager uses 546 for something, sometimes
+UDP_PORTV6_ALLOWED=:546:NetworkManager
+NETWORK_PORT_NOLISTENER_UDPV6_OK=546:may not always be there
+#
 #NETWORK_TCPV4_PROCESS_ALLOW=/usr/sbin/rpc.statd
 #NETWORK_TCPV4_PROCESS_ALLOW=/usr/sbin/rpc.mountd
 #
@@ -65,6 +69,7 @@ ALLOW_DIRPERM_SYSTEM=sshd:
 ALLOW_DIRPERM_SYSTEM=mysql:
 ALLOW_DIRPERM_SYSTEM=rpcuser:
 ALLOW_DIRPERM_SYSTEM=nfsnobody:
+ALLOW_DIRPERM_SYSTEM=nfs:
 ALLOW_DIRPERM_SYSTEM=dnsmasq:
 ALLOW_DIRPERM_SYSTEM=unbound:
 ALLOW_DIRPERM_SYSTEM=nagios:
@@ -114,7 +119,6 @@ SUID_ALLOW=/usr/libexec/clevis-luks-udisks2:
 SUID_ALLOW=/usr/libexec/qemu-bridge-helper:
 SUID_ALLOW=/usr/libexec/Xorg.wrap:
 SUID_ALLOW=/usr/libexec/spice-gtk-x86_64/spice-client-glib-usb-acl-helper:
-SUID_ALLOW=/usr/sbin/userhelper:
 SUID_ALLOW=/usr/sbin/mount.nfs:
 SUID_ALLOW=/usr/bin/fusermount:
 SUID_ALLOW=/usr/bin/chfn:
@@ -141,7 +145,7 @@ HOMEDIR_MISSING_OK=cockpit-ws:
 HOMEDIR_MISSING_OK=cockpit-wsinstance:
 HOMEDIR_MISSING_OK=saslauth:
 #HOMEDIR_MISSING_OK=rpc:     this user is not created on a fresh C8 install
-HOMEDIR_MISSING_OK=rngd:
+#HOMEDIR_MISSING_OK=rngd:    as above
 HOMEDIR_MISSING_OK=pulse:
 HOMEDIR_MISSING_OK=clevis:
 HOMEDIR_MISSING_OK=pipewire:
@@ -150,3 +154,5 @@ SUDOERS_ALLOW_ALL_SERVERS=root:
 SUDOERS_ALLOW_ALL_COMMANDS=root:
 SUDOERS_ALLOW_ALL_SERVERS=%wheel:
 SUDOERS_ALLOW_ALL_COMMANDS=%wheel:
+# New in V.028
+MUST_PATCH_WITHIN_DAYS=20

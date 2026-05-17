@@ -92,7 +92,6 @@ SUID_ALLOW=/usr/bin/crontab:
 SUID_ALLOW=/usr/bin/locate:
 SUID_ALLOW=/usr/bin/write:
 SUID_ALLOW=/usr/bin/passwd:
-SUID_ALLOW=/media/.hal-mtab-lock:
 # These are buggers. The proc ones will change every process restart
 #SUID_ALLOW=/proc/1085/object/a.out
 #SUID_ALLOW=/proc/1122/object/a.out
@@ -113,11 +112,11 @@ FORCE_PERM_OK=/var/adm/spellhist:-rw-rw-rw-
 #
 # Network Ports that are expected to be listening
 TCP_PORTV4_ALLOWED=:22:sshd
-TCP_PORTV6_ALLOWED=:22:sshd
+#TCP_PORTV6_ALLOWED=:22:sshd    I only have this listening on tcpv4
 TCP_PORTV4_ALLOWED=:25:sendmail
 TCP_PORTV6_ALLOWED=:25:sendmail
-TCP_PORTV4_ALLOWED=:80:apache2
-TCP_PORTV6_ALLOWED=:80:apache2
+#TCP_PORTV4_ALLOWED=:80:apache2
+#TCP_PORTV6_ALLOWED=:80:apache2
 TCP_PORTV4_ALLOWED=:111:rpcbind
 TCP_PORTV6_ALLOWED=:111:rpcbind
 TCP_PORTV4_ALLOWED=:587:sendmail
@@ -134,3 +133,6 @@ NETWORK_TCPV6_PROCESS_ALLOW=/usr/lib/inet/inetd start:
 NO_FIREWALL_INSTALLED=YES
 #EXACT_ALERT_REASON=This server appears to be not running a firewall
 #EXACT_ALERT_REASON_NOTES=SunOS uses ipfilter firewall which is not yet supported by these scripts
+#
+# New in V.028
+MUST_PATCH_WITHIN_DAYS=20

@@ -11,6 +11,22 @@ should cope with expected new information missing. Ideally you would keep the co
 and processing script versions the same but still works if you do not.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.27 and version 0.28 are
+-------------------------------------------------------------------------------------
+(1) New custom file option MUST_PATCH_WITHIN_DAYS=nn added. If (only if) this exists
+    in a server custom file will a new section F.5 be reported saying whether the
+    server had been patched within the last NN days and create a new alert if over
+    that limit. NOTE! from the data as of the time the data collection was run, not
+    real time of course [I have a nrpe plugin for that].
+(2) From 0.28 onward the last date a server was patched is collected by the script
+    and the processing script reprts that in the server index page as information;
+    no checks on it unless (1) above is used for the server custom file. 
+(3) Bug-fix (workaround) for SunOS "ps -ef" display using start dates like
+    "May 15" instead of Linux "May15" that was throwing out the awk field
+    numbers when collector was run on openindiana that had been up for a while,
+    was causing false alerts in network check process matches
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.26 and version 0.27 are
 -------------------------------------------------------------------------------------
 Lots of cleanup while I am still on annual leave, then project may be dormant for another year.
@@ -22,7 +38,7 @@ Lots of cleanup while I am still on annual leave, then project may be dormant fo
     exact_alert_reason is not needed to flag it as expected for servers that must
     listen on 0.0.0.0 for sshd; and drops alert count by 1 :-).
 (3) Another bug fix, in 3 places warning counts were not being recorded correctly.
-(4) Alreading handled Debians use of 'nonexistent' as a valid user home dir, added
+(4) Already handled Debians use of 'nonexistent' as a valid user home dir, added
     rhels use of 'nonexisting' as valid also to stop alerting on that missing.
 
 -------------------------------------------------------------------------------------

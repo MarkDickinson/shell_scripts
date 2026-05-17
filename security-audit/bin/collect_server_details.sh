@@ -202,15 +202,21 @@
 #          (2) command= recording from autorized_keys added [gitea uses command=]
 #          (3) machine sshd config customisations in sshd_config.d dir
 #              now included in sshd_config collection as I have
-#              corectly moived my customisations there.
+#              corectly moved my customisations there.
 # 2026/03/16 - Bump version to 0.27 to match processing script bump.
+# 2026/05/15 - Version 0.28 
+#          (1) added collection of the last date the server was patched
+#          (2) cron checks now record cron.allow|deny and at.allow|deny
+#              from both /etc and /etc/cron.d instead of assuming the
+#              first for Linux and the second for SunOS as SunOS uses
+#              both so Linux may also be able to.
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.27"    # capture script version
+EXTRACT_VERSION="0.28"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
@@ -841,6 +847,17 @@ identify_network_listening_processes_sunos() {
 	 # script expects only the port part so only keep that. That allows the
 	 # existing Linux checks in the processing script to work unaltered.
          listenport=`echo "${listenport}" | awk -F\. {'print $NF'}`  # only keep the port
+	 # SunOS also reports ps output as (example) "May 15" where Linux uses "May15"
+	 # so the field awks will in some places (where date instead of time) 
+	 # may have the time field because of that extra space, strip that out
+	 # if present, assume if a decimal number as first byte it is a run time field
+	 #  FRED
+         testvar=${listenprocess:0:1}
+         if [[ $testvar =~ ^[0-9]+$ ]]; then
+            listenprocess=`echo "${listenprocess}" | awk {'print $2" "$3" "$4" "$5" "$6" "$7" "$8'}`
+            # remove the trailing spaces we will have added
+            listenprocess=`echo ${listenprocess}`
+         fi
          echo "NETWORK_TCPV4_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
       else
          listenport=`echo "${listenport}" | awk -F\. {'print $NF'}`  # only keep the port
@@ -855,6 +872,11 @@ identify_network_listening_processes_sunos() {
       listenprocess=`get_process_by_exact_pid "${pid}"`
       if [ "${listenprocess}." != "." ]
       then
+         testvar=${listenprocess:0:1}
+         if [[ $testvar =~ ^[0-9]+$ ]]; then
+            listenprocess=`echo "${listenprocess}" | awk {'print $2" "$3" "$4" "$5" "$6" "$7" "$8'}`
+            listenprocess=`echo ${listenprocess}`
+         fi
          listenport=`echo "${listenport}" | awk -F\. {'print $NF'}`  # only keep the port
          echo "NETWORK_TCPV6_PORT_${listenport}=${listenprocess}" >> ${LOGFILE}
       else
@@ -930,7 +952,13 @@ then
       osversion="No PRETTY_NAME in /etc/os-release"
    fi
 else
-   osversion="${ostype}"   # will put in SunOS for SunOS
+   tmpvar=`uname -a | egrep -i "kali|debian|ubuntu"`
+   if [ "${tmpvar}." != "." ];
+   then
+      osversion="Debian"   # special handling for Debian
+   else
+      osversion="${ostype}"   # will put in SunOS for SunOS
+   fi
 fi
 echo "TITLE_HOSTNAME=${myhost}" >> ${LOGFILE}
 echo "TITLE_CAPTUREDATE=${mydate}" >> ${LOGFILE}
@@ -1062,35 +1090,55 @@ done
 # Are cron.allow and cron.deny being used ?
 # ======================================================================
 timestamp_action "collecting cron information"
-if [ "${OStypeName}." != "SunOS." ];
-then
-   basedir="/etc"
-else
-   basedir="/etc/cron.d"    # SunOS puts them in here
-fi
-if [ -f ${basedir}/cron.deny ];
+if [ -f /etc/cron.deny -o -f /etc/cron.d/cron.deny ];
 then
    echo "CRON_DENY_EXISTS=YES" >> ${LOGFILE}
-   cat ${basedir}/cron.deny | while read dataline
-   do
-      if [ "${dataline}." != "." ];    # only record non-blank lines
-      then
-         echo "CRON_DENY_DATA=${dataline}" >> ${LOGFILE}
-      fi
-   done
+   if [ -f /etc/cron.deny ];
+   then
+      cat /etc/cron.deny | while read dataline
+      do
+         if [ "${dataline}." != "." ];    # only record non-blank lines
+         then
+            echo "CRON_DENY_DATA=${dataline}" >> ${LOGFILE}
+         fi
+      done
+   fi
+   if [ -f /etc/cron.d/cron.deny ];
+   then
+      cat $/etc/cron.d/cron.deny | while read dataline
+      do
+         if [ "${dataline}." != "." ];    # only record non-blank lines
+         then
+            echo "CRON_DENY_DATA=${dataline}" >> ${LOGFILE}
+         fi
+      done
+   fi
 else
    echo "CRON_DENY_EXISTS=NO" >> ${LOGFILE}
 fi
-if [ -f ${basedir}/cron.allow ];
+if [ -f /etc/cron.allow -o -f /etc/cron.d/cron.allow ];
 then
    echo "CRON_ALLOW_EXISTS=YES" >> ${LOGFILE}
-   cat ${basedir}/cron.allow | while read dataline
-   do
-      if [ "${dataline}." != "." ];    # only record non-blank lines
-      then
-         echo "CRON_ALLOW_DATA=${dataline}" >> ${LOGFILE}
-      fi
-   done
+   if [ -f /etc/cron.allow ];
+   then
+      cat /etc/cron.allow | while read dataline
+      do
+         if [ "${dataline}." != "." ];    # only record non-blank lines
+         then
+            echo "CRON_ALLOW_DATA=${dataline}" >> ${LOGFILE}
+         fi
+      done
+   fi
+   if [ -f /etc/cron.d/cron.allow ];
+   then
+      cat /etc/cron.d/cron.allow | while read dataline
+      do
+         if [ "${dataline}." != "." ];    # only record non-blank lines
+         then
+            echo "CRON_ALLOW_DATA=${dataline}" >> ${LOGFILE}
+         fi
+      done
+   fi
 else
    echo "CRON_ALLOW_EXISTS=NO" >> ${LOGFILE}
 fi
@@ -1317,35 +1365,57 @@ unset cron_parse_out_commands
 # ======================================================================
 # Are at.allow and at.deny being used ?
 # ======================================================================
-if [ "${OStypeName}." != "SunOS." ];
-then
-	basedir="/etc"
-else
-	basedir="/etc/cron.d"   # SonOS puts them here
-fi
-if [ -f ${basedir}/at.deny ];
+# Linux normally at /etc/at.allow|deny but SunOS also allows overrides
+# in /etc/cron.d/at.allow|deny so Linux may as well.
+if [ -f /etc/at.deny -o -f /etc/cron.d/at.deny ];
 then
    echo "CRON_AT_DENY_EXISTS=YES" >> ${LOGFILE}
-   cat ${basedir}/at.deny | while read dataline
-   do
-      if [ "${dataline}." != "." ];    # only record non-blank lines
-      then
-         echo "CRON_AT_DENY_DATA=${dataline}" >> ${LOGFILE}
-      fi
-   done
+   if [ -f /etc/at.deny ];
+   then
+      cat /etc/at.deny | while read dataline
+      do
+         if [ "${dataline}." != "." ];    # only record non-blank lines
+         then
+            echo "CRON_AT_DENY_DATA=${dataline}" >> ${LOGFILE}
+         fi
+      done
+   fi
+   if [ -f /etc/cron.d/at.deny ];
+   then
+      cat /etc/cron.d/at.deny | while read dataline
+      do
+         if [ "${dataline}." != "." ];    # only record non-blank lines
+         then
+            echo "CRON_AT_DENY_DATA=${dataline}" >> ${LOGFILE}
+         fi
+      done
+   fi
 else
    echo "CRON_AT_DENY_EXISTS=NO" >> ${LOGFILE}
 fi
-if [ -f ${basedir}/at.allow ];
+if [ -f /etc/at.allow -o -f /etc/cron.d/at.allow ];
 then
    echo "CRON_AT_ALLOW_EXISTS=YES" >> ${LOGFILE}
-   cat ${basedir}/at.allow | while read dataline
-   do
-      if [ "${dataline}." != "." ];    # only record non-blank lines
-      then
-         echo "CRON_AT_ALLOW_DATA=${dataline}" >> ${LOGFILE}
-      fi
-   done
+   if [ -f /etc/at.allow ];
+   then
+      cat /etc/at.allow | while read dataline
+      do
+         if [ "${dataline}." != "." ];    # only record non-blank lines
+         then
+            echo "CRON_AT_ALLOW_DATA=${dataline}" >> ${LOGFILE}
+         fi
+      done
+   fi
+   if [ -f /etc/cron.d/at.allow ];
+   then
+      cat /etc/cron.d/at.allow | while read dataline
+      do
+         if [ "${dataline}." != "." ];    # only record non-blank lines
+         then
+            echo "CRON_AT_ALLOW_DATA=${dataline}" >> ${LOGFILE}
+         fi
+      done
+   fi
 else
    echo "CRON_AT_ALLOW_EXISTS=NO" >> ${LOGFILE}
 fi
@@ -1635,7 +1705,8 @@ if [ -d /etc/ssh/sshd_config.d ];
 then
    # CAUTION: use *conf to list files as that returns the dir path,
    #          just * will not include the dir on rhel servers
-   ls /etc/ssh/sshd_config.d/*.conf | while read conffile
+   # If none exist the no files found error goes to null
+   ls /etc/ssh/sshd_config.d/*.conf 2>/dev/null | while read conffile
    do
       xx=`grep -i "Banner" "${conffile}" | grep -v "^#" | tail -1`
       if [ "${xx}." != "." ];
@@ -1664,7 +1735,7 @@ if [ -d /etc/ssh/sshd_config.d ];  # dir may not exist
 then
    # CAUTION: listing *conf returns full path of filename, just /* without
    #          the conf does not return the path on rhel family servers
-   ls /etc/ssh/sshd_config.d/*conf | while read optfile
+   ls /etc/ssh/sshd_config.d/*conf 2>/dev/null | while read optfile
    do
       record_file SSHD_CONFIG_DATA "${optfile}"
    done
@@ -1851,6 +1922,65 @@ then
       fi
    done
 fi
+
+# ======================================================================
+# Record last patching date if we can 
+# ======================================================================
+timestamp_action "searching for last date server was patched"
+# Different log files for different OS's
+isdebian=`uname -a | grep -i "Debian"`
+if [ "${isdebian}." == "." ];
+then
+   isdebian=`uname -a | grep -i "Ubuntu"`
+fi
+if [ "${isdebian}." == "." ];
+then
+   isdebian=`uname -a | grep -i "kali"`
+fi
+# also check sunos now
+issunos=`uname -a | grep -i sunos`
+# If not Debian or SunOS we assume RHEL based systems
+# store last patch/update date in lastupdatedate, write after all the if/else
+# If Debian 
+if [ "${isdebian}." != "." ];
+then
+   if [ -f /var/cache/apt/pkgcache.bin ];
+   then
+      # Debian based server checks are limited, we can really only check when cache was last updated
+      # (updated, not upgraded)
+      lastupdatetime=`ls -l /var/cache/apt/pkgcache.bin | cut -d' ' -f6,7,8`
+      lastupdatedate=`date --date="${lastupdatetime}" +"%Y-%m-%d"`
+   else
+      lastupdatedate="UNKNOWN"
+   fi
+elif [ "${issunos}." != "." ];
+then
+   # get last sucessfull update date (it will be in format yyyy-mm-dd)
+   lastupdatedate=`pkg history | grep update | grep Succeeded | tail -1 | awk {'print $1'} | awk -FT {'print $1'}`
+else   # else we assume a rhel family system
+   # Assume updatecomplete is when a transaction was last tested as OK and started to run
+   # dnf logs roll over a lot so check previous ones if not found
+   lastupdatecomplete=`grep "INFO Complete!" /var/log/dnf.log | tail -1 \
+     | awk {'print $1'} | sed -e's/T/ /' | sed -e's/Z//' | awk -F+ {'print $1'}`
+   if [ "${lastupdatecomplete}." == "." ];
+   then
+      lastupdatecomplete=`grep "INFO Complete!" /var/log/dnf.log.1 | tail -1 \
+        | awk {'print $1'} | sed -e's/T/ /' | sed -e's/Z//' | awk -F+ {'print $1'}`
+      if [ "${lastupdatecomplete}." == "." ];
+      then
+         lastupdatecomplete=`grep "INFO Complete!" /var/log/dnf.log.2 | tail -1 \
+           | awk {'print $1'} | sed -e's/T/ /' | sed -e's/Z//' | awk -F+ {'print $1'}`
+      fi
+   fi
+   if [ "${lastupdatecomplete}." != "." ];
+   then
+      # will be YYYY-MM-DD HH:MM, just keep the date
+      lastupdatedate=`echo "${lastupdatecomplete}" | awk {'print $1'}`
+   else
+      lastupdatedate="UNKNOWN"
+   fi
+fi
+echo "LAST_PATCHED_DATE=${lastupdatedate}" >> ${LOGFILE}
 
 # ======================================================================
 #

@@ -84,10 +84,10 @@ TCP_PORTV6_ALLOWED=:22:ssh if tcpv6 enabled:WILD
 NETWORK_PORT_NOLISTENER_TCPV6_OK=22:ssh tcpv6 may be disabled
 TCP_PORTV4_ALLOWED=:9090:Cockpit (service cockpit.socket):WILD
 #
-TCP_PORTV4_ALLOWED=:111:portmapper
-TCP_PORTV6_ALLOWED=:111:portmapper
-UDP_PORTV4_ALLOWED=:111:portmapper
-UDP_PORTV6_ALLOWED=:111:portmapper
+TCP_PORTV4_ALLOWED=:111:portmapper:WILD
+TCP_PORTV6_ALLOWED=:111:portmapper:WILD
+UDP_PORTV4_ALLOWED=:111:portmapper:WILD
+UDP_PORTV6_ALLOWED=:111:portmapper:WILD
 # But is not on all Debian11 servers (its on nagios2 but not vmhost4)
 NETWORK_PORT_NOLISTENER_TCPV4_OK=111:portmapper
 NETWORK_PORT_NOLISTENER_TCPV6_OK=111:portmapper
@@ -181,3 +181,6 @@ SUDOERS_ALLOW_ALL_COMMANDS=%sudo:
 # configuration is applied.
 #EXACT_ALERT=Insecure sshd ListenAddress
 #EXACT_ALERT_REASON=On Debian sshd starts before network is configured so 0.0.0.0 must be used or it will not start
+#
+# New in V.028
+MUST_PATCH_WITHIN_DAYS=20

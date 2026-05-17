@@ -116,7 +116,6 @@ SUID_ALLOW=/usr/lib/x86_64-linux-gnu/utempter/utempter:
 SUID_ALLOW=/usr/bin/procmail:
 SUID_ALLOW=/usr/bin/ssh-agent:
 SUID_ALLOW=/usr/bin/mail-lock:
-SUID_ALLOW=/usr/bin/mutt_dotlock:
 SUID_ALLOW=/usr/bin/chage:
 SUID_ALLOW=/usr/bin/write.ul:
 SUID_ALLOW=/usr/bin/mail-touchlock:
@@ -127,6 +126,8 @@ SUID_ALLOW=/usr/bin/expiry:
 SUID_ALLOW=/usr/bin/dotlockfile:
 SUID_ALLOW=/usr/bin/wall:
 SUID_ALLOW=/usr/sbin/unix_chkpwd:
+# Below only if 'mutt' installed, I always do
+SUID_ALLOW=/usr/bin/mutt_dotlock:
 #
 # Force explicit files as OK when checked, full path is needed
 # /etc/dumpdates is normally also writeable by group disk
