@@ -3,11 +3,11 @@
 #
 # nagios_submit_passive_update.sh  (V0.02)
 #
-# For Debian user this REQUIRED package netcat-openbsd, it will not work
+# For Debian users this REQUIRES package netcat-openbsd, it will not work
 # with the package netcat-traditional (both behave differently to the version
 # of netcat with alma/rocky/fedora, a pain to figure out).
 #
-# There are three "CHANGE ME" lines in the glocal vales to change section
+# There are three "CHANGE ME" lines in the global vales to change section
 # you will need to update to use this.
 #
 # Nagios allows scripts to write process check information directly to the
@@ -40,6 +40,13 @@
 # Syntax: refer to the examples below
 # Note:   The service name must exactly match (case sensitive) the service
 #         name defined to nagios.
+#
+# USE CASES
+#  I use this on my backup server(s) to post an alert saying a lot
+#  of processes are being stopped for backups to run which will
+#  get displayed along with all the warnings processes have stopped
+#  running. And then run again afterward to clear that one posted alert.
+#  Or you could just post any message you want as an alert :-)
 #
 # Requires...
 #  - The nc command 

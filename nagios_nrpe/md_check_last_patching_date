@@ -1,0 +1,175 @@
+#!/bin/bash
+# =========================================================================
+# md_check_last_patching_date
+#
+# Try to ensure updates are being applied to servers within a reasonable
+# time frame.
+#
+# The nn days ago check is aproximate, as the 'date' command options
+# differ between OS's I have removed heaps of code that handled each
+# and just assume 30 days per month for month and year changes. But
+# that is enough of a check to spot those not being patched.
+#
+# Paramaters: none - I never allow nagios to pass parameters to checks
+#
+# Expects for the package managers
+#  for debian apt and its history logs,
+#  for rhel dnf and the dnf history logs (but will switch to apt checks if apt is found),
+#  for Openindiana will use the pkg history command
+#
+# This script only covers the OS families I have running; it may grow
+# over time if I need others.
+#
+# BETA: have not actually run this over a year change to test that logic
+#       works.
+#
+# Remember:
+#   add the command to your nagios command list on your nagios server
+#   add the command to your nrpe command list on all remote servers
+#   add the service check entry for it on the nagios server :-)
+#
+# =========================================================================
+maxdayswarn="20"      # maximum number of days a server can remain unpatched before warning
+maxdayscrit="28"      # maximum number of days a server can remain unpatched before critical
+#
+EXIT_OK=0
+EXIT_WARN=1
+EXIT_CRIT=2
+EXIT_FATAL=3
+#
+lastupdatedate="UNKNOWN"   # default
+#
+# -------------------------------------------------------------------
+# Different log files and package managers for different OS's
+# Work out what we are running with.
+# -------------------------------------------------------------------
+isdebian=`uname -a | grep -i "Debian"`
+if [ "${isdebian}." == "." ];
+then
+   isdebian=`uname -a | grep -i "Ubuntu"`
+fi
+# also check sunos now
+issunos=`uname -a | grep -i sunos`
+# If not Debian or SunOS we assume RHEL based systems, which could use rpm or apt
+if [ "${isdebian}." == "." -a "${issunos}." == "." ];
+then
+   test1=`which apt`
+   if [ "${test1}." != "." ];
+   then
+      isdebian="usesApt"    # so isdebian is not empty, to use apt
+   fi
+fi
+
+# -------------------------------------------------------------------
+# make sure files we expect for the package manager decided on exist
+# -------------------------------------------------------------------
+if [ "${isdebian}." != "." -a ! -r /var/log/apt/history.log ];
+then
+   echo "APT history log not found or not readable"
+   exit ${EXIT_WARN}
+elif [ "${issunos}." == "." -a "${isdebian}." == "." -a ! -r /var/log/dnf.log ];
+then
+   echo "DNF history log not found or not readable"
+   exit ${EXIT_WARN}
+# else all is OK, SunOS will use pkg command and no other checks needed
+fi
+
+# -------------------------------------------------------------------
+#
+# for all OS'es get the last patched date as YYYY-MM-DD so a common
+# date check can be done in the code following all the possible
+# different methods of extracting it.
+#
+# -------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# store last patch/update date in lastupdatedate, write after all the if/else
+# -------------------------------------------------------------------
+# If Debian - check apt history
+if [ "${isdebian}." != "." ];
+then
+   lastupdatedate=`grep "Start-Date:" /var/log/apt/history.log | awk {'print $2'} | sort | tail -1`
+   if [ "${lastupdatedate}." == "." ];
+   then
+      lastupdatedate=`zgrep "Start-Date:" /var/log/apt/history.log.* | awk {'print $2'} | sort | tail -1`
+   fi
+   if [ "${lastupdatedate}." == "." ];
+   then
+      lastupdatedate="UNKNOWN"
+   fi
+elif [ "${issunos}." != "." ];
+then
+   # get last sucessfull update date (it will be in format yyyy-mm-dd)
+   lastupdatedate=`pkg history | grep update | grep Succeeded | tail -1 | awk {'print $1'} | awk -FT {'print $1'}`
+else   # else we assume a rhel family system
+   # Assume update complete is when a transaction was last tested as OK and started to run
+   # dnf logs roll over a lot so check previous ones if not found
+   lastupdatecomplete=`grep "INFO Complete!" /var/log/dnf.log | tail -1 \
+     | awk {'print $1'} | sed -e's/T/ /' | sed -e's/Z//' | awk -F+ {'print $1'}`
+   if [ "${lastupdatecomplete}." == "." ];
+   then
+      lastupdatecomplete=`grep "INFO Complete!" /var/log/dnf.log.1 | tail -1 \
+        | awk {'print $1'} | sed -e's/T/ /' | sed -e's/Z//' | awk -F+ {'print $1'}`
+      if [ "${lastupdatecomplete}." == "." ];
+      then
+         lastupdatecomplete=`grep "INFO Complete!" /var/log/dnf.log.2 | tail -1 \
+           | awk {'print $1'} | sed -e's/T/ /' | sed -e's/Z//' | awk -F+ {'print $1'}`
+      fi
+   fi
+   if [ "${lastupdatecomplete}." != "." ];
+   then
+      # will be YYYY-MM-DD HH:MM, just keep the date
+      lastupdatedate=`echo "${lastupdatecomplete}" | awk {'print $1'}`
+   else
+      lastupdatedate="UNKNOWN"
+   fi
+fi
+
+# ----------------------------------------------------------------------
+# the last pathed date will now be in lastupdatedate as YYYY-MM-DD,
+# or value will be UNKNOWN if we could not determine it.
+# ----------------------------------------------------------------------
+if [ "${lastupdatedate}." != "UNKNOWN." ];
+then
+   lastyear=`echo "${lastupdatedate}" | awk -F\- {'print $1'}`
+   lastmonth=`echo "${lastupdatedate}" | awk -F\- {'print $2'}`
+   lastday=`echo "${lastupdatedate}" | awk -F\- {'print $3'}`
+   currentdate=`date "+%Y %m %d"`
+   currentyear=`echo "${currentdate}" | awk {'print $1'}`
+   currentmonth=`echo "${currentdate}" | awk {'print $2'}`
+   currentday=`echo "${currentdate}" | awk {'print $3'}`
+   # just aproximate, assume 30 days per month instead of lots of arithmetic
+   daycountnow=$(( ${currentmonth} * 30 ))
+   daycountnow=$(( ${daycountnow} + currentday ))
+   daycountlast=$(( ${lastmonth} * 30 ))
+   daycountlast=$(( ${daycountlast} + ${lastday} ))
+   # in case we have a prev year (lower month) start with a number large enough to delete 365 days
+   # assume we are at most one year prev in history so Jan only goes back max 365
+   # well back max of 12 * 30 (360)
+   daycountlast=$(( ${daycountlast} + 365 ))
+   daycountnow=$(( ${daycountnow} + 365 ))
+   if [ ${currentmonth} -lt ${lastmonth} ];
+   then
+      monthdiff=$(( ( ${lastmonth} - ${currentmonth} ) * 30 )) 
+      daycountlast=$(( ${daycountlast} - ${monthdiff} ))
+   fi 
+   # now we can check the days difference
+   daysdiff=$(( ${daycountnow} - ${daycountlast} ))
+   if [ ${daysdiff} -gt ${maxdayscrit} ];
+   then
+      echo "Last package change was over ${maxdayscrit} days ago; last update on ${lastupdatedate}"
+      exit ${EXIT_CRIT}
+   fi
+   if [ ${daysdiff} -gt ${maxdayswarn} ];
+   then
+      echo "Server not updated in last ${maxdayswarn} days; last update on ${lastupdatedate}"
+      exit ${EXIT_WARN}
+   fi
+   echo "Last package update was ${daysdiff} days ago"
+   exit ${EXIT_OK}
+else
+   echo "Unable to determine last patching date"
+   exit ${EXIT_WARN}
+fi
+# should never get here
+exit ${EXIT_FATAL}

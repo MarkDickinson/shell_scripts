@@ -1,0 +1,59 @@
+#!/bin/bash
+# ------------------------------------------------------------
+# md_passive_default: Mark Dickinson, 2023
+#
+# I have a service that only wants passive checks.
+# 
+# You can disable nagios active checks on the service with
+# active_checks_enabled 0, but then is shows as a warning that
+# checks are disabled on the tactical display, so
+# 10 hosts=10 warnings on the display which we do not want.
+#
+# So for a passive service that does not have active checks
+# disabled nagios will check it shortly after nagios starts 
+# or at the check interval; for passive services I have the
+# check interval as every 7 days (almost an inactive check :-)).
+#
+# But the service needs sonething to run, which is this check,
+# which simply always returns OK.
+#
+# Examples (directory path) here are for Debian. Common locations are
+#     debian       - normally uses /usr/lib/nagios/plugins
+#     rhel         - normally uses /usr/lib64/nagios/plugins
+#     openindiana  - normally uses /usr/local/nagios/libexec (compiled from source)
+#
+# NRPE - if run by nrpe add this to /etc/nrpe/nrpe.conf or whatever you use
+#   command[md_passive_default]=/usr/lib/nagios/plugins/md_passive_default
+#   
+# NAGIOS - the command also needs to be defined to nagios on teh server running nagios
+#   define command{
+#           command_name    md_passive_default
+#           command_line    /usr/lib/nagios/plugins/md_passive_default
+#           }
+#   
+# EXAMPLE SERVICE ENTRY - I always use nrpe
+#   define service{
+#           use                             local-service         ; Name of service template to use
+#           hostgroup_name                  all-linux-hosts       ; group of servers
+#           service_description             Passive-slot1
+#           check_command                   check_nrpe!md_passive_default
+#           check_interval                  10080         ; active checks only once every 7 days
+#           retry_interval                  10080         ; for a non-OK do not retry for 7 days
+#           passive_checks_enabled          1             ; passive checks any time
+#           flap_detection_enabled          0             ; disable, places a warning on dashboard
+#   #       active_checks_enabled           0             ; using disable active checks places warning on dashboard
+#           max_check_attempts              1             ; for non-OK retry N times at retry_interval
+#                                                         ; max_check_attempts cannot be 0
+#           notification_interval           10080       ; cannot be less than check interval
+#           }
+#
+# ------------------------------------------------------------
+
+# Standard nagios/nrpe exit responses
+EXIT_OK=0
+EXIT_WARN=1
+EXIT_CRIT=2
+EXIT_FATAL=3    # fatal is for plugin errors
+
+echo "Passive check cleared"
+exit ${EXIT_OK}
