@@ -1,0 +1,241 @@
+#!/bin/bash
+# ------------------------------------------------------------
+# md_check_timesync: Mark Dickinson, 2026
+# nrpe plugin to check that time sync is running correctly
+#
+# I run a mix of servers, some have chrony and some still
+# use ntp. This script will handle both.
+#
+# plugin regirements implemented
+#  result code:
+#    0 - OK
+#    1 - Warning, check completed but a warning 
+#    2 - Critical, plugin detected an error
+#    3 - Unknown, invalid command line arguments or internal
+#        script error (unable to fork subprocess etc).
+#  text output to stdout, max one line for normal operation
+#    SERVICE STATUS: Information text
+#
+# Known bugs:
+#  maybe, maybe not, not sure if I need another 0 in the
+#  divide on the ntpq results to get correct microsecs value.
+#  I don't intend to run both chronyd and ntpd on a server
+#  to check. As is a 1.nn offset will show as 0.001nn where
+#  it maybe shold be 0.0001nn. 
+# ------------------------------------------------------------
+
+EXIT_OK=0
+EXIT_WARN=1
+EXIT_CRIT=2
+EXIT_FATAL=3        # fatal is generally a script error
+
+myscriptname=`basename $0`  # only used if a fatal error to include in
+                            # the message returned what the script was
+# Default thresholds we check
+DELAY_CRIT="2"      # more than 2 secs difference is critical
+DELAY_WARN="1"      # more than 1 sec difference is warning
+
+# -----------------------------------------------------------
+# I do not let nagios pass parms (the dont_blame setting)
+# but others might.
+# You could put code to do that here to update the DELAY_xxxx
+# values set above, but also would need to put in some checks
+# to make sure the values were numeric.
+# I will not put those in, I don't need them.
+# -----------------------------------------------------------
+
+# -----------------------------------------------------------
+# check_chronyd: Used if chronyd is running as the NTP server
+# If OK return a whole secs value plus the actual real value
+# If an error return 999 plus error text
+# 
+# we use chronyc and expect a response similar to the below
+#
+# root@vmhost4:~# chronyc tracking
+# Reference ID    : 67F24445 (ns2.tdc.akl.telesmart.co.nz)
+# Stratum         : 3
+# Ref time (UTC)  : Thu Jul 02 06:00:12 2026
+# System time     : 0.000313113 seconds slow of NTP time
+# Last offset     : +0.000013696 seconds
+# RMS offset      : 0.000196934 seconds
+# Frequency       : 29.795 ppm fast
+# Residual freq   : +0.000 ppm
+# Skew            : 0.047 ppm
+# Root delay      : 0.011494534 seconds
+# Root dispersion : 0.000986251 seconds
+# Update interval : 1028.5 seconds
+# Leap status     : Normal
+# -----------------------------------------------------------
+check_chronyd() {
+   # if the chronyc command does not exist chrony is not installed
+   exefile=`which chronyc 2>/dev/null`
+   if [ "${exefile}." == "." ];
+   then
+      echo "999 Chrony does not appear to be properly installed (no chronyc in path)"
+      return
+   fi
+   # We must be able to run the command
+   if [ ! -x ${exefile} ];
+   then
+      echo "999 Not authorised to run ${exefile}"
+      return
+   fi
+   # use chronyc to obtain how far of we are from the time sources
+   # Last offset     : -0.000019407 seconds
+   offsetline=`chronyc tracking 2>/dev/null | grep "System time" | tail -1`
+   # We can only check for the result if we got one.
+   if [ "${offsetline}." != "." ];
+   then
+      offsetsecs=`echo "${offsetline}" | awk -F: {'print $2'} | awk {'print $1'}`
+      offsetwholesecs=`echo "${offsetsecs}" | awk -F. {'print $1'}`
+      is_slow=`echo "${offsetline}" | grep -i "seconds slow"`
+      if [ "${is_slow}." != "." ];
+      then
+         offsetsecs="+${offsetsecs}"  # if system time is slow time source is ahead
+      else
+         offsetsecs="-${offsetsecs}"  # else time source is behind
+      fi
+      echo "${offsetwholesecs} ${offsetsecs}"  
+   else
+      echo "999 No reponse from chrony time daemon"
+   fi
+} # end of check_chronyd
+
+# -----------------------------------------------------------
+# check_ntpd: Used if ntpd is running as the NTP server
+# If OK return a whole secs value plus the actual real value
+# If an error return 999 plus error text
+#
+# We use ntpq and expect a response similar to the below
+#
+# root@phoenix ~]# ntpq -p
+#      remote           refid      st t when poll reach   delay   offset  jitter
+# ==============================================================================
+# *vmhost1.home.ar 103.242.70.5     3 u 1001 1024  377    0.665   +1.756   0.838
+# +vmhost4.home.ar 103.242.68.69    3 u  967 1024  377    0.633   -0.703   0.334
+# -----------------------------------------------------------
+check_ntpd() {
+   exefile=`which ntpq 2>/dev/null`
+   if [ "${exefile}." == "." ];
+   then
+      echo "999 NTPD does not appear to be properly installed (no ntpq in path)"
+      return
+   fi
+   # We must be able to run the command
+   if [ ! -x ${exefile} ];
+   then
+      echo "999 Not authorised to run ${exefile}"
+      return
+   fi
+
+   # buffer the response, we parse it a lot and dn't want resp to change while we do
+   bufferresp=`ntpq -p 2>/dev/null | grep -v jitter | grep -v '===='`
+   if [ "${bufferresp}." != "." ];
+   then
+      # A leading + throws out the sort, so remove + and - first before the sort, we only want the max
+      maxsecs=`echo "${bufferresp}" | awk {'print $9'} | sed -e's/+//' | sed -e's/-//' | sort -n | tail -1`
+      # parse resp again to get the correct + or -, if + time source is ahead so we are slow
+      actual_offset=`echo "${bufferresp}" | grep "${maxsecs}" | awk {'print $9'} | tail -1`
+      is_slow=`echo "${actual_offset}" | grep '+'`
+      # but value is in millisecs, so ntpq offset of +5.0 is actually +0.0000050
+      # the whole number before the . in the value
+      temp1=`echo "${maxsecs}" | awk -F. {'print $1'}`
+      # and after the .
+      temp2=`echo "${maxsecs}" | awk -F. {'print $2'}`
+      # put together without the .
+      hsecsval="${temp1}${temp2}"
+      # the leading 10# forces decimal otherwise a leading 0 would be treated as octal
+      offsetwholesecs=$(( 10#${hsecsval} / 1000000 ))   # so get actual full seconds into here, 0 is OK
+      # actual_offset will still be [+|-]n.nn returned by NTP, we want the result in the 100ths of secs
+      temp1=`echo "${hsecsval}" | awk {'print $1 / 1000000'}` 
+      if [ "${is_slow}." == "." ];
+      then
+         temp1="+${temp1}"
+      else
+         temp1="-${temp1}"
+      fi
+      echo "${offsetwholesecs} ${temp1}" 
+   else
+      echo "999 No reponse from NTP time daemon"
+   fi
+} # end of check_ntpd
+
+# -----------------------------------------------------------
+# get_msg_text: 
+# Input will be NNN message text string
+# We just want to return the text string
+# -----------------------------------------------------------
+get_msg_text() {
+   shift         # move past the first field
+   echo "$*"     # returm all the rest of the data
+} # end of get_msgtext
+
+# -----------------------------------------------------------
+# OK, so what is the server running; use "ps" to see what is actually
+# running as both ntp and chrony may have been installed
+# -----------------------------------------------------------
+ischronyd=`ps -ef | grep chronyd | grep -v grep`
+isntpd=`ps -ef | grep ntpd | grep -v grep`
+# They should NOT both be running
+if [ "${ischronyd}." != "." -a "${isntpd}." != "." ];
+then
+   echo "Both chronyd and ntpd are running, only one should be"
+   exit ${EXIT_CRIT}
+fi
+# But one should be
+if [ "${ischronyd}." == "." -a "${isntpd}." == "." ];
+then
+   echo "Neither chronyd or ntpd are running, one should be"
+   exit ${EXIT_CRIT}
+fi
+
+# -----------------------------------------------------------
+# Get the time offset using the correct command
+# -----------------------------------------------------------
+if [ "${ischronyd}." != "." ];
+then
+   respdata=`check_chronyd`
+   ntptype="chronyd"   # to include in offset msg
+elif [ "${isntpd}." != "." ];
+then
+   respdata=`check_ntpd`
+   ntptype="ntpd"   # to include in offset msg
+else
+   respdata="999 script error in ${myscriptname}" 
+fi
+
+# -----------------------------------------------------------
+# Check the return secs value
+# If GE 900 extract the message text to write and exit CRIT
+# -----------------------------------------------------------
+secs_offset=`echo "${respdata}" | awk {'print $1'}`
+if [ ${secs_offset} -ge 900 ];
+then
+   errmsg=`get_msg_text ${respdata}`
+   echo "${errmsg}"
+   exit ${EXIT_CRIT}
+fi
+
+# -----------------------------------------------------------
+# Common check from both if a valid value secs was returned
+# We got the secs_offset value above
+# -----------------------------------------------------------
+real_offset=`get_msg_text ${respdata}`  # the actual offset to use in the message
+if [ ${secs_offset} -gt ${DELAY_CRIT} ];
+then
+   echo "${ntptype} time source max offset ${real_offset} secs, exceeds ${DELAY_CRIT} secs"
+   exit ${EXIT_CRIT}
+elif [ ${secs_offset} -gt ${DELAY_WARN} ];
+then
+   echo "${ntptype} time source max offset ${real_offset} secs, exceeds ${DELAY_WARN} secs"
+   exit ${EXIT_WARN}
+else
+   echo "${ntptype} time source max offset is ${real_offset} secs from all time sources"
+   exit ${EXIT_OK}
+fi
+
+# -----------------------------------------------------------
+# Script error if we get here, we should have exited above
+# -----------------------------------------------------------
+echo "Script error in ${myscriptname}"
+exit ${EXIT_FATAL}

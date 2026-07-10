@@ -11,6 +11,20 @@ should cope with expected new information missing. Ideally you would keep the co
 and processing script versions the same but still works if you do not.
 
 -------------------------------------------------------------------------------------
+Noteable changes implemented between version 0.28 and version 0.29 are
+-------------------------------------------------------------------------------------
+(1) New OPTIONAL flag added to the processing script "--loghistory=yes" which if
+    used will log "datestamp,hostname,alerts,warnings" for all servers to a
+    history.log file each time the processing script is run with that flag.
+    Default is that it is not used; and should probably not be used as there is not
+    yet any decision on history.log retention or rotation and that will probably be
+    left to other scripts.
+    The purpose of the new flag and history.log file are so I can at some point
+    put in trend reporting (and outside the scope of this toolkit use it for
+    monitoring scripts to spot unexpected changes in the counts).
+    You may have your own uses for the file.
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.27 and version 0.28 are
 -------------------------------------------------------------------------------------
 (1) New custom file option MUST_PATCH_WITHIN_DAYS=nn added. If (only if) this exists

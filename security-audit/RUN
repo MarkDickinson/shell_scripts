@@ -12,6 +12,8 @@
 #--------------------------------------------------------------------------------
 bash bin/process_server_details.sh --datadir=rawdatafiles --archivedir=archive 
 #bash bin/process_server_details.sh --datadir=rawdatafiles    # or with no archive
+#                                                               or with history logging
+#bash bin/process_server_details.sh --datadir=rawdatafiles --archivedir=archive --loghistory=yes
 
 #--------------------------------------------------------------------------------
 # Example of processing updates to a single server named phoenix
@@ -23,7 +25,7 @@ bash bin/process_server_details.sh --datadir=rawdatafiles --archivedir=archive
 # 2nd line is checking and processing any new datafiles found
 #--------------------------------------------------------------------------------
 #bash bin/process_server_details.sh --datadir=rawdatafiles --checkchanged=list
-#bash bin/process_server_details.sh --datadir=rawdatafiles --checkchanged=process
+#bash bin/process_server_details.sh --datadir=rawdatafiles --checkchanged=process [--loghistory=yes]
 
 #--------------------------------------------------------------------------------
 # example of just refresing the index page

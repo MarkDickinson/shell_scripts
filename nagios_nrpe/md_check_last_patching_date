@@ -53,7 +53,7 @@ issunos=`uname -a | grep -i sunos`
 # If not Debian or SunOS we assume RHEL based systems, which could use rpm or apt
 if [ "${isdebian}." == "." -a "${issunos}." == "." ];
 then
-   test1=`which apt`
+   test1=`which apt 2>/dev/null`
    if [ "${test1}." != "." ];
    then
       isdebian="usesApt"    # so isdebian is not empty, to use apt
@@ -139,22 +139,22 @@ then
    currentmonth=`echo "${currentdate}" | awk {'print $2'}`
    currentday=`echo "${currentdate}" | awk {'print $3'}`
    # just aproximate, assume 30 days per month instead of lots of arithmetic
-   daycountnow=$(( ${currentmonth} * 30 ))
-   daycountnow=$(( ${daycountnow} + currentday ))
-   daycountlast=$(( ${lastmonth} * 30 ))
-   daycountlast=$(( ${daycountlast} + ${lastday} ))
+   daycountnow=$(( 10#${currentmonth} * 30 ))
+   daycountnow=$(( 10#${daycountnow} + 10#${currentday} ))
+   daycountlast=$(( 10#${lastmonth} * 30 ))
+   daycountlast=$(( 10#${daycountlast} + 10#${lastday} ))
    # in case we have a prev year (lower month) start with a number large enough to delete 365 days
    # assume we are at most one year prev in history so Jan only goes back max 365
    # well back max of 12 * 30 (360)
-   daycountlast=$(( ${daycountlast} + 365 ))
-   daycountnow=$(( ${daycountnow} + 365 ))
+   daycountlast=$(( 10#${daycountlast} + 365 ))
+   daycountnow=$(( 10#${daycountnow} + 365 ))
    if [ ${currentmonth} -lt ${lastmonth} ];
    then
-      monthdiff=$(( ( ${lastmonth} - ${currentmonth} ) * 30 )) 
-      daycountlast=$(( ${daycountlast} - ${monthdiff} ))
+      monthdiff=$(( ( 10#${lastmonth} - 10#${currentmonth} ) * 30 )) 
+      daycountlast=$(( 10#${daycountlast} - 10#${monthdiff} ))
    fi 
    # now we can check the days difference
-   daysdiff=$(( ${daycountnow} - ${daycountlast} ))
+   daysdiff=$(( 10#${daycountnow} - 10#${daycountlast} ))
    if [ ${daysdiff} -gt ${maxdayscrit} ];
    then
       echo "Last package change was over ${maxdayscrit} days ago; last update on ${lastupdatedate}"

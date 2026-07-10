@@ -12,7 +12,8 @@
 #              [--oneserver=<servername>] [--customfiledir=<directory>]  [--indexkernel=yes|no]
 #
 #         process_server_details.sh --datadir=<directory> [--archivedir] \
-#              [--customfiledir=<directory>] --checkchanged=list|process [--indexkernel=yes|no]
+#              [--customfiledir=<directory>] --checkchanged=list|process [--indexkernel=yes|no] \
+#              [--loghistory=yes|no]   # --loghistory should only be used with process, but not enforced
 #
 #         process_server_details.sh --datadir=<directory> --indexonly=yes [--indexkernel=yes|no]
 #
@@ -44,6 +45,9 @@
 #                        servers with capture files more recent than the last processing date
 #      --indexkernel     if yes will include the kernel version of each server on the main
 #                        index page, the default is not to include it
+#      --loghistory      if yes will write existing alert and warning counts for
+#                        every server reprted on into a history file that can be
+#                        used for later reporting or monitoring
 #   *  << parameters marked with this are intended to cut down on processing time
 #      when only a few servers need to be reprocessed and you do not want a full
 #      processing run against the 100's of servers you may have. The --oneserver is particularly
@@ -575,6 +579,8 @@
 #                       setting then check last patch date against the
 #                       number of days permitted (new optional F.5
 #                       which is only produced if setting exists)
+# MID: 2026/07/05 - Version 0.29 
+#                   (1) Added the optional --loghistory function
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -585,6 +591,7 @@ INDEXONLY="no"      # default is to actually process something
 INDEXKERNEL="no"    # default is to not include kernel versions on main index page
 CHECKCHANGE=""      # default nothing, depending on parms may be list or process
 ONLYLOCKOPERATION="no"  # default is normal processing
+LOGHISTORY="no"     # default is not to use the log history function (added in 0.29)
 while [[ $# -gt 0 ]];
 do
    parm=$1
@@ -622,6 +629,9 @@ do
       "--listlock"|"--showlock") ONLYLOCKOPERATION="list"
                    shift
                    ;;
+      "--loghistory") LOGHISTORY="${value}"
+                   shift
+                   ;;
       *)          echo "Unknown paramater value ${key}"
                   echo "Syntax:$0 --datadir=<directory> [--archivedir] [--oneserver=<servername>]"
                   echo "Please read the documentation."
@@ -631,7 +641,7 @@ do
 done
 
 # defaults that we need to set, not user overrideable
-PROCESSING_VERSION="0.28"
+PROCESSING_VERSION="0.29"
 MYDIR=`dirname $0`
 MYNAME=`basename $0`
 cd ${MYDIR}                           # all prcessing relative to script bin directory
@@ -652,6 +662,7 @@ fi
 WORKDIR="${BASEDIR}/workfiles"
 RESULTS_DIR="${BASEDIR}/results"
 OVERRIDES_DIR="${BASEDIR}/custom"
+HISTORY_LOG="${BASEDIR}/history/history.log"
 PERM_CHECK_RESULT="OK"
 NUM_VALUE=0      # used a lot
 CUSTOMFILE=""                        # set on a per server being processed basis
@@ -784,6 +795,11 @@ fi
 if [ "${CHECKCHANGE}." != "." -a "${CHECKCHANGE}." != "list." -a "${CHECKCHANGE}." != "process." ];
 then
    echo "the --checkchanged=value must have a value of list or process"
+   exit 1
+fi
+if [ "${LOGHISTORY}." != "no." -a "${LOGHISTORY}." != "yes." ];
+then
+   echo "the --loghistory=value must have a value of yes or no"
    exit 1
 fi
 
@@ -985,6 +1001,43 @@ days_in_the_past_num() {
       echo "0"    # UNKOWN, so use 0
    fi
 } # end of days_in_the_past_num
+
+# ----------------------------------------------------------
+#              history_trend_log
+# Added in version 0.29 - only if --loghistory=yes flag is used
+# Can be used for later reporting.
+# I will use the log as something to parse in nagios/nrpe 
+# scripts to monitor for unexpected changes found during
+# the regular processing each day.
+# ----------------------------------------------------------
+history_trend_log() {
+   histlogdir=`dirname ${HISTORY_LOG}`
+   if [ ! -d ${histlogdir} ];
+   then
+      mkdir "${histlogdir}"
+   fi
+   # Fields are "Server,Alerts,Warnings"
+   history_log_date=`date +"%Y%m%d%H%M"`
+   find ${RESULTS_DIR}/* -type d | while read dataline    # /* avoids getting root directory
+   do
+      msgdata=""
+      dataline=`basename ${dataline}`    # only want the server name 
+      if [ -f ${RESULTS_DIR}/${dataline}/alert_totals ];
+      then
+         alerts=`cat ${RESULTS_DIR}/${dataline}/alert_totals`
+      else
+         alerts=0
+      fi
+      msgdata="${dataline},${alerts}"
+      if [ -f ${RESULTS_DIR}/${dataline}/warning_totals ];
+      then
+         warns=`cat ${RESULTS_DIR}/${dataline}/warning_totals`
+      else
+         warns=0
+      fi
+      echo "${history_log_date},${msgdata},${warns}" >> "${HISTORY_LOG}"
+   done
+} # history_trend_log
 
 # ---------------------------------------------------------------
 # Helper routines for working out firewall rule port numbers
@@ -6949,6 +7002,15 @@ fi
 # Create the main top-level consolidated index page now
 # ----------------------------------------------------------
 build_main_index_page
+
+# ----------------------------------------------------------
+# Added in 0.29 to provide a trend log
+# ----------------------------------------------------------
+if [ "${LOGHISTORY}." == "yes." -a "${INDEXONLY}." == "no." ];
+then
+   log_message "Updating history log"
+   history_trend_log
+fi
 
 # ----------------------------------------------------------
 # Optional additional processing

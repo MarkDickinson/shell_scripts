@@ -210,13 +210,16 @@
 #              from both /etc and /etc/cron.d instead of assuming the
 #              first for Linux and the second for SunOS as SunOS uses
 #              both so Linux may also be able to.
+# 2026/07/10 - Version 0.29
+#              Version bump just to match processing script bump, no
+#              script changes.
 #
 # ======================================================================
 # Added the below PATH as when run by cron no files under /usr/sbin were
 # being found (like iptables and nft).
 export PATH=$PATH:/usr/sbin
 
-EXTRACT_VERSION="0.28"    # capture script version
+EXTRACT_VERSION="0.29"    # capture script version
 MAX_SYSSCAN=""            # default is no limit parameter
 SCANLEVEL_USED="FullScan" # default scanlevel status for collection file
 BACKUP_ETC="no"           # default is NOT to tar up etc
