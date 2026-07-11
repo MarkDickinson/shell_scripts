@@ -1285,7 +1285,7 @@ cron_parse_out_commands() {
          then
             if [ "${firstpart:0:1}." != "/". ];   # if not full path find the file
             then
-               cmdexists=`which ${firstpart} 2>/dev/null | | grep -v "no ${firstpart} in"`
+               cmdexists=`which ${firstpart} 2>/dev/null | grep -v "no ${firstpart} in"`
             else                                  # else use what was provided as full path
                cmdexists="${firstpart}"
             fi
