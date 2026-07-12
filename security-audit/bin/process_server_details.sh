@@ -530,6 +530,9 @@
 #                         SUDOERS_ALLOW_ALL_COMMANDS
 #                         ALLOW_DIRPERM_EXPLICIT
 #                         FORCE_ANYFILE_OK
+#                       See version 0.29 changes where selected unset matches
+#                       can now be done on fields not : terminated if explicitly
+#                       requested by the config file.
 # MID: 2026/02/15 - Version 0.26
 #                   Version bumped to match collector version change,
 #                   new data collected but have to test collector
@@ -581,6 +584,9 @@
 #                       which is only produced if setting exists)
 # MID: 2026/07/05 - Version 0.29 
 #                   (1) Added the optional --loghistory function
+#                   (2) Added a new UNSET_ALLOWED_NOCOLON=@keyword@ custom
+#                       file keywork to allow UNSET_VAR to be used on
+#                       'keyword' lines that do not terminate with a :
 #
 # ======================================================================
 # defaults that can be overridden by user supplied parameters
@@ -1247,7 +1253,25 @@ locate_custom_file() {
                then
                   echo " s'${actualvar}'# UNSET_VAR ${actualvar}'g" >> ${RESULTS_DIR}/sedlist_work
                else
-                  log_message "Ignoring (not a trailing : value) ${unsetline}"
+                  # V0.29 exception needed for ADD_SYSTEM_FILE_OWNER as I need that !
+                  # Make it generic, allow any additional value to be checked without a
+                  # terminating : (colon) if explicitly set as permitted in the config file
+                  # with the UNSET_ALLOWED_NOCOLON=@keyword@ option.
+                  suppress_keyword=`echo "${actualvar}" | awk -F\= {'print $1'}`
+                  suppress_allowed=`grep "UNSET_ALLOWED_NOCOLON=@${suppress_keyword}@" ${RESULTS_DIR}/customfile_merged`
+                  if [ "${suppress_allowed}." != "." ];
+                  then
+                     test_suppress_match=`echo "${actualvar}" | grep "${suppress_keyword}"`
+                  else
+                     test_suppress_match=""
+                  fi
+                  if [ "${test_suppress_match}." != "." ];
+                  then
+                     echo " s'${actualvar}'# UNSET_VAR ${actualvar}'g" >> ${RESULTS_DIR}/sedlist_work
+                  else
+                     log_message "Ignoring the below (not a trailing : value, and no UNSET_ALLOWED_NOCOLON= value)"
+                     log_message "-> ${unsetline}"
+                  fi
 	       fi
             fi
          done

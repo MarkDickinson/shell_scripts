@@ -1560,9 +1560,17 @@ you cannot customise the application to use a limited port range.
 </td></tr>
 <tr><td>MUST_PATCH_WITHIN_DAYS=nn</td><td>
 Added in version 0.28.<br />
-If present in a serve custom file then a section F.5 will be created in the report to check that
+If present in a server custom file then a section F.5 will be created in the report to check that
 the server had been patched within the previous nn days of the data collection
 being run. If not present in the custom file then that report section will not be produced.
+</td></tr>
+<tr><td>UNSET_ALLOWED_NOCOLON=@keyword@</td><td>
+Added in version 0.29.<br />
+The unset_var flag requires a : as the terminating value in a match.
+This new flag if present in a custom file will allow the UNSET_VAR to work on values
+that do not terminate with a :.
+It must be explicitly enabled for a keyword with UNSET_ALLOWED_NOCOLON as it
+enables an unsafe check.
 </td></tr>
 </table>
 
