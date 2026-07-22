@@ -19,5 +19,8 @@ Any subdirectories will be task specific scripts.
                       to populate dates in a html calendar, inserts pictures
                       for each month from a list provided, allows holidays
                       and bithdays to be inserted into day boxes.
-                      This is a cgi webserver script, you need to use your browsers
-                      print function to print it.
+                      This is a cgi webserver script, you could run it as a standalone
+                      script to create a html file and file-open that if you do
+                      not have a webserver; you need to use your browsers
+                      print function to print it however as the browser does
+                      the formtting based on the html.
