@@ -11,6 +11,17 @@ should cope with expected new information missing. Ideally you would keep the co
 and processing script versions the same but still works if you do not.
 
 -------------------------------------------------------------------------------------
+Changes made to 0.29 without a version bump
+-------------------------------------------------------------------------------------
+(1) 23Jul2026 - fix to 0.29 (no version change), if orphaned files or directories
+    were found Appendix J [orphan entries appedix] would overwrite Appendix I [process list];
+    it now writes to the correct appendix. Would probably have affected anyone running
+    docker containers as many of those use UIDs probably not on your system.
+    This issue probably would have been around for the last few versions, but only
+    triggered if you have orphaned files or directories (with no valid userid owner)
+    on your system.
+
+-------------------------------------------------------------------------------------
 Noteable changes implemented between version 0.28 and version 0.29 are
 -------------------------------------------------------------------------------------
 (1) New OPTIONAL flag added to the processing script "--loghistory=yes" which if

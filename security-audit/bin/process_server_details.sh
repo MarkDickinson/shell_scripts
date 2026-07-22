@@ -5726,6 +5726,7 @@ EOF
 # ----------------------------------------------------------
 build_appendix_j() {
    hostid="$1"
+   htmlfile="${RESULTS_DIR}/${hostid}/appendix_J.html"
    if [ -f ${CUSTOMFILE} ];
    then
       ignoredocker=`grep "^DOCKER_ORPHANS_SUPPRESS=YES" ${CUSTOMFILE}`
@@ -5743,8 +5744,7 @@ build_appendix_j() {
    orphantotal=`grep "^ORPHAN_" ${SRCDIR}/secaudit_${hostname}.txt | wc -l`
    if [ ${orphantotal} -gt 0 ];
    then
-      htmlfile="${RESULTS_DIR}/${hostid}/appendix_I.html"
-      log_message ".     Building Appendix I - process snapshot at capture time, ${tempcount} processes"
+      log_message ".     Building Appendix J - ${tempcount} orphaned items at capture time"
 
       clean_prev_work_files
       mkdir ${WORKDIR}
@@ -6767,8 +6767,8 @@ perform_single_server_processing() {
    build_appendix_e ${hostname}               # system file security checks
    build_appendix_f ${hostname}               # server environmant checks
    build_appendix_g ${hostname}               # customisations used
-   build_appendix_h ${hostname}               # iptables checks
-   build_appendix_i ${hostname}               # iptables checks
+   build_appendix_h ${hostname}               # firewall checks
+   build_appendix_i ${hostname}               # runnig process snapshot
    build_appendix_j ${hostname}               # orphans, if any found
    build_appendix_k ${hostname}               # authorized_keys, if any found
    build_appendix_l ${hostname}               # sudoers checks
