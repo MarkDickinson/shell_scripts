@@ -186,9 +186,9 @@ build_one_entry() {
          dataoutline="${dataoutline}<br \>${onleavetext}"
          entrylinecount=$(( ${entrylinecount} + 1 ))
       fi
-      # We have everything to output now, want a minimum of 5 lines in each table line
+      # We have everything to output now, want a minimum of 3 lines in each table line
       echo "<td>${dataoutline}"
-      while [ ${entrylinecount} -lt 5 ];
+      while [ ${entrylinecount} -lt 3 ];
       do
          echo -n "<br />"
          entrylinecount=$(( ${entrylinecount} + 1 ))
@@ -210,6 +210,7 @@ build_one_entry() {
 do_one_month() {
    usemonth="$1"
    useyear="$2"
+   nopagebreak="$3"
    echo "<center>"
    lineno=1
    # C R A P --- C R A P --- C R A P
@@ -233,12 +234,11 @@ do_one_month() {
          # only show the picture if we have one
          if [ "${monthpic}." != "." ];
          then
-            echo "<img src=\"${monthpic}\" height=\"800px\"></img>"
+            echo "<img src=\"${monthpic}\"></img>"
          else
             echo "<p>No picture provided for ${year}/${month}.</p>"
          fi
-         echo "<br /><h1>${dataline}</h1>"
-         echo "<br /><br /><br />"       # some spaces to align the page better
+         echo "<h1>${dataline}</h1>"
       fi
       # Only on line 2 do we start the table and populate the first line
       # of the table with the day names
@@ -298,7 +298,10 @@ EOF
    echo "</center>"
 
    # Add a page break to be used when printing
-   echo "<div class=\"page-break\"></div>"
+   if [ "${nopagebreak}." == "." ];
+   then
+      echo "<div class=\"page-break\"></div>"
+   fi
 } # do_one_month
 
 
@@ -315,11 +318,37 @@ Content-Type: text/html
   .page-break   { display:none; }
 }
 @media print {
+  @page {
+    /* Triggers the browser to strip default headers and footers */
+    margin: 0; 
+  }
   body{
     -webkit-print-color-adjust: exact; /*chrome & webkit browsers*/
     print-color-adjust: exact; /*firefox & IE */
+    padding: 0.1cm;
   } 
+  img {
+    /* Limit the maximum height using physical print units (like inches or centimeters) */
+    max-height: 4.5in; 
+    /* Ensure the width scales proportionally so the image doesn't stretch */
+    width: auto; 
+    /* Forces modern browsers to respect aspect ratios during print scaling */
+    object-fit: contain; 
+    /* Prevents the image from being awkwardly split across two pages */
+    page-break-inside: avoid; 
+    break-inside: avoid;
+  }
+  .page-title {
+    display: none!important;
+  }
+  title {
+    display: none!important;
+  }
   .page-break   { display:block; page-break-before:always; }
+}
+img {
+  width: auto;
+  height: 800px;
 }
 </style>
 
@@ -355,9 +384,20 @@ then
    done
    workmonthnow=1                                  # next year from month 1
    workyearnow=$(( ${workyearnow} + 1 ))           # in the next year
+   if [ ${currmonthnow} -gt 1 ];
+   then
+      stopmonth=$(( ${currmonthnow} - 1 ))         # to try and stop a last empty page
+   else
+      stopmonth=${currmonthnow}                    # do not leave unset
+   fi
    while [ ${workmonthnow} -lt ${currmonthnow} ];  # until we reach start month
    do
-      do_one_month ${workmonthnow} ${workyearnow}
+      if [ ${workmonthnow} -ne ${stopmonth} ];
+      then
+         do_one_month ${workmonthnow} ${workyearnow}
+      else
+         do_one_month ${workmonthnow} ${workyearnow} "nopagebreak"
+      fi
       workmonthnow=$(( ${workmonthnow} + 1 ))
    done
 fi
