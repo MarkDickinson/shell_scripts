@@ -6130,8 +6130,8 @@ normal ssh keys do not expire like passwords. If you use ansible you should idea
 neds to run and code explicit command entries for it, do not use ALL (and if you do not know what commands
 ansible is running as root you should not permit it to be used).</p>
 <p>The issue with things like ansible can be somewhat slightly mitigated by ensuring the authorized_keys file
-always is prefixed with a from=ipaddr for each key so the user can only ssh using keys from a specific ipaddr,
-but still unsafe so any entry NOPASSWD:ALL will always be alerted on here.</p>
+always is prefixed with a from=ipaddr for each key so the user can only run commands remotely via ssh using keys from a specific ipaddr,
+but still unsafe on the local machine so any entry NOPASSWD:ALL will always be alerted on here.</p>
 <center><table border="1">
 <tr bgcolor="${colour_banner}"><td>Entries that allow users to run any command they want without password prompting</td></tr>
 EOF
