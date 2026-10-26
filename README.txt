@@ -4,7 +4,11 @@ May be useful to others. May not be.
 The main directory is general scripts.
    - makepdf.sh  
         pipe a text file into it and get output as a pdf file
-
+   - resize_and_merge_videos.sh
+        I needed to merge MKV files of different sizes, and a 
+        different number of files each time, so wrotethis small 
+        script that will resize and merge MKV files to a 1280:720
+        output file (do not use on MP4 files, see notes in script).
    - common_functions.bash
         a work in progress, effectively a placeholder
 
@@ -23,4 +27,4 @@ Any subdirectories will be task specific scripts.
                       script to create a html file and file-open that if you do
                       not have a webserver; you need to use your browsers
                       print function to print it however as the browser does
-                      the formtting based on the html.
+                      the formtting based on the css in html page created.
