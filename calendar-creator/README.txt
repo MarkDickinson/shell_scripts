@@ -44,8 +44,10 @@ Usage: --
            and use your desktop web browser to "open file" to view the results,
            BUT the picture_list.txt file will need to refer to pictures relative
            to the directory you direct the output file to (instead of paths your
-           webserver would use).
-           Must be a Linux server, it needs the "cal" program.
+           webserver must use [as a webserver cannot/shouldnot serve pictures from
+           under a cgi directory but run as a standalone script must as it cannot
+           ise URLs]).
+    note2: Must be a Linux server, it needs the "cal" program.
 
 Important things to be aware of:
     In data files day numbers if < 10 must be preceeded by a space, not a zero
@@ -58,7 +60,8 @@ The main file : calendar.sh
     It is dependant on having the unix "cal" program installed, because I use
     that to work out what a month looks like instead of reinventing the wheel.
     IMPORTANT: it will generate a calendar for 12 months from/including the
-               current month, that is not customisable yet.
+               current month, that is not customisable yet (it will be one day
+               but that will need a front-end html page).
 
 ===============================================================================
 Data files used: READ THIS SECTION

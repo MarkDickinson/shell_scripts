@@ -3,7 +3,7 @@ I have dozens of site specific NRPE check scripts which are pointless here.
 But I also have a few 'generic' ones for things not yet available
 out-of-the-box that may be useful to anyone interested.
 
-Note: I run them all using NRPE.
+Note: I run them all using NRPE checks n the NAGIOS config files.
 Note2: They are all BASH scripts, bash is required not sh/ksh etc.
 
 Quick index:

@@ -1,23 +1,58 @@
-2025 January  1:New Years Day
-2025 January  2:Day after new years
-2025 February  6:Waitangi Day
-2025 April 18:Good Friday
-2025 April 21:Easter Monday
-2025 April 25:Anzac Day
-2025 June  2:NZ Kings<br />Birthday 
-2025 June  9:AUZ Kings<br />Birthday
-2025 June 20:NZ Matariki
-2025 October 27:NZ Labour Day
-2025 December 25:Christmas Day
-2025 December 26:Boxing Day 
 2026 January  1:New Years Day
 2026 January  2:Day after new years
+2026 January 19:WN Anniversary
 2026 February  6:Waitangi Day
-2026 April 3:Good Friday
-2026 April 6:Easter Monday
+2026 April  3:Good Friday
+2026 April  6:Easter Monday
 2026 April 27:Anzac Day observed
 2026 June  1:Kings<br />Birthday
 2026 July 10:Matariki
 2026 October 26:Labour Day
 2026 December 25:Christmas Day
+2026 December 26:<s>Boxing Day</s>
 2026 December 28:Boxing Day observed
+2027 January  1:New Years Day
+2027 January  2:<s>Day after new years</s>
+2027 January  4:Day after observed
+2027 January 25:WN Anniversary 
+2027 February  1:AKL Aniversary
+2027 February  6:<s>Waitangi Day</s>
+2027 February  8:Waitangi observed
+2027 March 26:Good Friday
+2027 March 29:Easter Monday
+2027 April 25:<s>Anzac Day</s>
+2027 April 26:Anzac Day observed
+2027 June  7:Kings Birthday
+2027 June 25:NZ Matariki
+2027 October 25:Labour Day
+2027 December 25:<s>Christmas Day</s>
+2027 December 26:<s>Boxing Day</s>
+2027 December 27:Christmas Day observed
+2027 December 28:Boxing Day observed
+2028 January  1:<s>New Years Day</s>
+2028 January  2:<s>Day after new years</s>
+2028 January  3:New Year observed
+2028 January  4:Day after observed
+2028 July 14:NZ Matariki
+2029 July  6:NZ Matariki
+2030 June 21:NZ Matariki
+2031 July 11:NZ Matariki
+2032 July  2:NZ Matariki
+2033 June 24:NZ Matariki
+2034 July  7:NZ Matariki
+2035 June 29:NZ Matariki
+2036 July 18:NZ Matariki
+2037 July 10:NZ Matariki
+2038 June 25:NZ Matariki
+2039 July 15:NZ Matariki
+2040 July  6:NZ Matariki
+2041 July 19:NZ Matariki
+2042 July 11:NZ Matariki
+2043 July  3:NZ Matariki
+2044 June 24:NZ Matariki
+2045 July  7:NZ Matariki
+2046 June 29:NZ Matariki
+2047 July 19:NZ Matariki
+2048 July  3:NZ Matariki
+2049 June 25:NZ Matariki
+2050 July 15:NZ Matariki
